@@ -1,100 +1,16 @@
 /*
- * Os valores aqui vêm do build de shared/design-tokens.
- * Em dev, importar o CSS gerado diretamente; em produção o build copia para dist/.
+ * Os tokens vêm do pacote agnóstico shared/design-tokens.
  * Tema light é o padrão; dark é ativado via data-theme="dark" no <html> (ThemeProvider).
  */
 
+@import '@radar/design-tokens/tokens.css';
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-/* ── Core tokens inline (substituir pelo import do dist após pnpm build:tokens) ── */
 :root {
-  /* surfaces */
-  --radar-color-bg-canvas:  #f8fafc;
-  --radar-color-bg-surface: #ffffff;
-  --radar-color-bg-subtle:  #f1f5f9;
-  --radar-color-bg-overlay: #e2e8f0;
-
-  /* text */
-  --radar-color-text-default:   #0f172a;
-  --radar-color-text-muted:     #64748b;
-  --radar-color-text-onPrimary: #ffffff;
-  --radar-color-text-critical:  #dc2626;
-  --radar-color-text-success:   #16a34a;
-  --radar-color-text-warning:   #d97706;
-
-  /* action */
-  --radar-color-action-primary:      #2563eb;
-  --radar-color-action-primaryHover: #1d4ed8;
-
-  /* border */
-  --radar-color-border-default: #e2e8f0;
-  --radar-color-border-focus:   #3b82f6;
-
-  /* status */
-  --radar-color-status-go:      #22c55e;
-  --radar-color-status-nogo:    #ef4444;
-  --radar-color-status-pendente: #f59e0b;
-
-  /* feedback surfaces */
-  --radar-color-feedback-info-bg:     #dbeafe;
-  --radar-color-feedback-info-fg:     #1d4ed8;
-  --radar-color-feedback-sucesso-bg:  #dcfce7;
-  --radar-color-feedback-sucesso-fg:  #15803d;
-  --radar-color-feedback-alerta-bg:   #fef3c7;
-  --radar-color-feedback-alerta-fg:   #b45309;
-  --radar-color-feedback-erro-bg:     #fee2e2;
-  --radar-color-feedback-erro-fg:     #b91c1c;
-
-  /* spacing */
-  --radar-space-1: 4px;
-  --radar-space-2: 8px;
-  --radar-space-3: 12px;
-  --radar-space-4: 16px;
-  --radar-space-6: 24px;
-  --radar-space-8: 32px;
-
-  /* radius */
-  --radar-radius-sm:   4px;
-  --radar-radius-md:   8px;
-  --radar-radius-lg:   12px;
-
-  /* typography */
-  --radar-font-sans: 'Inter', system-ui, sans-serif;
-  --radar-font-size-sm:   14px;
-  --radar-font-size-base: 16px;
-  --radar-font-size-lg:   18px;
-}
-
-[data-theme='dark'] {
-  --radar-color-bg-canvas:  #020617;
-  --radar-color-bg-surface: #0f172a;
-  --radar-color-bg-subtle:  #1e293b;
-  --radar-color-bg-overlay: #334155;
-
-  --radar-color-text-default: #f8fafc;
-  --radar-color-text-muted:   #94a3b8;
-  --radar-color-text-critical:  #f87171;
-  --radar-color-text-success:   #4ade80;
-  --radar-color-text-warning:   #fbbf24;
-
-  --radar-color-action-primary:      #3b82f6;
-  --radar-color-action-primaryHover: #60a5fa;
-
-  --radar-color-border-default: #334155;
-  --radar-color-border-focus:   #60a5fa;
-
-  --radar-color-status-go:      #4ade80;
-  --radar-color-status-nogo:    #f87171;
-  --radar-color-status-pendente: #fbbf24;
-
-  --radar-color-feedback-info-bg:     #1e40af;
-  --radar-color-feedback-info-fg:     #bfdbfe;
-  --radar-color-feedback-sucesso-bg:  #166534;
-  --radar-color-feedback-sucesso-fg:  #bbf7d0;
-  --radar-color-feedback-alerta-bg:   #b45309;
-  --radar-color-feedback-alerta-fg:   #fef3c7;
-  --radar-color-feedback-erro-bg:     #b91c1c;
-  --radar-color-feedback-erro-fg:     #fee2e2;
+  --radar-font-sans: var(--radar-fontFamily-sans);
+  --radar-font-size-sm: var(--radar-fontSize-sm);
+  --radar-font-size-base: var(--radar-fontSize-base);
+  --radar-font-size-lg: var(--radar-fontSize-lg);
 }
 
 *, *::before, *::after { box-sizing: border-box; }

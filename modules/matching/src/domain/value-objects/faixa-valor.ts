@@ -11,12 +11,15 @@ export class FaixaValor {
   ) {}
 
   static criar(min: number | null, max: number | null): FaixaValor {
+    if (min !== null && !Number.isFinite(min)) throw new FaixaValorInvalidaError(min, max ?? min);
+    if (max !== null && !Number.isFinite(max)) throw new FaixaValorInvalidaError(min ?? max, max);
     if (min !== null && max !== null && min > max)
       throw new FaixaValorInvalidaError(min, max);
     return new FaixaValor(min, max);
   }
 
   abrange(valor: number): boolean {
+    if (!Number.isFinite(valor)) return false;
     const acimaDoPiso = this.min === null || valor >= this.min;
     const abaixoDoTeto = this.max === null || valor <= this.max;
     return acimaDoPiso && abaixoDoTeto;
