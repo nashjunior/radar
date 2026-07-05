@@ -41,9 +41,15 @@ importers:
       '@radar/notificacao':
         specifier: workspace:*
         version: link:../../modules/notificacao
+      '@radar/triagem':
+        specifier: workspace:*
+        version: link:../../modules/triagem
       hono:
         specifier: ^4.6.17
         version: 4.12.27
+      jose:
+        specifier: ^6.2.3
+        version: 6.2.3
       zod:
         specifier: ^3.24.1
         version: 3.25.76
@@ -54,6 +60,9 @@ importers:
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.6(@types/node@22.20.0)(tsx@4.23.0)(yaml@2.9.0)
 
   apps/web:
     dependencies:
@@ -113,6 +122,19 @@ importers:
         version: 3.2.6(@types/node@22.20.0)(tsx@4.23.0)(yaml@2.9.0)
 
   modules/notificacao:
+    dependencies:
+      '@radar/kernel':
+        specifier: workspace:*
+        version: link:../../shared/kernel/ts
+    devDependencies:
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.6(@types/node@22.20.0)(tsx@4.23.0)(yaml@2.9.0)
+
+  modules/triagem:
     dependencies:
       '@radar/kernel':
         specifier: workspace:*
@@ -2035,6 +2057,9 @@ packages:
 
   jackspeak@3.4.3:
     resolution: {integrity: sha512-OGlZQpz2yfahA/Rd1Y8Cd9SIEsqvXkLVoSw/cgwhnhFMDbsQFeZYoJJ7bIZBS9BcamUW96asq/npPWugM+RQBw==}
+
+  jose@6.2.3:
+    resolution: {integrity: sha512-YYVDInQKFJfR/xa3ojUTl8c2KoTwiL1R5Wg9YCydwH0x0B9grbzlg5HC7mMjCtUJjbQ/YnGEZIhI5tCgfTb4Hw==}
 
   js-tokens@4.0.0:
     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
@@ -4859,6 +4884,8 @@ snapshots:
       '@isaacs/cliui': 8.0.2
     optionalDependencies:
       '@pkgjs/parseargs': 0.11.0
+
+  jose@6.2.3: {}
 
   js-tokens@4.0.0: {}
 

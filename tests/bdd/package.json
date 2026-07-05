@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --import tsx/esm node_modules/@cucumber/cucumber/bin/cucumber.js",
-    "test:matching": "node --import tsx/esm node_modules/@cucumber/cucumber/bin/cucumber.js features/matching/**",
-    "test:ingestao": "node --import tsx/esm node_modules/@cucumber/cucumber/bin/cucumber.js features/ingestao/**"
+    "test": "node --import tsx/esm node_modules/@cucumber/cucumber/bin/cucumber.js --import steps/ingestao.steps.ts --import steps/matching.steps.ts --import steps/triagem.steps.ts",
+    "test:matching": "node --import tsx/esm node_modules/@cucumber/cucumber/bin/cucumber.js --import steps/matching.steps.ts features/matching/**/*.feature",
+    "test:ingestao": "node --import tsx/esm node_modules/@cucumber/cucumber/bin/cucumber.js --import steps/ingestao.steps.ts features/ingestao/**/*.feature"
   },
   "dependencies": {
     "@radar/ingestao": "workspace:*",

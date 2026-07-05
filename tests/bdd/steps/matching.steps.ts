@@ -49,7 +49,10 @@ Before(function () {
 
 function computarScore(objeto: string, palavras: string[]): number {
   const objetoNorm = objeto.toLowerCase();
-  const acertos = palavras.filter((p) => objetoNorm.includes(p.toLowerCase()));
+  const acertos = palavras.filter((p) => {
+    const escaped = p.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`\\b${escaped}\\b`).test(objetoNorm);
+  });
   return acertos.length > 0 ? 0.8 : 0.1;
 }
 
@@ -117,7 +120,6 @@ function criarCriterio(clienteId: string, tenantId: string, palavras: string[]):
 
 Given('um repositório de critérios em memória', function () {});
 Given('um repositório de alertas em memória', function () {});
-Given('um publicador de eventos em memória', function () {});
 
 Given(
   'um critério de monitoramento com palavras-chave {string}',

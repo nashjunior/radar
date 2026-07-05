@@ -77,4 +77,5 @@ No **código**, há um agente de revisão (só reporta):
 - Faça mudanças cirúrgicas e fiéis ao estilo dos documentos existentes; preserve numeração, tabelas e o padrão de cross-reference.
 - Após editar a documentação, considere rodar a skill `auditar-docs` para checar que nada quebrou.
 - Após alterar código de um módulo (`domain/application/infra`), deixe o agente `guardiao-arquitetura` validar o diff (camadas, isolamento entre contextos, convenções) **antes de finalizar/PR** — corrija as ❌ violações; ao tocar numa fronteira/agregado, cruze também com `revisar-ddd`.
+- **Contrato é fronteira back↔front — mudou contrato, avise o front.** Qualquer alteração em `shared/contracts` (proto/gRPC) ou num contrato de API/evento que o front consome **notifica o front (Flávia)** — abra issue/comentário descrevendo a mudança (o cliente/stub gerado dela muda). **Nunca altere contrato silenciosamente**; mudança breaking exige o aviso antes do merge.
 - Não commite nem faça push sem o usuário pedir.

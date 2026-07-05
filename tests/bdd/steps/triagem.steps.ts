@@ -109,12 +109,7 @@ Then(
   },
 );
 
-Then(
-  'o evento {string} deve ter sido publicado',
-  function (_tipo: string) {
-    return 'pending';
-  },
-);
+// o evento {string} deve ter sido publicado — step definido em matching.steps.ts
 
 Then(
   'a triagem deve lançar ConfiancaInsuficienteError',

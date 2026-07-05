@@ -5,16 +5,25 @@
  * montar o app Hono com as rotas. O `index.ts` apenas chama `criarApp()`
  * e faz `serve()`.
  *
- * TODO (RAD-30/RAD-31): wiring completo dos módulos quando os adapters de
- * persistência estiverem prontos.
+ * Adapters de persistência (Postgres) entram quando o infra for provisionado;
+ * os stubs abaixo são substituídos aqui sem alterar o use case nem a rota.
  */
 
 import { Hono } from 'hono';
 import { logger } from 'hono/logger';
+import { ConsultarTriagemUseCase } from '@radar/triagem';
 import { healthRouter } from './routes/health.js';
 import { criarTriagemRouter } from './routes/triagem.js';
+import { PerfilAtivoConfigAdapter } from './infra/perfil-ativo-config-adapter.js';
+import { triagemStub, extracaoStub } from './infra/triagem-stub.js';
+
+/** Seed de tenants — obrigatório em runtime para que o endpoint responda 200. */
+const tenantSeed = process.env['TENANT_SEED'] ?? '{}';
+const perfilAtivo = PerfilAtivoConfigAdapter.fromJson(tenantSeed);
 
 export function criarApp(): Hono {
+  const consultarTriagem = new ConsultarTriagemUseCase(triagemStub, extracaoStub);
+
   const app = new Hono();
 
   app.use('*', logger());
@@ -23,7 +32,7 @@ export function criarApp(): Hono {
   app.route('/health', healthRouter);
 
   // API principal — tenant obrigatório
-  app.route('/api/triagem', criarTriagemRouter());
+  app.route('/api/triagem', criarTriagemRouter({ consultarTriagem, perfilAtivo }));
 
   // Catch-all 404
   app.notFound((c) => c.json({ code: 'NAO_ENCONTRADO', mensagem: 'Rota não encontrada.' }, 404));
