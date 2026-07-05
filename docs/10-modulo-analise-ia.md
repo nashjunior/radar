@@ -1,0 +1,73 @@
+# 10 · Módulo 2 — Análise e Triagem por IA
+
+> Aprofundamento do módulo mais **diferenciador e mais arriscado** do produto (documento 01, §§4 e 8). O fluxo já está no documento 03 (§4); aqui define-se a barra de qualidade, como se avalia (eval), a política de confiança e human-in-the-loop, e os modos de falha. Segurança de prompt injection está no documento 05 (§4). Estágio: **Concepção**.
+
+## 1. Por que este módulo decide o produto
+
+O Módulo 1 encontra editais; qualquer concorrente faz isso (documento 09). É o Módulo 2 que converte "achei um edital" em "vale a pena participar, e aqui está o porquê". Esse salto é o fosso competitivo — e também o maior risco: uma extração errada gera uma decisão de negócio errada (documento 01, §8). Confiança é o produto. Sem barra de qualidade, este módulo é um passivo, não um ativo.
+
+## 2. Escopo — o que a IA faz e o que não faz
+
+**Faz:** extrai do edital e anexos o objeto, os requisitos de habilitação (jurídica, fiscal, técnica, econômica), prazos, valores, modalidade, penalidades e condições; cruza com o perfil/documentos da empresa; calcula **aderência**; sinaliza **riscos**; e apresenta um resumo go/no-go.
+
+**Não faz:** não **decide** (a decisão go/no-go é sempre do usuário — documento 03, §4); não dá **parecer jurídico** (documento 01, §6); não preenche automaticamente campos numéricos críticos sem confiança suficiente (§4).
+
+## 3. Pipeline de extração
+
+```mermaid
+flowchart TD
+    A[Edital + anexos] --> B{Tem texto<br/>selecionável?}
+    B -->|Não| OCR[OCR]
+    B -->|Sim| P[Parsing e segmentação]
+    OCR --> P
+    P --> E[Extração estruturada por campo<br/>objeto, habilitação, prazos, valores]
+    E --> S[Score de confiança por campo]
+    S --> G{Confiança ≥ limiar?}
+    G -->|Sim| ADER[Cruzar com perfil →<br/>aderência e riscos]
+    G -->|Não| FLAG[Marcar 'verificar' ·<br/>não pré-preencher]
+    ADER --> RES[Resumo go/no-go<br/>com CITAÇÃO da fonte]
+    FLAG --> RES
+    RES --> USER{{Usuário decide}}
+```
+
+## 4. Princípios de qualidade e confiança
+
+1. **Sempre citar a fonte.** Todo campo extraído e toda afirmação do resumo linkam o trecho e a página do edital (já em documento 03, §4). O usuário confere em um clique. Sem citação, não se exibe como fato.
+2. **Confiança calibrada.** Cada campo carrega um score. Abaixo do limiar, o campo é marcado "verificar" e **não** alimenta automaticamente a decisão — nunca se apresenta um palpite como certeza.
+3. **Human-in-the-loop.** A decisão é do usuário; campos de baixa confiança exigem confirmação antes de contar para a aderência.
+4. **Conteúdo do edital é não confiável.** Trata-se o texto como dado, não instrução — defesa contra prompt injection (documento 05, §4): separar instruções de dados, nunca executar conteúdo extraído.
+
+## 5. Barra de qualidade e avaliação (eval)
+
+Sem medição, não há confiança. O módulo é avaliado contra um **gold set**: um conjunto de editais rotulados por especialista, cobrindo modalidades e formatos heterogêneos.
+
+| Dimensão | Como se mede | Meta (hipótese) `[A VALIDAR]` |
+|----------|--------------|-------------------------------|
+| **Recall de campos críticos** (prazo, objeto, habilitação) | vs. rótulos do gold set | ≥ 95% — perder um prazo é inaceitável |
+| **Precisão de extração** | vs. rótulos do gold set | ≥ 90% |
+| **Alucinação em campos numéricos** (valores, prazos, datas) | auditoria dos campos numéricos | **zero** — regra dura (guardrail, documento 08, §4) |
+| **Fidelidade do resumo** (faithfulness) | % de afirmações rastreáveis à fonte citada | ≥ 98% `[A VALIDAR]` |
+| **Aceitação pelo usuário** | % de triagens aceitas sem refazer (documento 08, §3) | ≥ 70% `[A VALIDAR]` |
+
+**Regressão.** O gold set roda a cada mudança de prompt, modelo ou pipeline — nenhuma mudança sobe sem passar. É o mesmo espírito do checklist de conformidade (documento 04, §6) aplicado à qualidade da IA.
+
+## 6. Modos de falha e fallback
+
+Degradar com transparência é melhor que errar com confiança:
+
+- **Baixa confiança na extração** → degradar para **leitura assistida**: destacar os trechos relevantes sem decidir por ele.
+- **PDF imagem / OCR falha** → marcar "requer leitura manual"; não inventar conteúdo.
+- **Anexos ausentes ou ilegíveis** → sinalizar triagem **incompleta**; não apresentar aderência como final.
+- **Edital fora do padrão** (modalidade rara, estrutura atípica) → reduzir confiança e pedir revisão humana.
+
+## 7. Custo e desempenho
+
+O **custo de IA por edital** é guardrail da unidade econômica (documentos 08, §4 e 09, §6): a arquitetura de extração deve caber abaixo do preço médio por triagem. A **latência de triagem** é um NFR (documento 12): a promessa de "horas para minutos" (documento 01, §5) só se cumpre com resposta rápida. Estratégias como pré-extração no momento da ingestão e reuso de resultados por edital ajudam ambos.
+
+## 8. Pendências
+
+- Construir o **gold set** rotulado e definir as metas finais (§5). `[A VALIDAR]`
+- Fixar os limiares de confiança por campo (§4). `[A VALIDAR]`
+- Definir o teto de custo de IA por edital que fecha a unidade econômica (§7). `[A VALIDAR]`
+
+Rastreadas no documento **98 · Decisões e pendências**.

@@ -1,0 +1,63 @@
+# ─────────────────────────────────────────────────────────────
+# Radar de Licitações — .gitignore
+# Projeto em estágio de Concepção (documentação-only por enquanto).
+# A stack proposta é um monorepo TypeScript (ver arquitetura/10);
+# as seções de Node/build já ficam prontas para quando houver código.
+# ─────────────────────────────────────────────────────────────
+
+# ── Sistema operacional / editor ─────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+Desktop.ini
+*.swp
+*~
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
+
+# ── Segredos e configuração local ────────────────────────────
+# .mcp.json contém a chave da API da Figma em texto puro — NÃO commitar.
+# (Recomendado: rotacionar a chave e usar ${FIGMA_API_KEY} via ambiente.)
+.mcp.json
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# ── Claude Code (local / privado da máquina) ─────────────────
+# Fica versionado: .claude/skills/, .claude/commands/, .claude/settings.json
+# NÃO versionado: preferências e permissões locais desta máquina.
+.claude/settings.local.json
+.claude/*.local.json
+CLAUDE.local.md
+
+# ── Node / TypeScript (para quando o monorepo existir) ───────
+node_modules/
+dist/
+build/
+out/
+coverage/
+*.tsbuildinfo
+.npm/
+.pnpm-store/
+.yarn/*
+!.yarn/patches
+!.yarn/releases
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ── Logs e temporários ───────────────────────────────────────
+logs/
+*.log
+tmp/
+temp/
+.cache/
