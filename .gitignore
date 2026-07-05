@@ -30,6 +30,8 @@ Desktop.ini
 *.pem
 *.key
 secrets/
+# Exceção: módulo Terraform de secrets é código de infra, não segredos reais.
+!infra/terraform/modules/secrets/
 
 # ── Claude Code (local / privado da máquina) ─────────────────
 # Fica versionado: .claude/skills/, .claude/commands/, .claude/settings.json
