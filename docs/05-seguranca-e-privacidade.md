@@ -33,15 +33,19 @@ O projeto adota **security-by-design** e **privacy-by-design**, com quatro princ
 
 ## 4. Controles por camada
 
-| Camada | Ameaça endereçada | Controles propostos `[A VALIDAR]` |
-|--------|-------------------|-----------------------------------|
-| **Ingestão** (Mód. 1) | Envenenamento, extrapolação LGPD | Validação/sanitização de entrada; preferência por API oficial; minimização antes de persistir; registro de proveniência; rate-limiting educado com as fontes |
-| **Armazenamento** | Exfiltração | Criptografia em repouso; segregação por tenant; retenção mínima; segredos em cofre (secrets manager), nunca no código |
-| **Trânsito** | Interceptação | TLS em todas as comunicações; sem tráfego de dado sensível em texto claro |
-| **Aplicação / API** | Acesso indevido, abuso | AuthN forte (idealmente MFA); AuthZ por papel e por tenant em toda requisição; rate-limiting; validação de saída para não vazar dado de outro tenant |
-| **Análise por IA** (Mód. 2) | Prompt injection via edital | Tratar conteúdo do edital como não confiável; separar instruções de dados; não executar conteúdo extraído |
-| **Observabilidade** | Detecção tardia | Logs de auditoria; alertas de acesso anômalo; trilha de acesso a dado pessoal |
-| **Operação** | Erro humano, credenciais | Menor privilégio nos acessos internos; rotação de segredos; ambientes separados (dev/prod) |
+Esta é a **linha de base decidida** (baseline) dos controles de segurança do projeto — não mais uma proposta. Cada controle carrega um **gate** (o momento em que precisa estar em pé, na convenção do doc 98, §1): **Pré-dev** (invariante arquitetural do dia 1, caro de retrofitar), **Pré-lançamento** (antes do go-live do MVP) e **Next** (endurecimento pós-MVP, aditivo). A prova de cada controle são os casos de abuso de [A07](../arquitetura/07-teste-de-seguranca.md) (`AB*`); cada linha remete à pendência que detalha e implementa o controle (P-51–P-63, P-07/P-08 no doc 98).
+
+| Camada | Ameaça endereçada | Controles (baseline) | Gate | Prova / Pendência |
+|--------|-------------------|----------------------|------|-------------------|
+| **Ingestão** (Mód. 1) | Envenenamento, extrapolação LGPD | Validação/sanitização de entrada e de schema; queries parametrizadas; preferência por API oficial; minimização antes de persistir; registro de proveniência; rate-limiting educado com as fontes. **Egress allowlist + anti-SSRF** na busca de anexos/URLs | Pré-dev (validação, proveniência, minimização) · Pré-lançamento (SSRF/egress) | AB7, AB8 / P-58 |
+| **Armazenamento** | Exfiltração | Criptografia em repouso; **escopo `tenantId`/`clienteFinalId` em toda entidade desde o dia 1** e segregação lógica por tenant; segredos em cofre (secrets manager), nunca no código; retenção mínima; criptografia de campo para a classe crítica | Pré-dev (escopo por tenant, segredos em cofre, cripto em repouso) · Pré-lançamento (retenção, cripto de campo) · Next (isolamento físico RLS) | AB1, AB12 / P-08, P-59, P-07 |
+| **Trânsito** | Interceptação | TLS em todas as comunicações; sem tráfego de dado sensível em texto claro | Pré-dev | AB11 / — |
+| **Aplicação / API** | Acesso indevido, abuso | **Autorização por objeto** (confirma posse por `tenantId`/`clienteFinalId` a cada acesso, não só filtro de query — anti-IDOR/BOLA); AuthN forte (MFA); RBAC por papel; rate-limit por tenant; WAF/gateway, headers (HSTS/CSP), CORS/CSRF, validação de schema, anti-mass-assignment; validação de saída para não vazar dado de outro tenant | Pré-dev (autorização por objeto — invariante nos use cases) · Pré-lançamento (AuthN/MFA, RBAC, WAF/rate-limit/headers) | AB1, AB2, AB3, AB9 / P-51, P-52, P-53, P-55 |
+| **Análise por IA** (Mód. 2) | Prompt injection via edital | Tratar conteúdo do edital como não confiável; separar instruções de dados; não executar conteúdo extraído; **classe crítica nunca vai ao LLM**; schema + sanitização da saída da IA | Pré-dev (edital-como-dado, separação instrução/dado) · Pré-lançamento (corpus adversarial, minimização ao LLM, sanitização de saída) | AB4, AB5, AB6 (A11) / P-54, P-72, P-73 |
+| **Observabilidade** | Detecção tardia | **Audit log append-only/imutável e fail-closed** (`UPDATE`/`DELETE` negados; trava se a trilha não grava); trilha de acesso a dado pessoal; alertas de acesso anômalo; higiene de logs (sem PII/segredos) + SIEM | Pré-dev (audit log append-only/fail-closed — modelo AUDIT_LOG) · Pré-lançamento (SIEM, higiene de logs, alertas) | AB13 / P-61 |
+| **Operação** | Erro humano, credenciais | Menor privilégio nos acessos internos; rotação de segredos; ambientes separados (dev/staging/prod); **verificação de identidade do titular antes de atender solicitação** | Pré-dev (ambientes separados, menor privilégio) · Pré-lançamento (rotação, verificação de titular) | AB10 / P-57 |
+
+**Decisão (regra dura, não afrouxável).** Três invariantes são **Pré-dev** porque não se retrofitam sem reescrever o núcleo, e sustentam os casos de abuso críticos de A07 §5: (1) **autorização por objeto** + `tenantId`/`clienteFinalId` em toda entidade (sustenta **AB1**); (2) **audit log append-only/fail-closed** (sustenta **AB13**); (3) **edital como dado não-confiável** com instrução separada (sustenta **A11**/AB4). A **verificação de identidade do titular** (**AB10**) é obrigatória antes do go-live. O isolamento **físico** por RLS (P-07) é endurecimento **aditivo** no Next — ele **soma-se** à autorização por objeto, **nunca a substitui**: o baseline lógico vale desde o dia 1, mesmo single-tenant. Fechar P-04 **decide esta tabela**; a implementação e o teste de cada controle seguem nas pendências citadas.
 
 ## 5. Privacidade por design (LGPD na prática)
 
@@ -73,11 +77,15 @@ Este documento estabelece princípios e controles em nível de concepção. Ante
 
 O princípio de menor privilégio e o isolamento por tenant (§3) só operam bem se soubermos **o que** estamos protegendo. O Radar lida com níveis muito diferentes de sensibilidade — e o mais sensível não é o dado pessoal do edital, é a **estratégia comercial do cliente**:
 
-| Classe | Exemplos | Sensibilidade | Tratamento mínimo |
-|--------|----------|---------------|-------------------|
-| **Público** | Texto do edital, dados abertos do PNCP | Baixa | Íntegro; proveniência registrada |
-| **Pessoal de terceiro** | Nomes, CPF em editais | Média (LGPD, documento 02, §4) | Minimização na ingestão; base legal e proveniência |
-| **Conta do usuário** | Cadastro, credenciais | Média-alta | Criptografia, controle de acesso, base contratual (documento 02, §9) |
-| **Estratégia comercial do cliente** | Quais licitações, preços, forças/fraquezas | **Crítica** | Isolamento por tenant rígido; menor privilégio; auditoria de todo acesso |
+Regra de classificação: quando um registro combinar mais de uma classe, prevalece a classe mais restritiva. Um edital é público como ato administrativo, mas trechos com CPF, e-mail pessoal ou dados de responsável técnico são **Pessoal de terceiro** e seguem minimização LGPD (documento 02, §4). Toda entidade persistida carrega `tenantId` desde o MVP single-tenant; no *Next* de consultorias, dados ligados a cliente acompanhado também carregam `clienteFinalId`.
 
-A classe **crítica** é a razão de a segurança ser requisito de sobrevivência (§1): no cenário multi-cliente, ela concentra a inteligência competitiva de concorrentes numa mesma instância. Nenhum acesso a dado desta classe ocorre sem trilha de auditoria (§3, princípio 4). `[A VALIDAR — formalizar a matriz de classificação e o manuseio por classe]`
+| Classe | Exemplos | Base/finalidade | Manuseio obrigatório |
+|--------|----------|-----------------|----------------------|
+| **Público** | Metadados do PNCP, texto de edital sem dado pessoal, modalidade, órgão, prazos publicados | Transparência da licitação; LAI e PNCP (documento 02, §§3 e 5) | Registrar proveniência; preservar integridade; indexar para busca/matching; tratar conteúdo como não confiável na ingestão e na IA |
+| **Pessoal de terceiro** | Nome, CPF, e-mail pessoal, telefone, responsável técnico ou sócio citado em edital/anexo | Base legal definida para tratamento de dado público; minimização obrigatória (documento 02, §4) | Coletar só o necessário; mascarar ou descartar CPF e contato pessoal sem utilidade para a decisão; registrar base legal/proveniência; não exibir em lista, alerta ou log quando não for necessário |
+| **Conta do usuário** | Nome, e-mail corporativo, organização, credenciais, preferências de notificação, perfil de acesso | Execução de contrato e gestão da conta (documento 02, §9) | Criptografia em repouso; credenciais sempre armazenadas com hash ou geridas por provedor de identidade; acesso por papel e objeto; logs sem segredo; atendimento a direitos do titular |
+| **Estratégia comercial do cliente** | Critérios de monitoramento, intenção de disputar, go/no-go, preço pretendido, aderência, forças/fraquezas de habilitação, histórico de participação e feedback | Execução do serviço contratado; inteligência competitiva do cliente (documento 02, §9) | Classe **crítica**: autorização por objeto em todo acesso; isolamento por `tenantId` e, quando aplicável, `clienteFinalId`; menor privilégio; auditoria de leitura e escrita; não enviar ao LLM nem a logs; exportação apenas por ação explícita de usuário autorizado |
+
+A classe **crítica** é a razão de a segurança ser requisito de sobrevivência (§1): no cenário multi-cliente, ela concentra a inteligência competitiva de concorrentes numa mesma instância. Nenhum acesso a dado desta classe ocorre sem trilha de auditoria (§3, princípio 4). No MVP, mesmo com uma empresa por conta, a implementação já deve usar autorização por objeto para evitar vazamento cross-tenant; no *Next*, o mesmo controle se estende ao recorte por cliente-final.
+
+Pendências relacionadas permanecem separadas: prazos de retenção por tipo de dado (P-05), RBAC detalhado (P-52), DPA/suboperadores e residência do LLM (P-54/P-66) e criptografia em nível de campo para a classe crítica (P-59).

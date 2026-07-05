@@ -1,7 +1,10 @@
 import { Given, When, Then, Before } from '@cucumber/cucumber';
 import assert from 'node:assert/strict';
 import { EditalId } from '@radar/kernel';
-import { IngerirEditaisUseCase } from '@radar/ingestao/dist/application/use-cases/ingerir-editais.js';
+import {
+  IngerirEditaisUseCase,
+  FonteIndisponivelError,
+} from '@radar/ingestao';
 import type {
   ContratacaoData,
   EditalRepository,
@@ -9,10 +12,9 @@ import type {
   IdProvider,
   PncpGateway,
   ProvenienciaRepository,
-} from '@radar/ingestao/dist/application/ports.js';
-import { FonteIndisponivelError } from '@radar/ingestao/dist/domain/errors/index.js';
-import type { Edital } from '@radar/ingestao/dist/domain/entities/edital.js';
-import type { DomainEvent } from '@radar/ingestao/dist/application/events.js';
+  Edital,
+  DomainEvent,
+} from '@radar/ingestao';
 
 // ---------------------------------------------------------------------------
 // Contexto compartilhado no cenário
@@ -190,7 +192,7 @@ function buildDeps(cancelar = false) {
 
 When(
   'o sistema executa a ingestão para a modalidade {int} na janela de {word} a {word}',
-  async function (modalidade: number) {
+  async function (modalidade: number, _inicio: string, _fim: string) {
     const { gateway, editais, proveniencias, eventos, ids, janela } = buildDeps();
     const uc = new IngerirEditaisUseCase(gateway, editais, proveniencias, eventos, ids);
     try {
@@ -260,7 +262,7 @@ Then(
 );
 
 Then(
-  'o repositório deve ter recebido {int} chamada de upsert (não duplicação)',
+  'o repositório deve ter recebido {int} chamada de upsert \\(não duplicação)',
   function (count: number) {
     assert.equal(ctx.upsertCallCount, count);
   },
@@ -268,6 +270,15 @@ Then(
 
 Then(
   'o resumo de ingestão deve reportar {int} editais ingeridos e {int} atualizado',
+  function (ingeridos: number, atualizados: number) {
+    assert.ok(ctx.resultado, 'resultado não disponível');
+    assert.equal(ctx.resultado.ingeridos, ingeridos);
+    assert.equal(ctx.resultado.atualizados, atualizados);
+  },
+);
+
+Then(
+  'o resumo de ingestão deve reportar {int} editais ingeridos e {int} atualizados',
   function (ingeridos: number, atualizados: number) {
     assert.ok(ctx.resultado, 'resultado não disponível');
     assert.equal(ctx.resultado.ingeridos, ingeridos);

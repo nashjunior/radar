@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "cucumber-js",
-    "test:matching": "cucumber-js features/matching/**",
-    "test:ingestao": "cucumber-js features/ingestao/**"
+    "test": "node --import tsx/esm node_modules/@cucumber/cucumber/bin/cucumber.js",
+    "test:matching": "node --import tsx/esm node_modules/@cucumber/cucumber/bin/cucumber.js features/matching/**",
+    "test:ingestao": "node --import tsx/esm node_modules/@cucumber/cucumber/bin/cucumber.js features/ingestao/**"
   },
   "dependencies": {
     "@radar/ingestao": "workspace:*",

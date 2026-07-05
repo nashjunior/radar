@@ -1,9 +1,11 @@
 {
   "default": {
     "paths": ["features/**/*.feature"],
-    "import": ["steps/**/*.ts"],
-    "loader": ["tsx"],
-    "format": ["progress-bar", "json:cucumber-report.json"],
-    "publishQuiet": true
+    "import": [
+      "steps/ingestao.steps.ts",
+      "steps/matching.steps.ts",
+      "steps/triagem.steps.ts"
+    ],
+    "format": ["progress-bar", "json:cucumber-report.json"]
   }
 }

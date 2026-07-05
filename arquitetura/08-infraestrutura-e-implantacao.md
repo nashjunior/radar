@@ -37,6 +37,7 @@ Observação: no MVP monólito modular (A01, §2), API e workers podem coabitar 
 | **Fila gerenciada** | eventos entre módulos (A03, §3) | retries + DLQ nativos |
 | **Object storage** | editais/anexos (A02, §6) | já é serverless por natureza |
 | **Secrets manager** | segredos, rotação (P-08) | nunca segredo no código (05, §4) |
+| **Provedor de identidade (IdP)** | autenticação de usuário, emissão de token OIDC/JWT, MFA (P-08) | **default do MVP = Cognito** (User Pools); a borda valida o JWT e o BFF deriva o `tenantId` de **claim verificado**, nunca de header do cliente (05, §4; P-51). Operação (sessão/MFA/recuperação) em P-53 |
 | **LLM (Claude)** | triagem (10) | API direta **ou** via nuvem (Bedrock/Vertex) — decisão de residência/DPA (P-54, P-66) |
 | **E-mail transacional** | alertas/digest | entregabilidade |
 
@@ -54,6 +55,7 @@ Escolher **primitivas portáveis** (container OCI, Postgres, fila, blob) mantém
 | Fila | SQS | Pub/Sub | Service Bus |
 | Object storage | S3 | Cloud Storage | Blob |
 | Secrets | Secrets Manager | Secret Manager | Key Vault |
+| Identidade (IdP, OIDC/JWT) | Cognito | Identity Platform | Entra External ID |
 | CDN + estático | CloudFront + S3 | Cloud CDN + GCS | Front Door + Blob |
 | LLM (Claude) | Bedrock | Vertex AI | (API Anthropic direta) |
 | E-mail | SES | (SendGrid/Mailgun) | Communication Services |
@@ -70,6 +72,7 @@ flowchart TB
     subgraph Nuvem[Nuvem · região Brasil]
       CDN[CDN + estático · Web App]
       GW[API Gateway / WAF]
+      IDP[[IdP · Cognito]]
       subgraph Privada[Sub-rede privada · sem acesso público]
         API[API/BFF · container]
         ING[Ingestão · serverless agendado]
@@ -84,7 +87,9 @@ flowchart TB
       end
     end
     U --> CDN
-    U --> GW --> API
+    U -->|login OIDC| IDP
+    U -->|Bearer JWT| GW
+    GW -->|valida JWT + injeta tenant do claim| API
     ING -->|egress allowlist| PNCP
     ING --> DB
     ING --> OBJ
@@ -97,7 +102,7 @@ flowchart TB
     WRK --> MAIL
 ```
 
-Pontos de segurança embutidos: workers e banco em **sub-rede privada** (sem IP público); **egress allowlist** nas saídas para PNCP e LLM (defesa de SSRF, P-58); WAF/gateway na borda (P-55).
+Pontos de segurança embutidos: workers e banco em **sub-rede privada** (sem IP público); **egress allowlist** nas saídas para PNCP e LLM (defesa de SSRF, P-58); WAF/gateway na borda (P-55). **Autenticação na borda (P-08):** o cliente faz login no **IdP (Cognito)** e apresenta um **JWT OIDC**; o GW valida assinatura/expiração e o BFF deriva `tenantId` (e `clienteFinalId` no Next) de **claim verificado do token** — nunca de header controlado pelo cliente. Requisição sem token válido é rejeitada na borda; o `x-tenant-id` que o BFF lê hoje é **placeholder de desenvolvimento** e não é fonte de autoridade em produção. Fecha a dimensão de autenticação de P-51 (anti-BOLA).
 
 ## 6. Ambientes, IaC e CI/CD
 
@@ -151,5 +156,6 @@ Tão importante quanto o que usar:
 - Modelo de compute por workload (§§2,4) e **provedor default do MVP = AWS** — **confirmado** (P-64, 2026-07-05): a tabela de §2 é o alvo; primitivas portáveis (§4) mantêm o exit aberto.
 - Região e residência de dados (§7): **Brasil / São Paulo** — **confirmado** (P-28, 2026-07-05). A residência do **LLM** e o DPA de sub-operador seguem em P-66/P-54/P-80 (Jurídico+Eng).
 - IaC = **Terraform**, ambientes **dev/staging/prod** isolados, pipeline CI/CD com gates (§6) — **confirmado** (P-65, 2026-07-05); implementação do CI + IaC scaffold delegada (RAD-34).
+- Cofre de segredos + provedor de identidade (§§3,5) — **confirmado** (P-08, 2026-07-05): cofre = **AWS Secrets Manager** (rotação nativa; segredo nunca no código/pipeline, §6) e IdP = **Amazon Cognito** (User Pools; OIDC/JWT; `sa-east-1`, P-28), no default AWS de "comprar, não operar" (§1) e portável pelo padrão OIDC (§4). Invariante: a borda valida o JWT e o `tenantId` vem de **claim verificado**, nunca de header do cliente — o `x-tenant-id` do BFF é placeholder de dev. Escolha (Pré-dev) separada da **operação de identidade** — expiração/revogação de sessão, MFA obrigatório, brute-force, recuperação de conta — que segue em **P-53** (Pré-lançamento, sobre este mesmo IdP).
 
 Rastreadas em [../docs/98](../docs/98-decisoes-e-pendencias.md).

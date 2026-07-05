@@ -248,6 +248,7 @@ export class ExtracaoEdital {
     readonly dataAberturaPropostas: CampoExtraido<Date | null>,
     readonly requisitos: Requisito[],
     readonly riscosBrutos: Risco[],
+    readonly paginas: number,   // nº de páginas do edital (PDF/OCR) — fonte de `paginasEdital` no contrato de leitura (§4.2 TriagemLeituraDTO)
   ) {}
 
   static montar(p: {
@@ -257,10 +258,11 @@ export class ExtracaoEdital {
     dataAberturaPropostas: CampoExtraido<Date | null>;
     requisitos: Requisito[];
     riscosBrutos: Risco[];
+    paginas: number;
   }): ExtracaoEdital {
     return new ExtracaoEdital(
       p.editalId, p.objeto, p.valorEstimado, p.dataAberturaPropostas,
-      p.requisitos, p.riscosBrutos,
+      p.requisitos, p.riscosBrutos, p.paginas,
     );
   }
 
@@ -444,6 +446,21 @@ export interface TriagemDTO {
   riscos: { descricao: string; severidade: string; citacao: CitacaoDTO | null }[];
 }
 
+// CONTRATO DE LEITURA SÍNCRONO (BFF GET /api/triagem/:editalId — docs/98 P-86, RAD-31).
+// É DISTINTO do TriagemDTO/evento acima: fonte da verdade EXECUTÁVEL é o front (a SPA fixou o shape),
+// espelhado em apps/web/domain/triagem-view-model.ts e apps/api/src/routes/triagem.ts::TriagemResponseSchema.
+// NÃO carrega `riscos[]`: as lacunas de habilitação são exatamente os itens `checklist.ok === false`.
+export interface TriagemLeituraDTO {
+  editalId: string;
+  perfilId: string;
+  aderencia: number;             // [0,1] — Triagem.aderencia.valor
+  recomendacao: 'go' | 'no-go';
+  confiancaIA: number;           // [0,1] — ExtracaoEdital.confiancaGlobal().valor
+  paginasEdital: number;         // ExtracaoEdital.paginas (§3)
+  camposAnalise: { titulo: string; conteudo: string; fonte: string }[];  // projeção dos CampoExtraido
+  checklist: { ok: boolean; texto: string }[];                           // 1 item por Requisito
+}
+
 // Comando publicado na fila (docs/14 §3): payload enxuto.
 export interface SolicitarTriagemInput {
   editalId: string; perfilId: string; clienteFinalId: string; signal?: AbortSignal;
@@ -486,6 +503,64 @@ export class SolicitarTriagemUseCase {
       perfilId: input.perfilId,
     }), input.signal);
   }
+}
+```
+
+```ts
+// application/use-cases/consultar-triagem.ts
+// Trigger: BFF, GET /api/triagem/:editalId (RAD-31, docs/98 P-86). É o CAMINHO DE LEITURA SÍNCRONO —
+// distinto do fluxo assíncrono comando/worker: NÃO chama o LLM, apenas projeta o que já foi triado.
+// Serve o `TriagemLeituraDTO` (§4.2), NÃO o TriagemDTO/`riscos[]` de comando.
+export class ConsultarTriagemUseCase {
+  constructor(
+    private readonly triagens: TriagemRepository,
+    private readonly extracoes: ExtracaoRepository,
+  ) {}
+
+  // Chave (tenantId, editalId, perfilId). No MVP single-tenant (P-25) o BFF resolve o perfil ativo do
+  // cliente antes de chamar (a URL só traz editalId + x-tenant-id); quando >1 perfil por cliente virar
+  // realidade, `perfilId` migra para query param no contrato REST — [A VALIDAR] → nova pendência.
+  async executar(
+    input: { tenantId: TenantId; editalId: EditalId; perfilId: PerfilId; clienteFinalId: ClienteFinalId },
+    signal?: AbortSignal,
+  ): Promise<TriagemLeituraDTO | null> {
+    const triagem = await this.triagens.porEditalEPerfil(input.editalId, input.perfilId, signal);
+    if (!triagem) return null;                         // sem triagem → BFF 404 → SPA null
+
+    // Autorização POR OBJETO (P-51 / AB1), nunca por filtro de query: escopo divergente lança —
+    // o BFF mapeia AcessoNegadoError → 403 e a SPA também devolve null (nunca vaza o motivo; §5.3).
+    if (triagem.tenantId !== input.tenantId || triagem.clienteFinalId !== input.clienteFinalId) {
+      throw new AcessoNegadoError();
+    }
+
+    // Extração é catálogo GLOBAL (P-45): reidrata confiança/páginas/campos + a lista COMPLETA de
+    // requisitos — o checklist precisa dos ATENDIDOS, não só das lacunas guardadas em `triagem.riscos`.
+    const extracao = await this.extracoes.porEdital(input.editalId, signal);
+    if (!extracao) return null;                        // triagem sem extração é estado inconsistente → ausente
+
+    return projetarLeitura(triagem, extracao);
+  }
+}
+
+// Projeção domínio → TriagemLeituraDTO. Regra-chave: `riscos[]` do domínio NÃO aparece no contrato de
+// leitura — vira `checklist.ok === false` (docs/10 §4). `camposAnalise` é a face de apresentação dos
+// CampoExtraido: `conteudo` = "verificar" quando o campo não é exibível como fato (sem citação ou abaixo
+// do limiar, §6), e `fonte` = citação renderizada ("p. 12, seção 5.1" | "").
+function projetarLeitura(triagem: Triagem, extracao: ExtracaoEdital): TriagemLeituraDTO {
+  const lacunas = new Set(triagem.riscos.map(r => r.descricao));   // "não atende: <requisito>"
+  return {
+    editalId: triagem.editalId,
+    perfilId: triagem.perfilId,
+    aderencia: triagem.aderencia.valor,
+    recomendacao: triagem.recomendacao,
+    confiancaIA: extracao.confiancaGlobal().valor,
+    paginasEdital: extracao.paginas,
+    camposAnalise: camposExibiveis(extracao),          // [{ titulo: rótulo (docs/10 §5.2), conteudo, fonte }]
+    checklist: extracao.requisitos.map(req => ({
+      ok: !lacunas.has(`não atende: ${req.descricao}`),
+      texto: req.descricao,
+    })),
+  };
 }
 ```
 
@@ -724,6 +799,7 @@ Metas numéricas (recall ≥ 95%, precisão ≥ 90%, fidelidade ≥ 98%, custo/e
 
 - **Split extração/aderência (P-45 / docs/13 §3):** `ExtracaoEdital` (cacheável, sem `tenantId`) e `Triagem` (por `edital × perfil`, com `tenantId`) são agregados separados; o LLM é chamado **uma vez por edital**.
 - **Triagem assíncrona (A03 §§1,3 / A00 princípio 6):** `SolicitarTriagemUseCase` publica `triagem.solicitada`; o worker roda `TriarEditalUseCase` — nunca no caminho síncrono da API.
+- **Dois contratos, coexistindo (docs/98 P-86):** o **evento** `triagem.concluida` é Published Language (carrega `riscos`, para consumidores assíncronos como a Gestão da Participação); o **read DTO síncrono** `TriagemLeituraDTO` (§4.2) é a projeção fixada pelo front que o BFF serve no `GET /api/triagem/:editalId` — sem `riscos[]` (viram `checklist.ok:false`), com `confiancaIA`/`paginasEdital`/`camposAnalise`. `ConsultarTriagemUseCase` (§4.3) é o único read path; a fonte da verdade executável do shape é `apps/web/.../triagem-http-gateway.ts` + `apps/api/.../routes/triagem.ts`.
 - **Autorização por objeto (P-51 / AB1):** verificada **duas vezes** (na solicitação e na execução) por `clienteFinalId` — defesa em profundidade, não filtro de query.
 - **Edital = dado não-confiável (A11):** a defesa de injeção (camadas 1–6) vive no `AnthropicLlmGateway`; a saída do LLM é validada por schema e sanitizada.
 - **Contexto mínimo ao LLM (P-54):** `EntradaExtracaoDTO` nunca leva a classe crítica/estratégia comercial nem dado de outro tenant.
