@@ -417,6 +417,7 @@ export interface EntradaExtracaoDTO {
   texto: string;                 // texto selecionável já extraído (ou saída do OCR)
   temTextoSelecionavel: boolean; // false → passou por OCR (docs/10 §3)
   anexos: string[];              // texto de cada anexo, já resolvido do ObjectStorage
+  paginas: number;               // nº de páginas do PDF/OCR — o worker mede ao hidratar; alimenta ExtracaoEdital.paginas (§3)
   // NUNCA inclui classe crítica / estratégia comercial — contexto mínimo ao LLM (P-54).
 }
 
@@ -517,9 +518,11 @@ export class ConsultarTriagemUseCase {
     private readonly extracoes: ExtracaoRepository,
   ) {}
 
-  // Chave (tenantId, editalId, perfilId). No MVP single-tenant (P-25) o BFF resolve o perfil ativo do
-  // cliente antes de chamar (a URL só traz editalId + x-tenant-id); quando >1 perfil por cliente virar
-  // realidade, `perfilId` migra para query param no contrato REST — [A VALIDAR] → nova pendência.
+  // Chave (tenantId, editalId, perfilId). A URL só traz editalId + x-tenant-id; o BFF resolve o par
+  // {clienteFinalId, perfilId} ANTES de chamar, via seu port `PerfilAtivoGateway` (borda, NÃO deste
+  // módulo — a seleção do perfil ativo é do contexto Identidade & Organização, não da Triagem). Regra
+  // MVP (P-25): 1 tenant → 1 cliente → 1 perfil; migra para query param no *Next* (>1 perfil/cliente).
+  // Seam decidido em docs/98 P-90 (Resolvido); implementação do port → RAD-31 (BFF).
   async executar(
     input: { tenantId: TenantId; editalId: EditalId; perfilId: PerfilId; clienteFinalId: ClienteFinalId },
     signal?: AbortSignal,
@@ -824,5 +827,6 @@ Metas numéricas (recall ≥ 95%, precisão ≥ 90%, fidelidade ≥ 98%, custo/e
 | P-73 | Schema de validação (`SCHEMA_EXTRACAO`) + política de sanitização da saída do LLM |
 | P-78 | Verificar que `AbortSignal` é propagado até o SDK do LLM e o driver de DB |
 | P-83 | ~~Forma do port de leitura do Perfil cross-contexto~~ **Resolvido (2026-07-05): `PerfilGateway`** (Gateway, não Repository — A10 §8) |
+| P-90 | ~~Resolução do `perfilId` no read path (§4.3)~~ **Resolvido (2026-07-05):** seam `PerfilAtivoGateway` é do **BFF** (não da Triagem — seleção do perfil ativo é do contexto Identidade); regra MVP 1 tenant→1 cliente→1 perfil (seed/config até haver módulo Identidade); migra para query param no *Next* (>1 perfil/cliente, P-49). Implementação → RAD-31 |
 
 Pendências consolidadas em [docs/98](../docs/98-decisoes-e-pendencias.md).
