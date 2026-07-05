@@ -51,6 +51,59 @@ Sem medição, não há confiança. O módulo é avaliado contra um **gold set**
 
 **Regressão.** O gold set roda a cada mudança de prompt, modelo ou pipeline — nenhuma mudança sobe sem passar. É o mesmo espírito do checklist de conformidade (documento 04, §6) aplicado à qualidade da IA.
 
+### 5.1 Cobertura mínima
+
+O gold set deve cobrir os eixos de variação que mais impactam a extração:
+
+- **Modalidade** (Lei 14.133/2021): Pregão Eletrônico, Concorrência, Dispensa de Licitação e Inexigibilidade como eixo principal; Leilão, Concurso e Credenciamento como cobertura complementar.
+- **Formato do documento**: PDF nativo (texto selecionável), PDF imagem pura (OCR obrigatório), PDF misto.
+- **Complexidade**: simples (objeto único, item único), moderada (múltiplos itens), complexa (múltiplos lotes, requisitos técnicos especializados).
+- **Casos-limite**: edital mal estruturado, prazos conflitantes entre seções, valor estimado sigiloso (§9 do documento 05), habilitação técnica de alta especificidade.
+
+Distribuição mínima `[A VALIDAR — confirmar com especialista de domínio]`:
+
+| Modalidade / Formato | PDF nativo | PDF imagem | PDF misto |
+|---------------------|-----------|------------|-----------|
+| Pregão Eletrônico | ≥ 10 | ≥ 5 | ≥ 3 |
+| Concorrência | ≥ 5 | ≥ 2 | ≥ 2 |
+| Dispensa de Licitação | ≥ 3 | — | — |
+| Inexigibilidade | ≥ 3 | — | — |
+| Demais modalidades | ≥ 2 | — | — |
+| **Casos-limite** | ≥ 5 (transversal às linhas acima) | | |
+
+**Total mínimo: ≥ 50 editais rotulados**, garantindo pelo menos 15 no caminho OCR para stressar o pipeline de pré-processamento. Os casos-limite são ortogonais à modalidade — um edital com prazos conflitantes pode ser Pregão ou Concorrência.
+
+### 5.2 Esquema de rótulo
+
+Cada edital no gold set carrega um rótulo estruturado. O campo `is_critico` define onde o **recall ≥ 95% é regra dura** (gate de release, documento 07, §6); campos não-críticos seguem a meta de precisão geral (≥ 90%).
+
+| Campo | Tipo | `is_critico` | Notas |
+|-------|------|:------------:|-------|
+| `objeto` | `string` | sim | Descrição literal do edital |
+| `modalidade_codigo` | `string` | sim | Código PNCP (FK para tabela de domínio, arquitetura/03, §4) |
+| `valor_estimado` | `number \| null` | sim | `null` se sigiloso ou omitido |
+| `data_abertura_propostas` | `ISO date` | sim | Prazo para envio de propostas |
+| `data_sessao` | `ISO date \| null` | sim | Data da sessão pública |
+| `prazo_vigencia_meses` | `number \| null` | não | Do contrato, se mencionado |
+| `habilitacao.juridica` | `string[]` | sim | Lista de exigências |
+| `habilitacao.fiscal` | `string[]` | sim | |
+| `habilitacao.tecnica` | `string[]` | sim | |
+| `habilitacao.economica` | `string[]` | não | |
+| `penalidades` | `string[]` | não | Percentuais ou condições |
+| `fontes` | `Record<campo, {pagina, secao}>` | — | Origem de cada campo no PDF |
+
+### 5.3 Protocolo de avaliação
+
+1. **Extração sem dica** — o pipeline recebe o PDF bruto; nenhum metadado de rótulo é fornecido.
+2. **Comparação por campo** — cada campo extraído é classificado como `correto`, `parcial` (capturado, mas com imprecisão aceitável) ou `ausente/errado`.
+3. **Cálculo das métricas** (via as definições da tabela acima):
+   - *Recall crítico* = corretos(campos\_criticos) / rotulados(campos\_criticos)
+   - *Precisão geral* = (corretos + parciais) / total\_extraídos
+   - *Alucinação numérica* = qualquer campo numérico com valor inventado → falha imediata
+   - *Faithfulness* = afirmações\_com\_citação\_verificável / total\_afirmações\_do\_resumo
+4. **Reprovação automática** se qualquer regra dura falhar: recall crítico < 95%, alucinação numérica > 0, ou faithfulness < 98%.
+5. **Relatório por categoria** — resultados quebrados por modalidade × formato para identificar onde o pipeline degrada (§6).
+
 ## 6. Modos de falha e fallback
 
 Degradar com transparência é melhor que errar com confiança:
@@ -66,7 +119,7 @@ O **custo de IA por edital** é guardrail da unidade econômica (documentos 08, 
 
 ## 8. Pendências
 
-- Construir o **gold set** rotulado e definir as metas finais (§5). `[A VALIDAR]`
+- Construir o gold set rotulado (cobertura e esquema em §§5.1–5.2; rótulos a produzir e metas a validar pré-lançamento). `[A VALIDAR]`
 - Fixar os limiares de confiança por campo (§4). `[A VALIDAR]`
 - Definir o teto de custo de IA por edital que fecha a unidade econômica (§7). `[A VALIDAR]`
 

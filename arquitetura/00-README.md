@@ -1,6 +1,6 @@
 # Arquitetura — Core do MVP · Radar de Licitações
 
-> Documentação de arquitetura (v0.1) · Estágio: **Concepção técnica** · Última atualização: 2026-07-04
+> Documentação de arquitetura (v0.2) · Estágio: **Concepção técnica** · Última atualização: 2026-07-05
 >
 > Esta pasta é o **deliverable do arquiteto**: recebe o recorte de MVP definido pelo produto ([docs/07 · MVP e Roadmap](../docs/07-mvp-e-roadmap.md)) e o transforma em um desenho de solução. Escopo **restrito ao core do MVP** — a esteira PNCP → matching → alerta → triagem. Multi-tenant, Módulos 3/4 e fontes além do PNCP são *Next/Later* e aparecem só como pontos de evolução.
 
@@ -15,10 +15,16 @@
 | 05 | [Teste de Estresse do Banco](05-stress-test-banco.md) | Cenários de carga no PostgreSQL, índices/particionamento, runbook de falhas do banco |
 | 06 | [Perfil de Estresse por Tabela](06-estresse-por-tabela.md) | Caracterização por tabela (quentes vs. frias), pontos de dor, o que não estressar |
 | 07 | [Teste de Segurança](07-teste-de-seguranca.md) | Casos de abuso (IDOR, prompt-injection, SSRF...), método, gate de severidade |
-| 08 | [Infraestrutura e Implantação](08-infraestrutura-e-implantacao.md) | Compute por workload (serverless/container/gerenciado), equivalentes por provedor, topologia, IaC |
+| 08 | [Infraestrutura e Implantação](08-infraestrutura-e-implantacao.md) | Compute por workload (serverless/container/gerenciado), equivalentes por provedor, topologia, IaC, **linguagem por tier** |
 | 09 | [Teste de Elasticidade da Infra](09-teste-de-elasticidade-infra.md) | Cold start, cotas do provedor, autoscale, pool na borda, custo sob carga, failover |
 | 10 | [Padrões e Estrutura de Código](10-padroes-e-estrutura-de-codigo.md) | Clean Architecture (domain/application/infra), value objects, use cases, erros customizados, monorepo, gRPC cross-domain |
 | 11 | [Segurança da IA](11-seguranca-da-ia.md) | Defesa contra injeção de prompt (direta/indireta), contexto mínimo, saída validada, sem agência excessiva |
+| 12 | [Frontend — Clean Arch, Design Tokens e Figma](12-frontend-design-tokens-e-figma.md) | Clean Arch no front, tokens agnósticos (DTCG/Style Dictionary), Figma como fonte da verdade, component-first, dark/light |
+| 13 | [Pacote `shared/design-tokens` (P-75)](13-design-tokens-package.md) | Spec do pacote agnóstico de tokens: estrutura DTCG, camadas core/semântico/componente, Style Dictionary, saídas CSS/TS/SCSS, dark/light por seletor |
+| 14 | [Notificação: Canais, E-mail e Digest](14-notificacao.md) | Domínio (Canal, Frequencia, Notificação), ports, use cases (NotificarAlerta, EnviarDigest, DefinirPreferências), adapter SES, anti-fadiga |
+| 15 | [Matching & Alerta — Clean Architecture](15-matching-e-alerta.md) | Bounded context Monitoramento & Matching: domain (CritérioDeMonitoramento, Alerta, FaixaValor, AderenciaMatching), application (ports, use cases s2), infra, fan-out, eventos |
+| 16 | [Plano de Verificação e Gold Set](16-plano-de-verificacao-e-gold-set.md) | Especificações de caso de teste (A04–A09: estresse, banco, segurança, elasticidade), gold set do Módulo 2 de IA (composição, rotulagem, avaliação), gate de release consolidado |
+| 17 | [Análise & Triagem — Clean Architecture](17-analise-e-triagem.md) | Bounded context Análise & Triagem (core): domain (ExtracaoEdital cacheável, Triagem por perfil, Confianca/Aderencia/Citacao), application (ports, use cases s3), infra (AnthropicLlmGateway com defesa de injeção A11), política de confiança/fallback, seam do gold set, eventos |
 
 ## Como esta pasta se conecta à documentação de produto
 

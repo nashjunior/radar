@@ -1,0 +1,6 @@
+packages:
+  - "apps/*"
+  - "shared/**"
+  - "modules/*"
+  - "tests/*"
+  - "tools/*"

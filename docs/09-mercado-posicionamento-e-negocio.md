@@ -74,7 +74,7 @@ Quatro apostas, cada uma ancorada num documento deste repositório:
 
 Alinhada ao roadmap (documento 07):
 
-- **MVP:** empresa fornecedora (single-tenant) + uso interno como prova. Bate de frente com clipping e planilha, ganhando na **triagem**.
+- **MVP:** empresa fornecedora (single-tenant) + uso interno como prova. Bate de frente com clipping e planilha, ganhando na **triagem**. Consultorias podem entrar apenas como early adopters single-tenant, sem multi-cliente, para validar demanda sem antecipar o risco de isolamento.
 - **Next:** consultorias (multi-tenant). Segmento de maior disposição a pagar e onde a diferenciação de isolamento pesa.
 - **Later:** inteligência de mercado como upsell; órgãos públicos em uso consultivo (baixa prioridade, documento 01, §3).
 
@@ -90,6 +90,8 @@ SaaS por assinatura recorrente. Eixos de valor que sugerem os planos (todos `[A 
 | **Inteligência** (add-on) | Quem precifica com dados | Módulo 4 (histórico, referência de preços) | Upsell de maior margem |
 
 Alavancas de precificação a testar: por **assento**, por **cliente-final** (consultoria), por **volume de fontes/regiões**, por **uso de IA** (triagens/mês). Um nível gratuito/prova (uso interno e trials) apoia a ativação (documento 08, §3). A unidade econômica só fecha se o **custo de IA por edital** (guardrail do documento 08, §4) ficar abaixo do preço médio por triagem — decisão de arquitetura do documento 10.
+
+O plano **Consultoria** não é oferta de MVP: depende do *Next* multi-tenant. Antes disso, qualquer venda exploratória para assessoria usa os planos single-tenant, sem cobrança por cliente-final gerido e sem compromisso de portfólio multi-cliente.
 
 ## 7. Riscos competitivos
 

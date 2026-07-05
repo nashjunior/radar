@@ -1,6 +1,6 @@
 # A08 · Infraestrutura e Implantação
 
-> O que o projeto **precisa de infra**: o modelo de compute por workload (serverless, containers, gerenciados) e seus equivalentes entre provedores. Complementa a stack proposta de [A01, §5](01-visao-arquitetural.md) e a topologia de dados de [A05](05-stress-test-banco.md). Estágio: **Concepção** — escolhas `[A VALIDAR]` (liga P-27, P-28).
+> O que o projeto **precisa de infra**: o modelo de compute por workload (serverless, containers, gerenciados) e seus equivalentes entre provedores. Complementa a stack de [A01, §5](01-visao-arquitetural.md) e a topologia de dados de [A05](05-stress-test-banco.md). Estágio: **Concepção**. Runtime/linguagem ([P-27](../docs/98-decisoes-e-pendencias.md)), modelo de compute + **provedor default AWS** ([P-64](../docs/98-decisoes-e-pendencias.md)), **região Brasil/SP** ([P-28](../docs/98-decisoes-e-pendencias.md)) e **IaC/CI-CD** ([P-65](../docs/98-decisoes-e-pendencias.md)) **confirmados** (2026-07-05); segue `[A VALIDAR]` só a residência do LLM + DPA de sub-operador ([P-66](../docs/98-decisoes-e-pendencias.md)/[P-54](../docs/98-decisoes-e-pendencias.md)).
 
 ## 1. Princípio de escolha
 
@@ -26,6 +26,8 @@ Mapeando os contêineres de A01/A03:
 | **Source-Health Monitor** | agendado, leve | **Serverless agendado** | idem ingestão |
 
 Observação: no MVP monólito modular (A01, §2), API e workers podem coabitar um deploy; a tabela mostra o **destino** quando cada um justificar isolamento.
+
+**Confirmado (P-64, 2026-07-05):** o modelo de compute por workload é a tabela acima; **provedor default do MVP = AWS** — o conjunto de gerenciados mais completo (§§3–4, todos de 1ª classe), `sa-east-1` em SP atende a residência (§7, P-28), e o **Bedrock** dá um caminho de Claude com controle de região/DPA que alimenta P-66. Mapeamento AWS: API/BFF+Triagem-pool → **Fargate/App Runner**; ingestão/matching/notificação/health → **Lambda + EventBridge Scheduler + SQS**; Postgres → **RDS + RDS Proxy**; blob → **S3**; segredos → **Secrets Manager**. As primitivas de §4 são portáveis: a escolha é *default operacional*, não lock-in estratégico (§10).
 
 ## 3. Serviços gerenciados (comprar, não operar)
 
@@ -99,14 +101,16 @@ Pontos de segurança embutidos: workers e banco em **sub-rede privada** (sem IP 
 
 ## 6. Ambientes, IaC e CI/CD
 
-- **Ambientes separados** dev / staging / prod (documento 05, §4) — isolados em contas/projetos distintos.
-- **IaC** (Terraform ou Pulumi) — toda infra versionada e reproduzível; nada clicado no console (P-65).
-- **CI/CD** com os gates já definidos: qualidade (10), stress (A04/A05) e **segurança** (A07 — crítico/alto bloqueia, P-63).
-- Imagens de container escaneadas (P-56); segredos vêm do cofre, nunca do pipeline.
+**Confirmado (P-65, 2026-07-05).** Implementação (workflows + módulos Terraform) delegada em **RAD-34**; o scaffold de IaC depende do provisionamento da conta AWS (dependência externa).
+
+- **Ambientes separados** dev / staging / prod (documento 05, §4) — isolados em **contas AWS distintas** (Organizations).
+- **IaC = Terraform** (não Pulumi no MVP: evita acoplar a infra a um runtime de linguagem; Terraform é declarativo, tem o maior ecossistema de providers e casa com as *primitivas portáveis* de §4). Estado remoto versionado com lock (S3 + DynamoDB); **nada clicado no console** (P-65). Módulos estruturados por primitiva (§4) para conter troca de provedor.
+- **CI/CD (GitHub Actions)** com os gates, nesta ordem: `build`/`typecheck`/`lint` (inclui **boundary check** do monorepo, A10 §2 / P-69) → testes unitários/integração → **stress** (A04/A05) → **segurança** (A07 — crítico/alto **bloqueia**, P-63) → scan de imagem (P-56) → `terraform plan`/`apply` por ambiente.
+- Imagens de container escaneadas (P-56); segredos vêm do **Secrets Manager**, nunca do pipeline.
 
 ## 7. Rede e residência de dados
 
-- **Região Brasil** por padrão (latência + residência LGPD, P-28) — todos os três provedores têm região em SP.
+- **Região Brasil / São Paulo** — **confirmado** (P-28, 2026-07-05): latência + residência LGPD dos dados pessoais e da estratégia comercial do cliente. No provedor default (AWS) = `sa-east-1`; os três provedores têm região em SP (§4), preservando a portabilidade. Dado em repouso e compute ficam na região; nada de dado pessoal/estratégico sai do país **exceto** o recorte enviado ao LLM (abaixo).
 - O ponto sensível é o **LLM**: a API direta da Anthropic pode processar fora do Brasil; via **Bedrock/Vertex** há mais controle de região e o provedor de nuvem entra como sub-operador com DPA — decisão de P-54/P-66. Reforça **não enviar a classe crítica** ao LLM.
 - Sub-redes privadas, egress allowlist, sem banco público (§5, liga segurança A07).
 
@@ -143,9 +147,9 @@ Tão importante quanto o que usar:
 
 ## 11. Pendências
 
-- Runtime/linguagem: proposta **TS-first** com seam para Go (§9) — confirmar com o time. `[A VALIDAR]` → P-27
-- Confirmar provedor e o modelo de compute por workload (§§2,4). `[A VALIDAR]` → P-27, P-64
-- Região e residência de dados, incl. o LLM (§7). `[A VALIDAR]` → P-28, P-66
-- IaC + ambientes + pipeline CI/CD (§6). `[A VALIDAR]` → P-65
+- Runtime/linguagem: **TS-first** com seam para Go (§9) — **confirmado** (P-27, 2026-07-05).
+- Modelo de compute por workload (§§2,4) e **provedor default do MVP = AWS** — **confirmado** (P-64, 2026-07-05): a tabela de §2 é o alvo; primitivas portáveis (§4) mantêm o exit aberto.
+- Região e residência de dados (§7): **Brasil / São Paulo** — **confirmado** (P-28, 2026-07-05). A residência do **LLM** e o DPA de sub-operador seguem em P-66/P-54/P-80 (Jurídico+Eng).
+- IaC = **Terraform**, ambientes **dev/staging/prod** isolados, pipeline CI/CD com gates (§6) — **confirmado** (P-65, 2026-07-05); implementação do CI + IaC scaffold delegada (RAD-34).
 
 Rastreadas em [../docs/98](../docs/98-decisoes-e-pendencias.md).

@@ -24,11 +24,28 @@ O teste de carga pergunta "aguenta o volume?". Este pergunta "**resiste ao ataca
 | **AB10** | Abuso de *data subject request* | pedido de titular falso p/ exfiltrar/apagar dado de terceiro | identidade do titular verificada antes de agir | P-57 |
 | **AB11** | Segredos vazando | credenciais em logs, mensagens de erro, repositório | secret scanning limpo; erros não expõem segredo | P-56, P-61 |
 | **AB12** | Isolamento sob concorrência | provocar vazamento cross-tenant sob carga | isolamento se mantém sob concorrência (liga A05, DB7) | P-62 |
+| **AB13** | Adulteração do audit log | alterar/apagar a trilha para esconder acesso indevido | `AUDIT_LOG` **append-only/imutável**: `UPDATE`/`DELETE` negados e auditados; **fail-closed** se a trilha não grava; integridade verificável | P-61 |
+
+### 2.1 Matriz AB1 (isolamento por objeto) — a prova, não só o caso feliz
+
+AB1 não se prova só no fluxo de Triagem: **todo** recurso com ID controlável pelo usuário precisa provar posse por escopo, em **leitura e escrita**, com IDs cruzados de `tenantId`/`clienteFinalId`. Cada célula é um teste (acesso legítimo passa; acesso cross-escopo é **sempre negado** e auditado):
+
+| Recurso | Use case (docs/14) | Ação testada | Chave de escopo | Resultado esperado no cross-escopo |
+|---------|--------------------|--------------|-----------------|-------------------------------------|
+| `CRITERIO_MONITORAMENTO` | `DefinirCriterioMonitoramentoUseCase` (§2) | ler / escrever | `clienteFinalId` | `AcessoNegadoError` |
+| `ALERTA` | `RegistrarFeedbackAlertaUseCase` (§2) | ler / escrever | `clienteFinalId` | `AcessoNegadoError` |
+| `TRIAGEM` | `TriarEditalUseCase` / `SolicitarTriagemUseCase` (§3) | ler / disparar | `perfil.clienteFinalId == input.clienteFinalId` | `AcessoNegadoError` |
+| `PERFIL_HABILITACAO` | `GerenciarPerfilHabilitacaoUseCase` (§6) | ler / escrever | `clienteFinalId` | `AcessoNegadoError` |
+| `PREFERENCIA_NOTIFICACAO` | `DefinirPreferenciasNotificacaoUseCase` (§4) | ler / escrever | `usuarioId`/`tenantId` | `AcessoNegadoError` |
+| `SOLICITACAO_TITULAR` | `AtenderSolicitacaoTitularUseCase` (§5) | criar / ler | titular verificado + vínculo | `IdentidadeNaoVerificadaError` / `AcessoNegadoError` |
+| `AUDIT_LOG` | `RegistrarAuditoriaUseCase` (§5) | ler | `tenantId` | `AcessoNegadoError` |
+
+> O **catálogo público** (`EDITAL`, `EXTRACAO_EDITAL`, `MODALIDADE`, `ORGAO`) é global (documento 12, §2) — não carrega escopo e por isso não entra na matriz de leitura cross-tenant; `BaixarAnexosEditalUseCase` (§1), porém, é exercitado em **AB7 (SSRF)** e **AB9 (custo)**, não em AB1.
 
 ## 3. Método
 
 - **Automatizado no CI:** SAST (ex.: semgrep), DAST (ex.: ZAP/Burp), SCA/SBOM de dependências, *secret scanning*, scan de imagem de container (P-56).
-- **Casos de abuso como teste:** AB1–AB12 viram testes automatizados de autorização/injeção que rodam a cada release — em especial **isolamento (AB1) e prompt-injection (AB4)** como testes obrigatórios (P-62).
+- **Casos de abuso como teste:** AB1–AB13 viram testes automatizados de autorização/injeção que rodam a cada release — obrigatórios: **isolamento (AB1, pela matriz §2.1)**, **prompt-injection (AB4)** e as camadas de saída da IA (**AB5–AB7, AB9**, A11 §2), **verificação de titular (AB10)** e **integridade de auditoria (AB13)** (P-62).
 - **Manual:** pentest periódico e *red-team* nos fluxos críticos (multi-tenant, IA, titular).
 - **Ambiente isolado** com dados sintéticos; mock do PNCP (A04, §4). Nunca a fonte real.
 
@@ -54,7 +71,10 @@ Regra: **crítico ou alto bloqueia o release** (P-63). Achado em produção com 
 O MVP só passa no gate de segurança quando:
 
 - [ ] **Nenhum achado crítico ou alto** em aberto (SAST/DAST/pentest).
-- [ ] **AB1 (isolamento)** e **AB4 (prompt-injection)** cobertos por teste automatizado que passa.
+- [ ] **AB1 (isolamento):** a **matriz por recurso × ação** (§2.1) passa — leitura *e* escrita, com IDs cruzados de `tenantId`/`clienteFinalId`; e **AB4 (prompt-injection)** por teste automatizado.
+- [ ] **Camadas de saída/uso da IA (A11 §2):** **AB5** (exfiltração — classe crítica não vai ao LLM), **AB6** (XSS/saída sanitizada), **AB7** (SSRF em anexo/URL) e **AB9** (cost-DoS: teto de custo/timeout/rate-limit por tenant), com fixture mínima cada.
+- [ ] **AB10 (data subject request):** identidade do titular verificada antes de agir; pedido falso e titular sem vínculo negados e auditados.
+- [ ] **AB13 (integridade do audit log):** trilha append-only/imutável, fail-closed, `UPDATE`/`DELETE` negados (P-61).
 - [ ] Segredos: *secret scanning* limpo; nada sensível em logs (AB11).
 - [ ] Dependências sem vulnerabilidade crítica conhecida (SCA).
 
@@ -62,7 +82,7 @@ Compõe o gate junto com A04/A05 (documento 07, §6).
 
 ## 6. Ligação
 
-Cada caso de abuso mapeia um vetor do threat model (documento 05, §2) e uma lacuna de segurança do doc 98 (P-51–P-62). Este documento é o **plano de verificação** dessas lacunas: fechá-las é implementar o controle; AB* é como se prova que fechou. A **defesa detalhada contra injeção na IA** (AB4–AB7) está em [A11](11-seguranca-da-ia.md).
+Cada caso de abuso mapeia um vetor do threat model (documento 05, §2) e uma lacuna de segurança do doc 98 (P-51–P-63). Este documento é o **plano de verificação** dessas lacunas: fechá-las é implementar o controle; AB* é como se prova que fechou. A **defesa detalhada contra injeção na IA** (AB4–AB7, AB9) está em [A11](11-seguranca-da-ia.md).
 
 ## 7. Pendências
 

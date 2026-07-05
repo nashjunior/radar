@@ -20,15 +20,15 @@ A arquitetura passa no teste quando, sob a carga-alvo (§3): **mantém os NFRs**
 
 | ID | Cenário | Estresse | NFR sob teste | Alvo (hipótese `[A VALIDAR]`) |
 |----|---------|----------|---------------|-------------------------------|
-| **S1** | Burst de publicação do PNCP | pico de editais/min em horário de pico | Frescor | p95 publicação→alerta ≤ 30 min **no pico** |
-| **S2** | Reconciliação + incremental concorrentes | dupla varredura simultânea | Frescor + rate-limit da fonte | sem 429 sustentado; frescor mantido |
+| **S1** | Burst de publicação do PNCP | pico de editais/min em horário de pico | Frescor | p95 publicação→alerta ≤ 30 min **no pico** · carga-alvo: ~500 editais/hora (média diária ÷ 12h úteis) · pico estimado: 2–3× = **1.000–1.500 editais/hora** |
+| **S2** | Reconciliação + incremental concorrentes | dupla varredura simultânea | Frescor + rate-limit da fonte | sem 429 sustentado; frescor mantido · ~120 requests/varredura com `tamanhoPagina=50` |
 | **S3** | Enxurrada de triagens | N usuários pedem triagem ao mesmo tempo | Latência da triagem + custo | fila drena; custo/edital ≤ teto; **0 pedidos perdidos** |
 | **S4** | Fan-out de matching | 1 edital casa com N mil critérios | Notificação + dedup | alertas sem duplicar; digest aplica o cap |
-| **S5** | Soak (resistência) | carga média por horas/dias | Estabilidade | sem vazamento de memória/conexões |
+| **S5** | Soak (resistência) | carga média por horas/dias | Estabilidade | sem vazamento de memória/conexões · escala: ~6.000 editais/dia + ~15.000 atualizações/dia |
 | **S6** | "Pior dia" (spike + falha) | burst do PNCP **e** LLM lento juntos | Degradação graciosa | ingestão+alerta vivos; triagem degrada |
 | **S7** | Anexos pesados / OCR | muitos PDFs grandes ou imagem | Storage + latência da triagem | throughput mantido; fallback de OCR (docs/10, §6) |
 
-Os números só ficam reais depois de **medir o volume de publicação do PNCP** (P-31) — sem isso, não sabemos se o pico é 10× ou 100× a média.
+**Volume de publicação do PNCP medido (P-31 — 2026-07-05):** dias úteis de julho/2026 somam ~5.800–6.000 novas contratações/dia (todas modalidades) + ~15.000 atualizações/dia pelo endpoint `/atualizacao`. Fim de semana: ~5–10% do volume útil. As 3 modalidades dominantes (Pregão Eletrônico + Dispensa + Inexigibilidade) respondem por ≥ 90% do volume. Ver A02, §§2–3 para tabela completa.
 
 ## 4. Como testar
 

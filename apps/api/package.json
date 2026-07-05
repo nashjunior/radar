@@ -1,0 +1,26 @@
+{
+  "name": "@radar/api",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch --env-file=.env dist/index.js",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node --env-file=.env dist/index.js",
+    "lint": "eslint src"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.7",
+    "@radar/kernel": "workspace:*",
+    "@radar/matching": "workspace:*",
+    "@radar/notificacao": "workspace:*",
+    "@radar/ingestao": "workspace:*",
+    "hono": "^4.6.17",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.7",
+    "typescript": "^5.7.2"
+  }
+}

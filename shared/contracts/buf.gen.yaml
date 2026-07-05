@@ -1,0 +1,31 @@
+# buf.gen.yaml — configuração de geração de código a partir de .proto (P-70)
+#
+# INERTE: sem arquivos .proto não há nada para gerar.
+# Descomente e ajuste os plugins quando o 1º .proto for adicionado.
+#
+# Plugins planejados:
+#   - protoc-gen-es  → TypeScript (ES modules) para clientes TS
+#   - @connectrpc/protoc-gen-connect-es → Connect-ES (browser + Node)
+#   - protoc-gen-go  → Go (se o backend de triagem por IA migrar para Go)
+#
+# Refs: arquitetura/10 §5, P-70
+
+version: v2
+# managed:
+#   enabled: true
+#   override:
+#     - file_option: go_package_prefix
+#       value: github.com/radar/contracts/gen/go
+
+# plugins:
+#   - remote: buf.build/bufbuild/es:v2.2.0
+#     out: gen/ts
+#     opt:
+#       - target=ts
+#       - import_extension=.js
+
+#   - remote: buf.build/connectrpc/es:v1.4.0
+#     out: gen/ts
+#     opt:
+#       - target=ts
+#       - import_extension=.js

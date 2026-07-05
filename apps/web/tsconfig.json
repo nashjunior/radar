@@ -1,0 +1,19 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["dom", "dom.iterable", "ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "paths": {
+      "@/domain/*":      ["./domain/*"],
+      "@/application/*": ["./application/*"],
+      "@/infra/*":       ["./infra/*"],
+      "@/ui/*":          ["./ui/*"]
+    }
+  },
+  "include": ["src", "domain", "application", "infra", "ui", "vite.config.ts"],
+  "exclude": ["node_modules", "dist"]
+}

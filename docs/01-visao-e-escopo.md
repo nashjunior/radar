@@ -16,11 +16,11 @@ Ser a camada de inteligência entre as fontes públicas de licitação e a decis
 
 O produto atende a quatro perfis, que compartilham o núcleo (monitorar e decidir) mas divergem no uso avançado:
 
-**Empresa fornecedora.** Vende bens ou serviços ao setor público e busca oportunidades aderentes ao seu ramo. Quer ser avisada cedo, entender rapidamente se qualifica e não perder prazo. É a persona central para priorização.
+**Empresa fornecedora.** Vende bens ou serviços ao setor público e busca oportunidades aderentes ao seu ramo. Quer ser avisada cedo, entender rapidamente se qualifica e não perder prazo. É a persona central para priorização e a persona primária do MVP.
 
 **Consultoria / assessoria de licitações.** Gerencia licitações para vários clientes simultaneamente. Precisa de multi-cliente, segregação de dados por cliente e visão de portfólio. Puxa as necessidades de organização, permissões e escala.
 
-**Órgão público (setor de compras).** Publica e conduz licitações. Interesse principal em inteligência de mercado (preços de referência, histórico) e acompanhamento — não em "participar". Uso mais consultivo. `[A VALIDAR]` prioridade desta persona no MVP.
+**Órgão público (setor de compras).** Publica e conduz licitações. Interesse principal em inteligência de mercado (preços de referência, histórico) e acompanhamento — não em "participar". Uso mais consultivo, fora do MVP e com prioridade baixa até a fase *Later*.
 
 **Uso interno / próprio.** A operação da própria empresa que mantém o Radar, servindo como primeiro usuário e campo de prova das funcionalidades.
 

@@ -8,6 +8,7 @@
 - **Ports & Adapters (hexagonal):** a `application` define **portas** (interfaces); a `infra` fornece **adaptadores** que as implementam. O núcleo não conhece Postgres, gRPC ou Claude.
 - **Fronteiras = bounded contexts** (documento 13): cada contexto é isolado; o único acoplamento permitido é o *shared kernel* mínimo (§7).
 - **Invariantes em value objects**, orquestração em **use cases**, falhas como **erros customizados** tipados.
+- **Operações canceláveis (abortable):** todo use case e porta assíncrona **recebe e propaga um `AbortSignal`** — no back **e** no front. Cancelar (usuário sai da tela, timeout, cliente desconecta) aborta a operação em andamento; nada de trabalho órfão. Sempre que a operação suportar, é abortável.
 
 ## 2. Estrutura do monorepo
 
@@ -134,14 +135,17 @@ export class Triagem {
 
 ```ts
 // application/ports.ts
+// Toda porta assíncrona recebe e propaga AbortSignal (§1) — nada de trabalho órfão.
 export interface ExtracaoRepository {
-  porEdital(id: EditalId): Promise<ExtracaoEdital | null>;
-  salvar(e: ExtracaoEdital): Promise<void>;
+  porEdital(id: EditalId, signal: AbortSignal): Promise<ExtracaoEdital | null>;
+  salvar(e: ExtracaoEdital, signal: AbortSignal): Promise<void>;
 }
-export interface PerfilRepository { porId(id: PerfilId): Promise<PerfilHabilitacao | null>; }
-export interface LlmGateway { extrair(editalTexto: string): Promise<ExtracaoEdital>; } // Claude, na infra
-export interface TriagemRepository { salvar(t: Triagem): Promise<void>; }
-export interface EventPublisher { publicar(e: DomainEvent): Promise<void>; }        // fila (A03)
+// Leitura cross-contexto do Perfil (Identidade & Organização, Cliente-Fornecedor) → é um **Gateway**,
+// não Repository: a Triagem não é dona do agregado (§8; decisão P-83). Ver arquitetura/17.
+export interface PerfilGateway { porId(id: PerfilId, signal: AbortSignal): Promise<PerfilHabilitacao | null>; }
+export interface LlmGateway { extrair(editalTexto: string, signal: AbortSignal): Promise<ExtracaoEdital>; } // Claude, na infra
+export interface TriagemRepository { salvar(t: Triagem, signal: AbortSignal): Promise<void>; }
+export interface EventPublisher { publicar(e: DomainEvent, signal: AbortSignal): Promise<void>; }        // fila (A03)
 ```
 
 ### 4.5 application · use case (a peça central)
@@ -151,32 +155,32 @@ export interface EventPublisher { publicar(e: DomainEvent): Promise<void>; }    
 export class TriarEditalUseCase {
   constructor(
     private readonly extracoes: ExtracaoRepository,
-    private readonly perfis: PerfilRepository,
+    private readonly perfis: PerfilGateway,
     private readonly llm: LlmGateway,
     private readonly triagens: TriagemRepository,
     private readonly eventos: EventPublisher,
   ) {}
 
-  async executar(input: TriarEditalInput): Promise<TriagemDTO> {
+  async executar(input: TriarEditalInput, signal: AbortSignal): Promise<TriagemDTO> {
     // 1. Extração CACHEADA por edital (P-45) — só chama o LLM uma vez por edital
-    let extracao = await this.extracoes.porEdital(input.editalId);
+    let extracao = await this.extracoes.porEdital(input.editalId, signal);
     if (!extracao) {
-      extracao = await this.llm.extrair(input.editalTexto);
-      await this.extracoes.salvar(extracao);
+      extracao = await this.llm.extrair(input.editalTexto, signal); // cancelável: aborta o LLM/OCR (AB9/cost-DoS)
+      await this.extracoes.salvar(extracao, signal);
     }
     if (!extracao.confianca.suficiente(input.limiarConfianca)) {
       throw new ConfiancaInsuficienteError();                 // → leitura assistida (doc 10, §6)
     }
 
     // 2. Autorização POR OBJETO (defesa de IDOR/BOLA, P-51 / AB1)
-    const perfil = await this.perfis.porId(input.perfilId);
+    const perfil = await this.perfis.porId(input.perfilId, signal);
     if (!perfil) throw new PerfilNaoEncontradoError(input.perfilId);
     if (perfil.clienteFinalId !== input.clienteFinalId) throw new AcessoNegadoError();
 
     // 3. Aderência POR PERFIL (não cacheável) + persistência + evento
     const triagem = Triagem.avaliar(extracao, perfil);
-    await this.triagens.salvar(triagem);
-    await this.eventos.publicar(new TriagemConcluida(triagem)); // Published Language (doc 13)
+    await this.triagens.salvar(triagem, signal);
+    await this.eventos.publicar(new TriagemConcluida(triagem), signal); // Published Language (doc 13)
     return TriagemDTO.de(triagem);
   }
 }
@@ -240,7 +244,35 @@ Todo erro carrega um `code` estável; o mapeamento vive **só na borda** (§4.6)
 - **`shared/contracts/` — proto (gRPC), language-independent.** A verdade dos contratos cross-domain; gera stubs por linguagem no CI (P-70). É o que torna o **seam para Go** (A08 §9) viável sem reescrever contrato.
 - **`shared/kernel/` — o mínimo compartilhado** (documento 13: `tenantId`/`clienteFinalId` como *Shared Kernel*), IDs e classes-base de VO/erro. Por linguagem (ex.: `ts/`). Manter **mínimo** — é o único acoplamento permitido entre contextos.
 
-## 8. Como isto respeita as decisões anteriores
+## 8. Convenção de nomes — ports vs. adapters
+
+O port (interface) vive em `application`; o adapter (implementação) vive em `infra`. A regra que sustenta a inversão de dependência é, antes de tudo, de **nome**:
+
+> **O nome de um port nunca contém tecnologia.** Se contém (`PostgresRepository`, `AnthropicClient`), a abstração vazou o `infra` e a regra da dependência quebrou.
+
+Regras:
+
+1. **Sem prefixo `I`.** O port recebe o nome limpo do **papel** — `ExtracaoRepository`, não `IExtracaoRepository`. (Nomeie a interface pelo papel; a classe, pelo *como*.)
+2. **Port = papel, tech-agnóstico.** Nunca `Postgres`, `Sql`, `Http`, `Anthropic`, `Sqs`, `S3`, `Kafka` no nome do port.
+3. **Adapter = `<Tecnologia><Port>`.** A tecnologia aparece **só** no `infra`.
+
+Taxonomia de sufixos (o papel do port):
+
+| Sufixo | Papel | Port (`application`) | Adapter (`infra`) |
+|--------|-------|----------------------|-------------------|
+| `Repository` | persiste um agregado | `TriagemRepository` | `PostgresTriagemRepository` |
+| `Gateway` | fronteira com sistema externo | `LlmGateway`, `PncpGateway` | `AnthropicLlmGateway`, `PncpHttpGateway` |
+| `Publisher` | publica evento | `EventPublisher` | `SqsEventPublisher` |
+| `Notifier` | notifica o usuário | `AlertaNotifier` | `SesEmailNotifier` |
+| `Provider` | fornece valor/capacidade | `ClockProvider`, `IdProvider` | `SystemClockProvider` |
+
+Portas de **entrada** (use cases) seguem `<Ação>UseCase` (`TriarEditalUseCase`); o serviço gRPC cross-domain é `<Contexto>Service` (`TriagemService`, em `shared/contracts`) — contrato, não port interno.
+
+**Cheiro:** querer chamar um port de `PostgresRepository` ou `AnthropicClient` é sinal de abstração errada — renomeie pelo papel (`ExtracaoRepository`, `LlmGateway`) e mova a tecnologia para o adapter.
+
+**Por que "por conta do repo de infra":** o `infra` é o **único** módulo que conhece tecnologia — é lá que `Postgres...`, `Anthropic...`, `Sqs...` existem. Manter o port abstrato garante que trocar Postgres por outro banco, ou Claude por outro LLM, é mudança **só no `infra`**: `application`/`domain` não mudam uma linha. É também o que viabiliza o **seam para Go** (A08 §9) — o mesmo port pode ter um adapter em outra linguagem atrás do proto. Uma *lint rule* impõe a convenção (P-74).
+
+## 9. Como isto respeita as decisões anteriores
 
 - **Split extração/aderência (P-45)** aparece nas entidades e no use case (§§4.3, 4.5).
 - **Authz por objeto (P-51 / AB1)** é uma verificação explícita no use case (§4.5) + `AcessoNegadoError`.
@@ -248,10 +280,12 @@ Todo erro carrega um `code` estável; o mapeamento vive **só na borda** (§4.6)
 - **TS-first com seam para Go** (A08 §9 / P-27) — os `contracts` proto são o *seam* language-independent.
 - **Fronteiras = bounded contexts** (documento 13); *shared kernel* mínimo.
 
-## 9. Pendências
+## 10. Pendências
 
-- Tooling do monorepo (workspaces, build, imposição de *boundary* entre camadas/contextos). `[A VALIDAR]` → P-69
-- Geração de stubs a partir do proto (`contracts`) por linguagem no CI. `[A VALIDAR]` → P-70
+- Tooling do monorepo (pnpm workspaces + Turborepo) e **boundary entre camadas/contextos** — **confirmado** (P-69, 2026-07-05): imposto por **`dependency-cruiser`** (config `.dependency-cruiser.cjs` na raiz, script `pnpm boundaries`) — proíbe domain→application/infra, application→infra, núcleo→pacote de tecnologia e um contexto importar o interior de outro (§§2,3,5,8). Roda no gate `lint` do CI (arq/08 §6).
+- Geração de stubs a partir do proto (`contracts`) por linguagem no CI — **confirmado** (P-70, 2026-07-05): **`buf`** (lint + breaking-change + codegen) com `protoc-gen-es`/`protoc-gen-connect-es` para TS e `protoc-gen-go` no seam. **Diferido por gatilho**, não por prazo: só há proto quando surgir a 1ª necessidade **síncrona** cross-domain (§5); hoje o pipeline é event-first e `shared/contracts/` está vazio. Wiring no CI = RAD-34.
 - Padrão de mapeamento `DomainError` → gRPC/HTTP na borda, sem vazar stack/PII. `[A VALIDAR]` → P-71
+- Nome de port sem tecnologia + `<Tech><Port>` no adapter (§8) — **confirmado** (P-74, 2026-07-05): lado-**dependência** já imposto pelo `dependency-cruiser` (`nucleo-sem-tecnologia`); lado-**nome** = regra ESLint customizada (`no-tech-in-port-name`) — RAD-34.
+- Operações abortáveis (`AbortSignal` em use cases/ports) — **confirmado** (P-78, 2026-07-05): convenção `executar(input, signal: AbortSignal)` já nos exemplos (§§4.4–4.5); imposição = regra ESLint customizada (`require-abort-signal`) + revisão — RAD-34.
 
 Rastreadas em [../docs/98](../docs/98-decisoes-e-pendencias.md).

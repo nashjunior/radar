@@ -1,0 +1,26 @@
+{
+  "$schema": "https://design-tokens.github.io/community-group/format/",
+  "button": {
+    "bg": {
+      "primary":      { "$type": "color", "$value": "{color.action.primary}" },
+      "primaryHover": { "$type": "color", "$value": "{color.action.primaryHover}" }
+    },
+    "text": {
+      "primary": { "$type": "color", "$value": "{color.text.onPrimary}" }
+    },
+    "radius": { "$type": "dimension", "$value": "{radius.md}" },
+    "paddingX": { "$type": "dimension", "$value": "{space.4}" },
+    "paddingY": { "$type": "dimension", "$value": "{space.2}" }
+  },
+  "card": {
+    "bg":     { "$type": "color", "$value": "{color.bg.surface}" },
+    "border": { "$type": "color", "$value": "{color.border.default}" },
+    "radius": { "$type": "dimension", "$value": "{radius.lg}" },
+    "padding": { "$type": "dimension", "$value": "{space.6}" }
+  },
+  "badge": {
+    "go":    { "bg": { "$type": "color", "$value": "{color.status.go}" } },
+    "nogo":  { "bg": { "$type": "color", "$value": "{color.status.nogo}" } },
+    "pendente": { "bg": { "$type": "color", "$value": "{color.status.pendente}" } }
+  }
+}

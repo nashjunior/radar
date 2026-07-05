@@ -1,6 +1,6 @@
 # 08 · Métricas de Sucesso
 
-> As métricas candidatas do documento 01 (§7) eram hipóteses sem alvo. Aqui elas viram uma **árvore**: uma métrica-norte (North Star), as métricas de entrada que a movem, e os guardrails que impedem que a gente "vença a métrica" degradando o produto. Alvos são hipóteses de concepção — marcados `[A VALIDAR]`.
+> As métricas candidatas do documento 01 (§7) eram hipóteses sem alvo. Aqui elas viram uma **árvore**: uma métrica-norte (North Star), as métricas de entrada que a movem, e os guardrails que impedem que a gente "vença a métrica" degradando o produto. Os alvos de §3 são metas de concepção para o MVP; guardrails ainda pendentes continuam marcados `[A VALIDAR]`.
 
 ## 1. Métrica-norte (North Star)
 
@@ -32,13 +32,13 @@ flowchart TD
 
 | Métrica | Definição | Alvo (hipótese) | Módulo |
 |---------|-----------|-----------------|--------|
-| **Cobertura (recall)** | % dos editais relevantes ao usuário capturados vs. universo real | ≥ 99% no PNCP; ≥ 90% geral `[A VALIDAR]` | 1 |
-| **Frescor** | p95 do tempo entre publicação no PNCP e alerta | ≤ 30 min `[A VALIDAR]` | 1 |
-| **Precisão do matching** | % de alertas que o usuário marca como relevantes | ≥ 60% e crescente `[A VALIDAR]` | 1 |
-| **Ativação** | % de novos usuários que configuram ≥1 radar e recebem 1º alerta relevante em 7 dias | ≥ 50% `[A VALIDAR]` | 1 |
-| **Utilidade da triagem** | % de triagens cujo go/no-go o usuário aceita sem refazer | ≥ 70% `[A VALIDAR]` | 2 |
-| **Ganho de tempo** | Redução no tempo médio de triagem por edital vs. leitura manual | ≥ 70% `[A VALIDAR]` | 2 |
-| **Retenção** | WAU/MAU; churn mensal de contas pagas | a definir | todos |
+| **Cobertura (recall)** | % dos editais publicados no PNCP capturados no período de controle | ≥ 99% no PNCP; cobertura geral fora do MVP | 1 |
+| **Frescor** | p95 do tempo entre publicação no PNCP e alerta | ≤ 30 min | 1 |
+| **Precisão do matching** | % de alertas que o usuário marca como relevantes | ≥ 60% e crescente, sem reduzir a postura de recall alto | 1 |
+| **Ativação** | % de novos usuários que configuram ≥1 radar e recebem 1º alerta relevante em 7 dias | ≥ 50% | 1 |
+| **Utilidade da triagem** | % de triagens cujo go/no-go o usuário aceita sem refazer | ≥ 70% | 2 |
+| **Ganho de tempo** | Redução no tempo médio de triagem por edital vs. leitura manual | ≥ 70% | 2 |
+| **Retenção** | WAU/MAU; churn mensal de contas pagas | acompanhar no MVP; meta comercial pós-MVP | todos |
 
 ## 4. Guardrails (não vencer a métrica degradando o produto)
 

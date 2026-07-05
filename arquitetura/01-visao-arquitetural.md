@@ -1,6 +1,6 @@
 # A01 · Visão Arquitetural
 
-> Estilo, drivers e a estrutura de alto nível do core do MVP. Diagramas em Mermaid (renderizam no GitHub). Números vêm de [docs/12](../docs/12-modelo-de-dados-e-requisitos-nao-funcionais.md); onde há escolha de tecnologia, é **proposta** marcada `[A VALIDAR]`.
+> Estilo, drivers e a estrutura de alto nível do core do MVP. Diagramas em Mermaid (renderizam no GitHub). Números vêm de [docs/12](../docs/12-modelo-de-dados-e-requisitos-nao-funcionais.md); escolha de tecnologia ainda **não confirmada** é **proposta** marcada `[A VALIDAR]` (as confirmadas trazem o `P-NN` da decisão).
 
 ## 1. Drivers arquiteturais
 
@@ -18,7 +18,7 @@ A arquitetura é moldada por poucos requisitos que, se falharem, quebram o produ
 
 ## 2. Estilo arquitetural
 
-**Monólito modular + workers assíncronos**, não microserviços. No MVP, um único deploy com módulos de fronteira clara (ingestão, matching, triagem, notificação, API) e *workers* que consomem uma fila. É o ponto ótimo de custo/velocidade para concepção: simples de operar, barato, e já desacoplado por eventos onde importa (ingestão → processamento). A quebra em serviços independentes fica para quando escala/organização exigirem. `[A VALIDAR — confirmar com a realidade de time e operação]`
+**Monólito modular + workers assíncronos**, não microserviços. No MVP, um único deploy com módulos de fronteira clara (ingestão, matching, triagem, notificação, API) e *workers* que consomem uma fila. É o ponto ótimo de custo/velocidade para concepção: simples de operar, barato, e já desacoplado por eventos onde importa (ingestão → processamento). A quebra em serviços independentes fica para quando escala/organização exigirem. **Confirmado (P-27, 2026-07-05).**
 
 ## 3. Diagrama de contexto (C4 — nível 1)
 
@@ -86,9 +86,9 @@ flowchart TB
     TRIA --> AUD
 ```
 
-## 5. Stack proposta (`[A VALIDAR]`)
+## 5. Stack — primitivas confirmadas (P-27, 2026-07-05)
 
-Escolhas default sensatas; o racional importa mais que a marca:
+As **primitivas** estão confirmadas (relacional, fila gerenciada, blob S3-compatível, Claude, e-mail transacional, TS); o **vendor/modelo exato** dentro de cada uma fica deferido às pendências próprias — provedor de nuvem ([P-64](../docs/98-decisoes-e-pendencias.md)), região ([P-28](../docs/98-decisoes-e-pendencias.md)), LLM direto-vs-nuvem ([P-66](../docs/98-decisoes-e-pendencias.md)), modelo Claude/custo ([P-20](../docs/98-decisoes-e-pendencias.md)). O racional importa mais que a marca:
 
 | Camada | Proposta | Racional |
 |--------|----------|----------|
@@ -97,8 +97,8 @@ Escolhas default sensatas; o racional importa mais que a marca:
 | Object storage | S3-compatível | Guardar PDFs de editais/anexos para a triagem |
 | Triagem/IA | **Claude** (família atual: um modelo *Sonnet* no caso comum por custo/latência, *Opus* em editais difíceis) | Qualidade de extração com citação; escolha exata e custo/edital são guardrail de docs/10, §7 `[A VALIDAR]` |
 | E-mail | Provedor transacional (SES/SendGrid) | Entregabilidade de alertas e digest |
-| Runtime/linguagem | **TypeScript** (linguagem única) — proposta | Deriva do compute por workload; ver [A08 §9](08-infraestrutura-e-implantacao.md); confirmar com o time `[A VALIDAR]` (P-27) |
-| Hospedagem | Containers em nuvem, **região Brasil** | Latência e residência de dados (nice-to-have LGPD) |
+| Runtime/linguagem | **TypeScript** (linguagem única) | Deriva do compute por workload; ver [A08 §9](08-infraestrutura-e-implantacao.md); *seam* para Go no tier serverless quando P-31/A09 medirem o gatilho; Python só p/ OCR/eval. **Confirmado (P-27, 2026-07-05)** |
+| Hospedagem | **Compute misto** (serverless + container + gerenciado), **região Brasil** — ver [A08](08-infraestrutura-e-implantacao.md) | Latência e residência de dados (nice-to-have LGPD) |
 
 ## 6. Preparo para multi-tenant (mesmo sem usar no MVP)
 
@@ -112,4 +112,4 @@ O MVP é single-tenant, mas o custo de retrofit é alto (docs/05, §7). Portanto
 
 ## 8. Pendências
 
-Confirmar estilo (monólito modular) e stack com o time; validar região/residência de dados. Rastreadas em [docs/98](../docs/98-decisoes-e-pendencias.md) (P-27, P-28).
+Estilo (monólito modular), stack de primitivas e runtime/linguagem **confirmados** ([P-27](../docs/98-decisoes-e-pendencias.md), 2026-07-05). Seguem abertos: provedor de nuvem ([P-64](../docs/98-decisoes-e-pendencias.md)) e região/residência de dados ([P-28](../docs/98-decisoes-e-pendencias.md)).

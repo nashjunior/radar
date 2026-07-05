@@ -1,0 +1,92 @@
+{
+  "$schema": "https://design-tokens.github.io/community-group/format/",
+  "color": {
+    "bg": {
+      "canvas":  {
+        "$type": "color",
+        "$value": { "light": "{color.neutral.50}", "dark": "{color.neutral.950}" }
+      },
+      "surface": {
+        "$type": "color",
+        "$value": { "light": "{color.neutral.0}", "dark": "{color.neutral.900}" }
+      },
+      "subtle":  {
+        "$type": "color",
+        "$value": { "light": "{color.neutral.100}", "dark": "{color.neutral.800}" }
+      },
+      "overlay": {
+        "$type": "color",
+        "$value": { "light": "{color.neutral.200}", "dark": "{color.neutral.700}" }
+      }
+    },
+    "text": {
+      "default":  {
+        "$type": "color",
+        "$value": { "light": "{color.neutral.900}", "dark": "{color.neutral.50}" }
+      },
+      "muted":    {
+        "$type": "color",
+        "$value": { "light": "{color.neutral.500}", "dark": "{color.neutral.400}" }
+      },
+      "onPrimary": {
+        "$type": "color",
+        "$value": { "light": "{color.neutral.0}", "dark": "{color.neutral.0}" }
+      },
+      "critical": {
+        "$type": "color",
+        "$value": { "light": "{color.red.600}", "dark": "{color.red.400}" }
+      },
+      "success": {
+        "$type": "color",
+        "$value": { "light": "{color.green.600}", "dark": "{color.green.400}" }
+      },
+      "warning": {
+        "$type": "color",
+        "$value": { "light": "{color.amber.600}", "dark": "{color.amber.400}" }
+      }
+    },
+    "action": {
+      "primary": {
+        "$type": "color",
+        "$value": { "light": "{color.blue.600}", "dark": "{color.blue.500}" }
+      },
+      "primaryHover": {
+        "$type": "color",
+        "$value": { "light": "{color.blue.700}", "dark": "{color.blue.400}" }
+      }
+    },
+    "border": {
+      "default": {
+        "$type": "color",
+        "$value": { "light": "{color.neutral.200}", "dark": "{color.neutral.700}" }
+      },
+      "focus": {
+        "$type": "color",
+        "$value": { "light": "{color.blue.500}", "dark": "{color.blue.400}" }
+      }
+    },
+    "status": {
+      "go":    { "$type": "color", "$value": { "light": "{color.green.500}", "dark": "{color.green.400}" } },
+      "nogo":  { "$type": "color", "$value": { "light": "{color.red.500}",   "dark": "{color.red.400}"   } },
+      "pendente": { "$type": "color", "$value": { "light": "{color.amber.500}", "dark": "{color.amber.400}" } }
+    },
+    "feedback": {
+      "info": {
+        "bg": { "$type": "color", "$value": { "light": "{color.blue.100}", "dark": "{color.blue.800}" } },
+        "fg": { "$type": "color", "$value": { "light": "{color.blue.700}", "dark": "{color.blue.200}" } }
+      },
+      "sucesso": {
+        "bg": { "$type": "color", "$value": { "light": "{color.green.100}", "dark": "{color.green.800}" } },
+        "fg": { "$type": "color", "$value": { "light": "{color.green.700}", "dark": "{color.green.200}" } }
+      },
+      "alerta": {
+        "bg": { "$type": "color", "$value": { "light": "{color.amber.100}", "dark": "{color.amber.700}" } },
+        "fg": { "$type": "color", "$value": { "light": "{color.amber.700}", "dark": "{color.amber.100}" } }
+      },
+      "erro": {
+        "bg": { "$type": "color", "$value": { "light": "{color.red.100}", "dark": "{color.red.700}" } },
+        "fg": { "$type": "color", "$value": { "light": "{color.red.700}", "dark": "{color.red.100}" } }
+      }
+    }
+  }
+}

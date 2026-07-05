@@ -57,12 +57,14 @@ Payloads mínimos — a fila é o contrato entre módulos:
 | Evento | Emissor → Consumidor | Payload essencial |
 |--------|----------------------|-------------------|
 | `edital.ingerido` | Ingestão → Matching | `numeroControlePNCP`, `tenantScope` (global no MVP), atributos normalizados |
-| `alerta.gerado` | Matching → Notificação | `tenantId`, `usuarioId`, `criterioId`, `editalId`, `aderencia` |
+| `alerta.gerado` | Matching → Notificação | `alertaId`, `tenantId`, `clienteFinalId`, `criterioId`, `editalId`, `aderencia` |
 | `triagem.solicitada` | API → Triagem/IA | `tenantId`, `usuarioId`, `editalId` |
 | `triagem.concluida` | Triagem/IA → API | `editalId`, `campos` + `citacoes` + `confianca`, `recomendacao`, `riscos` |
 | `feedback.alerta` | API → Matching | `alertaId`, `relevante:bool` |
 
 Toda mensagem carrega `tenantId` mesmo no MVP single-tenant (A01, §6).
+
+> **`alerta.gerado` carrega o escopo, não o destinatário.** O Matching conhece o `clienteFinalId` (dono do `CRITERIO_MONITORAMENTO`), não o usuário nem o e-mail — resolver contato é responsabilidade da **Notificação** (Cliente-Fornecedor, leitura de Identidade/preferência; MVP 1 usuário por `clienteFinal`, P-25). Por isso o evento **não** carrega `usuarioId` nem `emailDestinatario`: colocá-los forçaria o produtor a conhecer o destinatário — violação de fronteira (docs/13, §5). *(Ajuste 2026-07-05: alinha o contrato ao que o Matching de fato produz e retira o e-mail do evento — ver [15](15-matching-e-alerta.md), [14](14-notificacao.md).)*
 
 ## 4. Modelo físico (mapeando docs/12)
 

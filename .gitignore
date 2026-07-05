@@ -38,11 +38,12 @@ secrets/
 .claude/*.local.json
 CLAUDE.local.md
 
-# ── Node / TypeScript (para quando o monorepo existir) ───────
+# ── Node / TypeScript (monorepo) ─────────────────────────────
 node_modules/
 dist/
 build/
 out/
+.next/
 coverage/
 *.tsbuildinfo
 .npm/

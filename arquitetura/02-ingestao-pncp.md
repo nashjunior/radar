@@ -10,20 +10,61 @@ Decisão fechada: no MVP a coleta é **só via API pública de consulta do PNCP*
 
 ## 2. A API de Consulta do PNCP
 
-- **Base (consulta pública, sem autenticação):** `https://pncp.gov.br/api/consulta` `[A VALIDAR — Swagger]`
-- **Formato:** JSON, com **paginação** (campos de total de registros, total de páginas, página atual e páginas restantes — docs/03, §7).
-- **Identificador único:** `numeroControlePNCP` de cada contratação — chave para deduplicação e idempotência (§4).
+- **Base (consulta pública, sem autenticação):** `https://pncp.gov.br/api/consulta`
+- **Swagger:** `https://pncp.gov.br/api/consulta/swagger-ui/index.html` · spec OpenAPI: `/v3/api-docs`
+- **Formato:** JSON, com **paginação** (campos `totalRegistros`, `totalPaginas`, `paginaAtual`, `paginasRestantes`, `empty` — docs/03, §7).
+- **Identificador único:** `numeroControlePNCP` — formato `{cnpj}-{sequencialCompra}/{anoCompra}` (ex.: `80881915000192-1-000044/2026`) — chave para deduplicação e idempotência (§4).
 
-Endpoints relevantes ao MVP (forma esperada — confirmar):
+Endpoints relevantes ao MVP (contratos confirmados no Swagger e por chamada real — 2026-07-05):
 
-| Propósito | Endpoint (esperado) | Parâmetros-chave |
-|-----------|---------------------|------------------|
-| Contratações por **data de publicação** | `GET /v1/contratacoes/publicacao` | `dataInicial`, `dataFinal` (yyyyMMdd), `codigoModalidadeContratacao`, `uf`, `codigoMunicipioIbge`, `pagina`, `tamanhoPagina` |
-| Contratações com **proposta em aberto** | `GET /v1/contratacoes/proposta` | `dataFinal`, `codigoModalidadeContratacao`, `pagina` |
-| Contratações por **data de atualização** | `GET /v1/contratacoes/atualizacao` | `dataInicial`, `dataFinal`, `pagina` |
-| **Arquivos/anexos** de uma contratação | `GET /v1/orgaos/{cnpj}/compras/{ano}/{sequencial}/arquivos` | identificadores da compra |
+| Propósito | Endpoint | Parâmetros obrigatórios | Parâmetros opcionais | Obs. |
+|-----------|----------|------------------------|---------------------|------|
+| Contratações por **data de publicação** | `GET /v1/contratacoes/publicacao` | `dataInicial`, `dataFinal` (yyyyMMdd), `codigoModalidadeContratacao` (int) | `codigoModoDisputa`, `uf`, `codigoMunicipioIbge`, `cnpj`, `pagina`, `tamanhoPagina` | |
+| Contratações por **data de atualização global** | `GET /v1/contratacoes/atualizacao` | `dataInicial`, `dataFinal` (yyyyMMdd), `codigoModalidadeContratacao` (int) | mesmos opcionais acima | Retorna ~2,6× mais registros que `/publicacao` no mesmo dia |
+| Contratações com **proposta em aberto** | `GET /v1/contratacoes/proposta` | `dataFinal` | `codigoModalidadeContratacao`, filtros de órgão | `[A VALIDAR — formato de data]` — retornou 422 com yyyyMMdd e yyyy-MM-dd |
+| **Arquivos/anexos** de uma contratação | `GET /v1/orgaos/{cnpj}/compras/{ano}/{sequencial}/arquivos` | path params | — | Listado no spec; não testado |
 
-Notas conhecidas: `tamanhoPagina` tem teto (na ordem de dezenas — `[A VALIDAR]`); a consulta por publicação **exige a modalidade** como parâmetro, o que obriga a iterar sobre as modalidades relevantes (§3).
+**Paginação:** `tamanhoPagina` aceito: 10–50 (limite máximo = **50**; valores > 50 retornam 400). Padrão: 10. Iterar modalidade a modalidade; toda varredura por dia requer ~120 requests com `tamanhoPagina=50`.
+
+**Schema do item** (contratação) — campos confirmados por chamada real:
+
+```
+numeroControlePNCP   string   "{cnpj}-{seq}/{ano}" — chave primária para upsert
+anoCompra            integer
+sequencialCompra     integer
+numeroCompra         string
+processo             string
+objetoCompra         string
+dataInclusao         datetime (ISO 8601)
+dataPublicacaoPncp   datetime (ISO 8601)
+dataAtualizacao      datetime (ISO 8601)
+dataAtualizacaoGlobal datetime (ISO 8601)  ← campo de corte do /atualizacao
+dataAberturaProposta  datetime | null
+dataEncerramentoProposta datetime | null
+valorTotalEstimado   decimal | null
+valorTotalHomologado decimal | null
+modalidadeId         integer  (= codigoModalidadeContratacao)
+modalidadeNome       string
+modoDisputaId        integer
+modoDisputaNome      string   (ex.: "Aberto")
+situacaoCompraId     integer  (enum: 1=Divulgada, 2, 3, 4)
+situacaoCompraNome   string
+tipoInstrumentoConvocatorioCodigo integer
+tipoInstrumentoConvocatorioNome   string  (ex.: "Edital")
+srp                  boolean  (sistema de registro de preços)
+emendaParlamentar    object | null
+fontesOrcamentarias  array
+usuarioNome          string
+linkSistemaOrigem    string | null
+linkProcessoEletronico string | null
+informacaoComplementar string | null
+justificativaPresencial string | null
+orgaoEntidade        { cnpj, razaoSocial, poderId, esferaId }
+unidadeOrgao         { codigoUnidade, nomeUnidade, ufSigla, ufNome, municipioNome, codigoIbge }
+amparoLegal          { codigo, nome, descricao }  (ex.: "Lei 14.133/2021, Art. 28, I")
+unidadeSubRogada     object | null
+orgaoSubRogado       object | null
+```
 
 ## 3. Estratégia de sincronização
 
@@ -33,7 +74,25 @@ Três regimes:
 2. **Incremental (frescor):** o agendador dispara em intervalo curto o suficiente para o p95 ≤ 30 min (docs/12) — usando `publicacao` para novos editais e `atualizacao` para mudanças de fase/prazo. `[A VALIDAR — cadência exata]`
 3. **Reconciliação (cobertura):** varredura periódica mais ampla (ex.: diária) para pegar o que o incremental perdeu e garantir ≥ 99% (docs/12). Divergência entre reconciliação e incremental é sinal de alerta.
 
-**Iteração por modalidade.** Como `/publicacao` exige `codigoModalidadeContratacao`, o coletor faz um laço sobre a tabela de modalidades da Lei 14.133 — pregão, concorrência, concurso, leilão, diálogo competitivo, e as hipóteses de contratação direta (docs/02, §2). Os **códigos** vêm da tabela de domínio do PNCP. `[A VALIDAR — mapear códigos no Swagger]`
+**Iteração por modalidade.** Como `/publicacao` exige `codigoModalidadeContratacao`, o coletor faz um laço sobre a tabela de modalidades da Lei 14.133 — pregão, concorrência, concurso, leilão, diálogo competitivo, e as hipóteses de contratação direta (docs/02, §2). Os **códigos** foram confirmados por chamada real à API (2026-07-05):
+
+| Código | Nome no PNCP | Lei 14.133/2021 | Volume típico/dia útil |
+|--------|-------------|-----------------|------------------------|
+| 1 | Leilão - Eletrônico | Art. 28, IV | ~6 |
+| 2 | Diálogo Competitivo | Art. 28, V | ~0–2 |
+| 3 | Concurso | Art. 28, III | ~1–5 |
+| 4 | Concorrência - Eletrônica | Art. 28, II | ~250–300 |
+| 5 | Concorrência - Presencial | Art. 28, II | ~10–20 |
+| 6 | Pregão - Eletrônico | Art. 28, I | **~1.300–1.500** |
+| 7 | Pregão - Presencial | Art. 28, I | ~40–60 |
+| 8 | Dispensa | Art. 75 | **~2.500–2.800** |
+| 9 | Inexigibilidade | Art. 74 | **~1.200–1.400** |
+| 10 | Manifestação de Interesse | — | ~5–10 |
+| 11 | Pré-qualificação | Art. 87 | ~3–8 |
+| 12 | Credenciamento | Art. 79 | ~70–100 |
+| 13 | Leilão - Presencial | Art. 28, IV | ~1–3 |
+
+Modalidades MVP prioritárias (cobrem ≥ 90% do volume): **6, 8, 9** (Pregão Eletrônico + Dispensa + Inexigibilidade).
 
 **Idempotência.** Toda gravação é *upsert* por `numeroControlePNCP` — reprocessar a mesma página nunca duplica nem corrompe. Isso torna *retries* seguros (§5).
 
@@ -104,9 +163,10 @@ Espelha o checklist de docs/04, §6 aplicado à fonte PNCP:
 
 ## 8. Pendências
 
-- Confirmar no **Swagger** os endpoints, parâmetros e `tamanhoPagina` (§2). `[A VALIDAR]`
-- Mapear os **códigos de modalidade** do PNCP (§3). `[A VALIDAR]`
-- Fixar a **cadência de polling** que atinge o frescor de 30 min (§3). `[A VALIDAR]`
-- Definir **retenção de anexos** em object storage (§6). `[A VALIDAR]`
+- ~~Confirmar no **Swagger** os endpoints, parâmetros e `tamanhoPagina` (§2).~~ **Resolvido — P-26 (2026-07-05)**: contratos confirmados; ver §2 e §3.
+- ~~Mapear os **códigos de modalidade** do PNCP (§3).~~ **Resolvido — P-26 (2026-07-05)**: tabela completa em §3.
+- Fixar a **cadência de polling** que atinge o frescor de 30 min (§3). `[A VALIDAR]` → P-29
+- Confirmar **formato de `dataFinal`** no endpoint `/proposta` (retorna 422 com yyyyMMdd e yyyy-MM-dd). `[A VALIDAR]`
+- Definir **retenção de anexos** em object storage (§6). `[A VALIDAR]` → P-30
 
-Rastreadas em [docs/98](../docs/98-decisoes-e-pendencias.md) (P-26).
+Rastreadas em [docs/98](../docs/98-decisoes-e-pendencias.md) (P-26, P-29, P-30).

@@ -1,0 +1,17 @@
+# buf.yaml — skeleton de geração de stubs proto (P-70, A10 §5)
+#
+# INERTE até shared/contracts/ ganhar o primeiro .proto (gatilho de A10 §5).
+# Não gerar stubs sem proto definido — o CI não executa buf generate se não
+# há arquivos .proto no módulo.
+#
+# Quando o 1º .proto for adicionado:
+#   1. Defina o nome do módulo em `name` abaixo.
+#   2. Adicione o step `buf generate` ao .github/workflows/ci.yml (gate 2.5).
+#   3. Commit buf.lock (gerado pelo `buf dep update`).
+#
+# Refs: arquitetura/10 §5 (gRPC cross-domain), P-70
+
+version: v2
+modules:
+  - path: .
+    # name: buf.build/radar/contracts  # descomentar ao registrar no BSR

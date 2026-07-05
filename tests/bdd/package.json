@@ -1,0 +1,21 @@
+{
+  "name": "@radar/bdd",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "cucumber-js",
+    "test:matching": "cucumber-js features/matching/**",
+    "test:ingestao": "cucumber-js features/ingestao/**"
+  },
+  "dependencies": {
+    "@radar/ingestao": "workspace:*",
+    "@radar/matching": "workspace:*",
+    "@radar/kernel": "workspace:*"
+  },
+  "devDependencies": {
+    "@cucumber/cucumber": "^11.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.7.2"
+  }
+}

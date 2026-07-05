@@ -1,0 +1,14 @@
+{
+  "name": "@radar/eslint-rules",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "eslint": "^9.18.0",
+    "@typescript-eslint/parser": "^8.20.0",
+    "vitest": "^3.0.0"
+  }
+}

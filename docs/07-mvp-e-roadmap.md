@@ -39,12 +39,12 @@ Escopo mínimo por peça (o "fino" de cada uma):
 - **Módulo 3 (Gestão da participação)** — valor real, mas só depois que o usuário confia no alerta+triagem. Vem no *Next*.
 - **Módulo 4 (Inteligência de mercado)** — depende de acúmulo de dados históricos; sem base, não há inteligência. Vem no *Later*.
 - **Multi-tenant para consultorias** — é o requisito de segurança mais caro (documento 05, §7: isolamento por tenant). Adiar reduz risco e custo até validarmos o núcleo. Vem no *Next*.
-- **Persona Órgão público** — uso consultivo, não central; fora do MVP. Resolve o `[A VALIDAR]` do documento 01, §3. `[A VALIDAR — confirmar]`
+- **Persona Órgão público** — uso consultivo, não central; fora do MVP. Fica no *Later*, ligado à inteligência de mercado e não à decisão de participação.
 - **Fontes além do PNCP** — cada fonte nova custa integração + checklist legal (documento 02, §6). O PNCP sozinho já dá cobertura nacional obrigatória para o MVP.
 
 ## 4. Persona primária do MVP
 
-Proposta: **empresa fornecedora** (documento 01, §3 — "persona central para priorização"), tendo o **uso interno/próprio** como primeiro campo de prova (dogfooding). A consultoria multi-cliente é a persona do *Next*, quando o multi-tenant estiver pronto. `[A VALIDAR — confirmar persona primária]` (rastreado no documento 98).
+**Empresa fornecedora** é a persona primária do MVP (documento 01, §3), tendo o **uso interno/próprio** como primeiro campo de prova (dogfooding). A consultoria multi-cliente é a persona do *Next*, quando o multi-tenant estiver pronto. Órgão público permanece fora do MVP e só volta ao roadmap em *Later*, como uso consultivo de inteligência de mercado.
 
 ## 5. Roadmap Now / Next / Later
 
@@ -62,8 +62,9 @@ A ordem **Now → Next → Later** segue os riscos a derrubar (§7), não a nume
 
 O MVP só vai a usuários externos quando **todos** forem verdade:
 
-- [ ] Cobertura do PNCP comprovada: ≥ 99% dos editais publicados no período são capturados (documento 12, NFRs).
-- [ ] Frescor dentro do alvo: p95 do tempo publicação→alerta abaixo da meta (documento 08 / 12). `[A VALIDAR — meta]`
+- [ ] Cobertura do PNCP comprovada: ≥ 99% dos editais publicados no período de controle são capturados (documentos 08 e 12).
+- [ ] Frescor dentro do alvo: p95 do tempo publicação PNCP → alerta ≤ 30 minutos (documentos 08 e 12).
+- [ ] Precisão mínima do matching atingida: ≥ 60% dos alertas avaliados por contas ativas são marcados como relevantes, sem reduzir a postura de recall alto (documentos 08 e 11).
 - [ ] Barra de qualidade da triagem atingida no *gold set* (documento 10): recall de campos críticos — prazo, objeto, habilitação — acima da meta, e **zero alucinação em campos numéricos**.
 - [ ] Base legal registrada e minimização aplicada na ingestão (documentos 02, §4 e 05, §5).
 - [ ] Checklist de conformidade por funcionalidade satisfeito (documento 04, §6).
@@ -81,8 +82,6 @@ O roadmap existe para atacar risco na ordem certa:
 
 ## 8. Pendências
 
-- Confirmar persona primária do MVP e prioridade do Órgão público (§4). `[A VALIDAR]`
-- Fixar metas numéricas de release (frescor, cobertura, qualidade) — dependem dos documentos 08 e 12. `[A VALIDAR]`
-- Validar o corte de "single-tenant no MVP" com a expectativa comercial de vender para consultorias cedo (documento 09). `[A VALIDAR]`
+P-25 resolvida: o MVP permanece **single-tenant**. Consultorias não entram no MVP como persona multi-cliente nem recebem segregação por cliente-final no *Now*; quando houver interesse comercial cedo, a consultoria só pode operar como uma conta single-tenant equivalente a empresa fornecedora, com um único cliente-final/empresa acompanhada e sem promessa de portfólio, permissões ou visão multi-cliente. A oferta **Consultoria** completa fica no *Next*, condicionada ao isolamento multi-tenant e às permissões (documentos 05, §7; 09, §5).
 
 Todas rastreadas no documento **98 · Decisões e pendências**.
