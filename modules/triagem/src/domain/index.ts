@@ -1,5 +1,7 @@
 export { ExtracaoEdital } from './extracao-edital.js';
 export type { MontarExtracaoProps } from './extracao-edital.js';
+export { PerfilHabilitacao } from './perfil-habilitacao.js';
+export type { PerfilHabilitacaoProps } from './perfil-habilitacao.js';
 export { Triagem } from './triagem.js';
 export type { Recomendacao, ReconstituirTriagemProps } from './triagem.js';
 export {

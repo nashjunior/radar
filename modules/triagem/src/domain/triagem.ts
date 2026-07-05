@@ -1,4 +1,6 @@
 import type { ClienteFinalId, EditalId, PerfilId, TenantId } from '@radar/kernel';
+import type { ExtracaoEdital } from './extracao-edital.js';
+import type { PerfilHabilitacao } from './perfil-habilitacao.js';
 import type { Aderencia } from './value-objects/aderencia.js';
 import type { Risco } from './value-objects/risco.js';
 
@@ -45,6 +47,29 @@ export class Triagem {
       p.aderencia,
       p.recomendacao,
       [...p.riscos],
+    );
+  }
+
+  /**
+   * Write path (worker `TriarEditalUseCase`, A17 §4.3): calcula a aderência confrontando os
+   * requisitos da extração (catálogo global) com o perfil (por cliente). A `recomendacao` go/no-go
+   * é derivada do corte de `Aderencia.ehAlta`, mas é SUGESTÃO — a decisão é sempre do usuário
+   * (HITL, docs/10 §4). O `clienteFinalId` vem do perfil, fechando o escopo por objeto (P-49/P-51).
+   */
+  static avaliar(
+    extracao: ExtracaoEdital,
+    perfil: PerfilHabilitacao,
+    tenantId: TenantId,
+  ): Triagem {
+    const { aderencia, riscos } = perfil.confrontar(extracao.requisitos);
+    return new Triagem(
+      extracao.editalId,
+      perfil.id,
+      tenantId,
+      perfil.clienteFinalId,
+      aderencia,
+      aderencia.ehAlta ? 'go' : 'no-go',
+      riscos,
     );
   }
 }

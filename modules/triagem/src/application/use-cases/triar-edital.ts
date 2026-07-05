@@ -1,0 +1,78 @@
+import { AcessoNegadoError } from '@radar/kernel';
+import type { ClienteFinalId, EditalId, PerfilId, TenantId } from '@radar/kernel';
+import { ConfiancaInsuficienteError, PerfilNaoEncontradoError } from '../../domain/errors/index.js';
+import { Triagem } from '../../domain/triagem.js';
+import { triagemParaDTO } from '../dtos.js';
+import type { EntradaExtracaoDTO, TriagemDTO } from '../dtos.js';
+import { TriagemConcluida } from '../events.js';
+import type {
+  EventPublisher,
+  ExtracaoRepository,
+  LlmGateway,
+  PerfilGateway,
+  TriagemRepository,
+} from '../ports.js';
+
+export interface TriarEditalInput {
+  editalId: EditalId;
+  perfilId: PerfilId;
+  clienteFinalId: ClienteFinalId;
+  tenantId: TenantId; // resolvido na borda / payload de `triagem.solicitada` (P-25: `global` no MVP)
+  conteudo: EntradaExtracaoDTO; // hidratado pelo worker a partir do Catálogo/ObjectStorage
+  limiarConfianca: number; // política de confiança por campo (docs/10 §4, P-19)
+}
+
+/**
+ * Entrypoint: worker que consome `triagem.solicitada` (A03 §3). Extração é cacheada por edital
+ * (P-45); a aderência é por perfil (não cacheável). Autorização por objeto reforçada aqui — defesa
+ * em profundidade contra IDOR/BOLA, além da checagem de `SolicitarTriagem`.
+ */
+export class TriarEditalUseCase {
+  constructor(
+    private readonly extracoes: ExtracaoRepository,
+    private readonly perfis: PerfilGateway,
+    private readonly llm: LlmGateway,
+    private readonly triagens: TriagemRepository,
+    private readonly eventos: EventPublisher,
+  ) {}
+
+  async executar(input: TriarEditalInput, signal: AbortSignal): Promise<TriagemDTO> {
+    // 1. Extração CACHEADA por edital (P-45). Cache-miss → 1 chamada de LLM (A10 §4.5).
+    let extracao = await this.extracoes.porEdital(input.editalId, signal);
+    if (extracao === null) {
+      extracao = await this.llm.extrair(input.conteudo, signal);
+      await this.extracoes.salvar(extracao, signal);
+    }
+
+    // 2. Gate de confiança (docs/10 §4). Abaixo do limiar → leitura assistida (docs/10 §6):
+    //    nunca apresentar palpite como certeza. Limiar vem da política por campo (P-19).
+    if (!extracao.suficiente(input.limiarConfianca)) throw new ConfiancaInsuficienteError();
+
+    // 3. Autorização POR OBJETO (P-51 / AB1): o perfil deve pertencer ao clienteFinal solicitante.
+    //    Perfil inexistente é erro de orquestração (404); perfil de OUTRO cliente é IDOR (403).
+    const perfil = await this.perfis.porId(input.perfilId, signal);
+    if (perfil === null) throw new PerfilNaoEncontradoError(input.perfilId);
+    if (perfil.clienteFinalId !== input.clienteFinalId) throw new AcessoNegadoError();
+
+    // 4. Aderência POR PERFIL (não cacheável) — regra de domínio pura.
+    const triagem = Triagem.avaliar(extracao, perfil, input.tenantId);
+    await this.triagens.salvar(triagem, signal);
+
+    // 5. triagem.concluida → API/front (A03 §3). Payload leva citações + confiança + riscos.
+    await this.eventos.publicar(
+      new TriagemConcluida({
+        tenantId: triagem.tenantId,
+        clienteFinalId: triagem.clienteFinalId,
+        editalId: triagem.editalId,
+        perfilId: triagem.perfilId,
+        confianca: extracao.confiancaGlobal().valor,
+        aderencia: triagem.aderencia.valor,
+        recomendacao: triagem.recomendacao,
+        riscos: triagem.riscos.map((r) => r.descricao),
+      }),
+      signal,
+    );
+
+    return triagemParaDTO(triagem); // a UI exibe com citação em um clique; usuário decide (HITL)
+  }
+}
