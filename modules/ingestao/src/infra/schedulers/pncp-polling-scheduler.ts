@@ -61,8 +61,15 @@ export class PncpPollingScheduler {
       });
     };
 
+    if (signal.aborted) return () => {};
+
     executar();
     const handle = setInterval(executar, this.config.intervaloMs);
-    return () => clearInterval(handle);
+    const limpar = (): void => {
+      clearInterval(handle);
+      signal.removeEventListener('abort', limpar);
+    };
+    signal.addEventListener('abort', limpar, { once: true });
+    return limpar;
   }
 }

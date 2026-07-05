@@ -105,6 +105,68 @@ describe('PncpPollingScheduler', () => {
     });
   });
 
+  describe('iniciar (ciclo de vida do abort)', () => {
+    const dto = {
+      modalidade: 6,
+      janela: { inicio: '', fim: '' },
+      ingeridos: 0,
+      atualizados: 0,
+      erros: 0,
+    };
+    const configBase = {
+      modalidades: [6] as readonly number[],
+      intervaloMs: 1_000,
+      tamanhoJanelaMs: 1_000,
+      agora: () => new Date('2026-07-05T12:00:00.000Z'),
+    };
+
+    it('para de agendar ciclos automaticamente quando o signal aborta', () => {
+      vi.useFakeTimers();
+      try {
+        const ctrl = new AbortController();
+        const executar = vi.fn().mockResolvedValue(dto);
+        const scheduler = new PncpPollingScheduler(
+          { executar } as Pick<IngerirEditaisUseCase, 'executar'>,
+          configBase,
+        );
+
+        const parar = scheduler.iniciar(ctrl.signal);
+        expect(executar).toHaveBeenCalledTimes(1); // tick imediato
+        vi.advanceTimersByTime(1_000);
+        expect(executar).toHaveBeenCalledTimes(2); // segundo tick
+
+        ctrl.abort();
+        vi.advanceTimersByTime(5_000);
+        expect(executar).toHaveBeenCalledTimes(2); // nao cresce apos abort
+
+        expect(() => parar()).not.toThrow(); // idempotente
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('nao agenda nada quando o signal ja esta abortado ao iniciar', () => {
+      vi.useFakeTimers();
+      try {
+        const ctrl = new AbortController();
+        ctrl.abort();
+        const executar = vi.fn();
+        const scheduler = new PncpPollingScheduler(
+          { executar } as Pick<IngerirEditaisUseCase, 'executar'>,
+          configBase,
+        );
+
+        const parar = scheduler.iniciar(ctrl.signal);
+        vi.advanceTimersByTime(5_000);
+
+        expect(executar).not.toHaveBeenCalled();
+        expect(() => parar()).not.toThrow();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
   it('nao chama o use case quando o signal ja esta abortado', async () => {
     const ctrl = new AbortController();
     ctrl.abort();
