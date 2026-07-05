@@ -1,4 +1,4 @@
-import type { EditalId, PerfilId } from '@radar/kernel';
+import type { ClienteFinalId, EditalId, PerfilId, TenantId } from '@radar/kernel';
 import type { ExtracaoEdital } from '../domain/extracao-edital.js';
 import type { PerfilHabilitacao } from '../domain/perfil-habilitacao.js';
 import type { Triagem } from '../domain/triagem.js';
@@ -19,10 +19,18 @@ export interface ExtracaoRepository {
   salvar(extracao: ExtracaoEdital, signal: AbortSignal): Promise<void>;
 }
 
-/** Triagem é escopada ao tenant/cliente (P-49). */
+/**
+ * Triagem é escopada ao tenant/cliente (P-49). A leitura por chave natural recebe o ESCOPO
+ * (`tenantId`/`clienteFinalId`) além do sub-key (`editalId`/`perfilId`): a chave única do agregado é
+ * `(tenant, edital, perfil)` (P-45), então filtrar só por `(edital, perfil)` não é único sob
+ * multi-tenant (A01 §6) — carregaria uma linha arbitrária de OUTRO tenant. Escopar a query fecha isso
+ * na origem; o authz POR OBJETO do use case (A17 §5.3, P-51) permanece como defesa em profundidade.
+ */
 export interface TriagemRepository {
   salvar(triagem: Triagem, signal: AbortSignal): Promise<void>;
   porEditalEPerfil(
+    tenantId: TenantId,
+    clienteFinalId: ClienteFinalId,
     editalId: EditalId,
     perfilId: PerfilId,
     signal: AbortSignal,
@@ -57,6 +65,25 @@ export interface ObjectStorage {
  */
 export interface LlmGateway {
   extrair(entrada: EntradaExtracaoDTO, signal: AbortSignal): Promise<ExtracaoEdital>;
+}
+
+/**
+ * Resultado POR edital de uma extração em lote (não é um `Result<>` de erro; é o desfecho de cada item
+ * de um lote parcialmente falho). `ok:false` marca o edital que o provedor não entregou (errored/
+ * expired) ou cuja saída não passou no schema — o item cai fora, o lote segue.
+ */
+export type ResultadoLote =
+  | { readonly editalId: EditalId; readonly ok: true; readonly extracao: ExtracaoEdital }
+  | { readonly editalId: EditalId; readonly ok: false; readonly motivo: string };
+
+/**
+ * Fronteira com o LLM em LOTE (RAD-54 · Lever 1 de RAD-53 — Message Batches, −50% de custo). MESMA
+ * inferência do `LlmGateway` síncrono (model/system/schema idênticos), só o transporte muda. Cada item
+ * é keyed por `editalId` (= `custom_id`, NUNCA por posição — resultados chegam fora de ordem). NÃO é
+ * latency-sensitive (P-45): roda assíncrono em `edital.ingerido`, antes de o usuário pedir triagem.
+ */
+export interface LlmLoteGateway {
+  extrairLote(entradas: readonly EntradaExtracaoDTO[], signal: AbortSignal): Promise<ResultadoLote[]>;
 }
 
 /** Publicação de eventos de domínio na fila (Published Language — A03 §3). */

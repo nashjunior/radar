@@ -48,15 +48,22 @@ export class PostgresTriagemRepository implements TriagemRepository {
   }
 
   async porEditalEPerfil(
+    tenantId: TenantId,
+    clienteFinalId: ClienteFinalId,
     editalId: EditalId,
     perfilId: PerfilId,
     signal: AbortSignal,
   ): Promise<Triagem | null> {
+    // Escopo (tenant_id, cliente_final_id) NO WHERE, não só o sub-key: a chave única do agregado é
+    // (tenant_id, edital_id, perfil_id) (ver ON CONFLICT no `salvar`) — filtrar só por (edital,
+    // perfil) não é único sob multi-tenant (A01 §6) e `rows[0]` sem ORDER BY seria arbitrário,
+    // podendo carregar a linha de OUTRO tenant. Com o escopo, o match é a chave única → 1 linha
+    // determinística. O authz por objeto do use case (A17 §5.3, P-51) segue como defesa em profundidade.
     const { rows } = await this.db.query<Row>(
       `SELECT tenant_id, cliente_final_id, edital_id, perfil_id, aderencia, recomendacao, riscos
          FROM triagem
-        WHERE edital_id = $1 AND perfil_id = $2`,
-      [editalId, perfilId],
+        WHERE tenant_id = $1 AND cliente_final_id = $2 AND edital_id = $3 AND perfil_id = $4`,
+      [tenantId, clienteFinalId, editalId, perfilId],
       { signal },
     );
     const row = rows[0];

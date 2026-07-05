@@ -207,7 +207,7 @@ describe('ConsultarTriagemUseCase', () => {
 
       await uc.executar(INPUT, noop);
 
-      expect(triagens.porEditalEPerfil).toHaveBeenCalledWith(EDITAL, PERFIL, noop);
+      expect(triagens.porEditalEPerfil).toHaveBeenCalledWith(TENANT, CLIENTE, EDITAL, PERFIL, noop);
       expect(extracoes.porEdital).toHaveBeenCalledWith(EDITAL, noop);
     });
   });

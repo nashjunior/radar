@@ -9,6 +9,8 @@ export {
   CitacaoInvalidaError,
   ConfiancaInsuficienteError,
   ConfiancaInvalidaError,
+  ExtracaoRecusadaError,
+  LoteExtracaoIndisponivelError,
   OcrFalhouError,
   PerfilNaoEncontradoError,
   RequisitoInvalidoError,

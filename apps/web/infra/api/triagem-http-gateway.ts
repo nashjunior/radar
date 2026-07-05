@@ -7,22 +7,28 @@ import type { EditalId, PerfilId, TenantId } from '@radar/kernel';
 import { EditalId as mkEditalId, PerfilId as mkPerfilId } from '@radar/kernel';
 import type { TriagemGateway } from '@/application/ports';
 import type { TriagemViewModel } from '@/domain/triagem-view-model';
+import { SessaoExpiradaError } from '@/application/errors';
 
 export class TriagemHttpGateway implements TriagemGateway {
-  constructor(private readonly baseUrl: string = '') {}
+  constructor(
+    private readonly baseUrl: string = '',
+    private readonly getToken: () => Promise<string | null>,
+  ) {}
 
   async buscarPorEdital(
     input: { tenantId: TenantId; editalId: EditalId; perfilId: PerfilId },
     signal: AbortSignal,
   ): Promise<TriagemViewModel | null> {
+    const token = await this.getToken();
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
     const res = await fetch(
       `${this.baseUrl}/api/triagem/${encodeURIComponent(input.editalId)}`,
-      {
-        headers: { 'x-tenant-id': input.tenantId },
-        signal,
-      },
+      { headers, signal },
     );
 
+    if (res.status === 401) throw new SessaoExpiradaError();
     if (res.status === 404) return null;
     if (res.status === 403) return null;
     if (!res.ok) throw new Error(`[TriagemHttpGateway] HTTP ${res.status}`);

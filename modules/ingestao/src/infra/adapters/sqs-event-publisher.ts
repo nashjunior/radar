@@ -24,7 +24,7 @@ export class SqsEventPublisher implements EventPublisher {
     //     payload: (_evento as Record<string, unknown>)['payload'],
     //   }),
     //   MessageGroupId: _evento.type,
-    // }));
+    // }), { abortSignal: _signal });
     throw new Error('SqsEventPublisher.publicar: não implementado');
   }
 }

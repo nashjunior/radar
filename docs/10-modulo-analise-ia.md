@@ -115,12 +115,24 @@ Degradar com transparência é melhor que errar com confiança:
 
 ## 7. Custo e desempenho
 
-O **custo de IA por edital** é guardrail da unidade econômica (documentos 08, §4 e 09, §6): a arquitetura de extração deve caber abaixo do preço médio por triagem. A **latência de triagem** é um NFR (documento 12): a promessa de "horas para minutos" (documento 01, §5) só se cumpre com resposta rápida. Estratégias como pré-extração no momento da ingestão e reuso de resultados por edital ajudam ambos.
+O **custo de IA por edital** é guardrail da unidade econômica (documentos 08, §4 e 09, §6): a arquitetura de extração deve caber abaixo do preço médio por triagem. A **latência de triagem** é um NFR (documento 12): a promessa de "horas para minutos" (documento 01, §5) só se cumpre com resposta rápida. Custo e latência não competem aqui — o **split extração/aderência** (documento 12; arquitetura/03, §6; P-45) é o que os concilia: a extração é **1 por edital, cacheável e não sensível à latência**, enquanto a aderência por perfil é interativa.
+
+### 7.1 Alavancas de custo/desempenho
+
+Decididas na avaliação do adaptador de LLM (arquitetura/17, §5.1; RAD-53) e **todas subordinadas à barra de qualidade** — nenhuma troca recall ≥ 95% ou zero alucinação numérica (§5) por custo. As que **mudam o que vai ao modelo** só valem depois de passar no gold set (§5.3):
+
+- **Pré-extração em lote na ingestão** (P-92) — como a extração não é sensível à latência, ela roda de forma **assíncrona quando o edital é ingerido** (antes de o usuário pedir a triagem) e **em lote**, o que corta ~metade do custo de extração. Quando o usuário chega, a extração já está pronta e só a aderência por perfil é calculada — rápida e barata. Preserva a inferência (mesmo modelo e prompt), então não depende do gold set.
+- **Modelo por dificuldade** (P-93) — editais fáceis (PDF nativo, item único, modalidade simples — eixos de §5.1) usam um modelo mais barato; os difíceis, um mais capaz. Cada faixa é validada no gold set (§5.3) antes de valer.
+- **Minimização do que vai ao modelo** (P-94) — o custo é dominado pela entrada; enviar só as **seções candidatas** (objeto, habilitação, prazos, valores) em vez do edital inteiro, medindo o consumo para **impor o teto de custo por edital** (P-20/P-38). Sujeito ao gold set, pois recortar demais arrisca o recall.
+- **Reuso do prefixo estável** (P-95) — quando o prompt tiver exemplos do gold set, o trecho fixo (instrução + esquema) pode ser cacheado entre chamadas. Hoje o prefixo é pequeno demais para compensar; fica condicionado ao gold set.
+
+O **teto de custo por edital** que fecha a unidade econômica continua `[A VALIDAR]` (P-20/P-38); as alavancas acima são o mecanismo para respeitá-lo.
 
 ## 8. Pendências
 
 - Construir o gold set rotulado (cobertura e esquema em §§5.1–5.2; rótulos a produzir e metas a validar pré-lançamento). `[A VALIDAR]`
 - Fixar os limiares de confiança por campo (§4). `[A VALIDAR]`
 - Definir o teto de custo de IA por edital que fecha a unidade econômica (§7). `[A VALIDAR]`
+- Validar no gold set as alavancas de custo que mudam o modelo/entrada (§7.1) — modelo por dificuldade (P-93), minimização de entrada (P-94), cache de prefixo (P-95); a pré-extração em lote (P-92) preserva a inferência e não depende do gold set. `[A VALIDAR]`
 
 Rastreadas no documento **98 · Decisões e pendências**.

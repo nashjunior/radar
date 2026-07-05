@@ -11,6 +11,7 @@
   "dependencies": {
     "@radar/ingestao": "workspace:*",
     "@radar/matching": "workspace:*",
+    "@radar/triagem": "workspace:*",
     "@radar/kernel": "workspace:*"
   },
   "devDependencies": {

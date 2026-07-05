@@ -58,6 +58,31 @@ export class SaidaLlmInvalidaError extends DomainError {
   }
 }
 
+/**
+ * O modelo RECUSOU a extração (`stop_reason: "refusal"` — classificador de segurança ou recusa do
+ * próprio modelo). Em recusa o `content` vem vazio/parcial: NUNCA fabricar extração — degradar para
+ * leitura manual, como no OCR que falha (docs/10 §6). Distinto de `SaidaLlmInvalidaError` (schema
+ * inválido = falha do provedor, 502): a recusa não é lixo, é o modelo declinando. Borda: 422.
+ */
+export class ExtracaoRecusadaError extends DomainError {
+  readonly code = 'EXTRACAO_RECUSADA' as const;
+  constructor() {
+    super('modelo recusou a extração — marcar "requer leitura manual"');
+  }
+}
+
+/**
+ * Transporte de extração em LOTE indisponível (A17 §7, RAD-54): o poll do batch não concluiu no teto
+ * de verificações, ou a operação foi abortada (P-78). Falha de transporte, não de conteúdo — o lote é
+ * assíncrono e retryável (P-45). Borda: 503.
+ */
+export class LoteExtracaoIndisponivelError extends DomainError {
+  readonly code = 'LOTE_EXTRACAO_INDISPONIVEL' as const;
+  constructor(motivo: string) {
+    super(`extração em lote indisponível: ${motivo}`);
+  }
+}
+
 /** Perfil de habilitação não encontrado (erro de orquestração — A10 §6). Borda: 404. */
 export class PerfilNaoEncontradoError extends DomainError {
   readonly code = 'PERFIL_NAO_ENCONTRADO' as const;

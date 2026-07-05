@@ -32,8 +32,14 @@ export class ConsultarTriagemUseCase {
     input: ConsultarTriagemInput,
     signal: AbortSignal, // obrigatório — convenção P-78 / A10 §1 (idem modules/ingestao)
   ): Promise<TriagemLeituraDTO | null> {
-    const triagem = await this.triagens.porEditalEPerfil(input.editalId, input.perfilId, signal);
-    if (triagem === null) return null; // sem triagem → BFF 404 → SPA null
+    const triagem = await this.triagens.porEditalEPerfil(
+      input.tenantId,
+      input.clienteFinalId,
+      input.editalId,
+      input.perfilId,
+      signal,
+    );
+    if (triagem === null) return null; // sem triagem (ou fora do escopo do tenant) → BFF 404 → SPA null
 
     // Autorização POR OBJETO (P-51 / AB1), nunca por filtro de query: escopo divergente lança —
     // o BFF mapeia AcessoNegadoError → 403 e a SPA também devolve null (nunca vaza o motivo; §5.3).

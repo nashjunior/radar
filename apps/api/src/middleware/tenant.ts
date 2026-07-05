@@ -1,19 +1,20 @@
 /**
  * Middleware de autenticação e derivação de tenant.
  *
- * Valida o JWT OIDC emitido pelo IdP (Amazon Cognito, P-08) e constrói o
- * tenantId a partir de claim verificado. Requisição sem token válido é
- * rejeitada com 401; claim de tenant ausente resulta em 403.
+ * Suporta dois modos (gated por AUTH_MODE):
+ *   - cognito (padrão): valida JWT OIDC contra JWKS do Amazon Cognito (P-08).
+ *   - dev: valida JWT HS256 assinado com AUTH_DEV_SECRET — sem Cognito vivo.
  *
- * O header x-tenant-id do cliente NÃO é mais fonte de autoridade (A08 §5,
- * §11). O tenantId é branded type — construído somente na borda da infra
- * (A10 §8). Fecha a dimensão de autenticação de P-51/anti-BOLA.
+ * Invariante P-91: AUTH_MODE=dev é recusado em NODE_ENV=production. O processo
+ * aborta no startup via resolverConfigAuth (chamada em index.ts antes de
+ * aceitar requests) — nunca aceita token de dev em prod.
  *
- * Refs: A08 §3 (Cognito como IdP), A08 §5 (topologia), docs/05 §4, P-08.
+ * Refs: A08 §3 (Cognito como IdP), A08 §5 (topologia), docs/05 §4, P-08, P-91.
  */
 
 import { createMiddleware } from 'hono/factory';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
+import { createSecretKey } from 'node:crypto';
 import type { JWTPayload } from 'jose';
 import { TenantId } from '@radar/kernel';
 
@@ -23,15 +24,48 @@ declare module 'hono' {
   }
 }
 
+export type AuthMode = 'cognito' | 'dev';
+
+/**
+ * Valida a configuração de autenticação a partir das env vars recebidas.
+ * Invariante DURO (P-91): AUTH_MODE=dev é proibido em NODE_ENV=production.
+ * Lança Error descritivo em caso de config inválida; sem efeitos colaterais.
+ */
+export function resolverConfigAuth(env: Record<string, string | undefined>): void {
+  const mode = env['AUTH_MODE'];
+
+  if (env['NODE_ENV'] === 'production' && mode === 'dev') {
+    throw new Error('AUTH_MODE=dev é proibido em NODE_ENV=production (P-91).');
+  }
+
+  if (mode === 'dev') {
+    if (!env['AUTH_DEV_SECRET']) {
+      throw new Error('AUTH_DEV_SECRET é obrigatório em AUTH_MODE=dev.');
+    }
+    return;
+  }
+
+  // modo cognito — vars obrigatórias
+  if (!env['COGNITO_USER_POOL_ID']) throw new Error('COGNITO_USER_POOL_ID é obrigatório.');
+  if (!env['COGNITO_CLIENT_ID']) throw new Error('COGNITO_CLIENT_ID é obrigatório.');
+}
+
+const authMode: AuthMode = process.env['AUTH_MODE'] === 'dev' ? 'dev' : 'cognito';
+const tenantClaim = process.env['COGNITO_TENANT_CLAIM'] ?? 'custom:tenantId';
+
 const region = process.env['COGNITO_REGION'] ?? 'sa-east-1';
 const userPoolId = process.env['COGNITO_USER_POOL_ID'] ?? '';
 const clientId = process.env['COGNITO_CLIENT_ID'] ?? '';
-const tenantClaim = process.env['COGNITO_TENANT_CLAIM'] ?? 'custom:tenantId';
-
 const issuer = `https://cognito-idp.${region}.amazonaws.com/${userPoolId}`;
 
-// JWKS carregados e cacheados lazily pelo jose na primeira verificação (RFC 7517)
-const JWKS = createRemoteJWKSet(new URL(`${issuer}/.well-known/jwks.json`));
+// JWKS carregado e cacheado lazily pelo jose (RFC 7517) — apenas no modo cognito.
+const JWKS =
+  authMode !== 'dev'
+    ? createRemoteJWKSet(new URL(`${issuer}/.well-known/jwks.json`))
+    : null;
+
+// Segredo HMAC lido apenas quando AUTH_MODE=dev.
+const devSecret = authMode === 'dev' ? (process.env['AUTH_DEV_SECRET'] ?? '') : '';
 
 export const autenticarMiddleware = createMiddleware(async (c, next) => {
   const authHeader = c.req.header('authorization');
@@ -40,10 +74,15 @@ export const autenticarMiddleware = createMiddleware(async (c, next) => {
   }
 
   const token = authHeader.slice(7).trim();
-
   let payload: JWTPayload;
+
   try {
-    ({ payload } = await jwtVerify(token, JWKS, { issuer, audience: clientId }));
+    if (authMode === 'dev') {
+      const key = createSecretKey(Buffer.from(devSecret, 'utf-8'));
+      ({ payload } = await jwtVerify(token, key));
+    } else {
+      ({ payload } = await jwtVerify(token, JWKS!, { issuer, audience: clientId }));
+    }
   } catch {
     return c.json({ code: 'TOKEN_INVALIDO', mensagem: 'Token inválido ou expirado.' }, 401);
   }

@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { AcessoNegadoError } from '@radar/kernel';
 import { EditalId, PerfilId, TenantId, ClienteFinalId } from '@radar/kernel';
+import { SessaoExpiradaError } from '@/application/errors';
 import { useUseCases } from '@/ui/providers/use-cases-provider';
+import { useAuth } from '@/ui/providers/auth-provider';
 import type { TriagemViewModel } from '@/domain/triagem-view-model';
 
 interface UseTriagemParams {
@@ -19,7 +21,11 @@ export type TriagemState =
 
 /**
  * Busca a triagem de um edital, cancelando a requisição ao desmontar (A12 §3.2).
- * Defaults de perfilId/tenantId/clienteFinalId são provisórios — remover ao integrar auth real.
+ * 401 do BFF (sessão expirada) redireciona para login via AuthProvider.
+ *
+ * Os defaults de perfilId/tenantId/clienteFinalId são resolvidos pelo BFF via JWT;
+ * os parâmetros são mantidos no input do use case para tipagem, mas o HTTP adapter
+ * não os envia no header (o BFF deriva do token — A08 §5, P-08/P-51).
  */
 export function useTriagem({
   editalId,
@@ -28,6 +34,7 @@ export function useTriagem({
   clienteFinalId = 'cliente-demo',
 }: UseTriagemParams): TriagemState {
   const { getTriagem } = useUseCases();
+  const { login } = useAuth();
   const [state, setState] = useState<TriagemState>({ status: 'loading' });
 
   useEffect(() => {
@@ -51,6 +58,13 @@ export function useTriagem({
       })
       .catch((err: unknown) => {
         if (controller.signal.aborted) return;
+
+        if (err instanceof SessaoExpiradaError) {
+          // 401 do BFF → redireciona para Cognito; não atualiza estado (a página vai mudar).
+          void login();
+          return;
+        }
+
         if (err instanceof AcessoNegadoError) {
           setState({ status: 'acesso_negado' });
         } else {
@@ -64,7 +78,7 @@ export function useTriagem({
     return () => {
       controller.abort();
     };
-  }, [editalId, perfilId, tenantId, clienteFinalId, getTriagem]);
+  }, [editalId, perfilId, tenantId, clienteFinalId, getTriagem, login]);
 
   return state;
 }

@@ -31,17 +31,23 @@ interface Ctx {
   alertasRetornados: AlertaDTO[];
 }
 
-let ctx: Ctx;
+const ctx: Ctx = {
+  criterios: [],
+  editalObjeto: '',
+  alertasSalvos: [],
+  eventosPublicados: [],
+  alertasRetornados: [],
+};
 
 Before(function () {
-  ctx = {
-    criterios: [],
-    editalObjeto: '',
-    alertasSalvos: [],
-    eventosPublicados: [],
-    alertasRetornados: [],
-  };
+  ctx.criterios = [];
+  ctx.editalObjeto = '';
+  ctx.alertasSalvos = [];
+  ctx.eventosPublicados = [];
+  ctx.alertasRetornados = [];
 });
+
+export { ctx };
 
 // ---------------------------------------------------------------------------
 // Helpers

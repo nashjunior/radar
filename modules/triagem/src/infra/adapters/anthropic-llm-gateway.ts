@@ -27,19 +27,12 @@ export interface LlmExtracaoRequest {
  * ferramenta como `unknown` — saída NÃO-confiável, validada pela camada 3 do gateway. O gold set
  * troca esta implementação por um `RecordReplayLlmClient` (grava/reproduz sem custo nem flakiness).
  *
- * O wiring concreto vive no composition root (mantém `@anthropic-ai/sdk` fora do boundary — P-74):
- *
- *   class AnthropicSdkClient implements LlmClient {
- *     constructor(private readonly sdk: Anthropic) {}
- *     async extrairViaFerramenta(req, signal) {
- *       const r = await this.sdk.messages.create({
- *         model: req.modelo, system: req.system,
- *         messages: [{ role: 'user', content: req.userContent }],
- *         tools: [FERRAMENTA_SCHEMA], tool_choice: { type: 'tool', name: req.ferramenta },
- *       }, { signal });                       // CAMADA 7 — timeout curto (anti cost-DoS, P-38)
- *       return extrairToolInput(r, req.ferramenta);
- *     }
- *   }
+ * A impl concreta é o `AnthropicSdkClient` (apps/api — composition root), que mantém `@anthropic-ai/sdk`
+ * FORA do boundary do módulo (P-74). Ele reusa `paramsExtracao`/`FERRAMENTA_SCHEMA` (com `strict: true`)
+ * e `extrairToolInput` (mesma inferência do lote), faz streaming (`.stream({ signal }).finalMessage()`
+ * — editais grandes), trata `stop_reason: "refusal"` ANTES de ler `content` (→ `ExtracaoRecusadaError`,
+ * nunca fabrica) e fixa `thinking` explícito por modelo (RAD-55). O gold set troca esta seam por um
+ * `RecordReplayLlmClient` (grava/reproduz sem custo nem flakiness).
  */
 export interface LlmClient {
   extrairViaFerramenta(req: LlmExtracaoRequest, signal: AbortSignal): Promise<unknown>;
@@ -62,53 +55,68 @@ export const INSTRUCAO_EXTRACAO = [
 ].join(' ');
 
 /**
- * `AnthropicLlmGateway` — único ponto do contexto que fala com o modelo. Aqui vivem as camadas 1–4
- * (e a 6) da defesa de injeção de A11 §2; as camadas 5 e 7 são propriedades do client/worker.
- * O edital é dado de terceiro NÃO-confiável (A11): entra delimitado, a saída é validada por schema
- * e sanitizada, e só vira fato o que tem citação que casa com o texto-fonte.
+ * `AnthropicLlmGateway` — único ponto do contexto que fala com o modelo pelo caminho SÍNCRONO. Aqui
+ * vivem as camadas 1–4 (e a 6) da defesa de injeção de A11 §2; as camadas 5 e 7 são propriedades do
+ * client/worker. O edital é dado de terceiro NÃO-confiável (A11): entra delimitado, a saída é validada
+ * por schema e sanitizada, e só vira fato o que tem citação que casa com o texto-fonte.
+ *
+ * A construção da requisição (`montarRequisicaoExtracao`) e a interpretação da saída
+ * (`interpretarSaidaExtracao`) são funções PURAS exportadas: o caminho em LOTE (RAD-54, Message
+ * Batches — Lever 1 de RAD-53) reusa AS MESMAS, garantindo inferência idêntica (mesmo
+ * `model`/`system`/`INSTRUCAO_EXTRACAO`/schema) — só muda o transporte (síncrono → batch).
  */
 export class AnthropicLlmGateway implements LlmGateway {
   constructor(private readonly client: LlmClient) {}
 
   async extrair(entrada: EntradaExtracaoDTO, signal: AbortSignal): Promise<ExtracaoEdital> {
-    // CAMADA 1 + 2 — instrução fixa (system) separada do edital (dado delimitado); contexto MÍNIMO
-    // (P-54): só o edital e anexos vão ao modelo, nunca classe crítica/estratégia comercial.
-    const bruto = await this.client.extrairViaFerramenta(
-      {
-        modelo: escolherModelo(entrada),
-        system: INSTRUCAO_EXTRACAO,
-        userContent: montarConteudoUsuario(entrada),
-        ferramenta: FERRAMENTA_EXTRACAO,
-      },
-      signal,
-    );
-
-    // CAMADA 3 — saída do modelo é TAMBÉM não-confiável: valida por schema. O que não bate é
-    // rejeitado (SaidaLlmInvalidaError), nunca "consertado".
-    const saida = validarSaidaExtracao(bruto);
-
-    // CAMADA 4 + 6 — sanitiza os textos (anti-XSS armazenado) e liga cada citação ao texto-fonte:
-    // conteúdo sem trecho que casa não vira fato.
-    const fontes = normalizar([entrada.texto, ...entrada.anexos].join('\n'));
-
-    return ExtracaoEdital.montar({
-      editalId: EditalId(entrada.editalId),
-      objeto: campoFato(sanitizar(saida.objeto.valor), saida.objeto, fontes),
-      valorEstimado: campoFato<number | null>(saida.valorEstimado.valor, saida.valorEstimado, fontes),
-      dataAberturaPropostas: campoFato<Date | null>(
-        parseData(saida.dataAberturaPropostas.valor),
-        saida.dataAberturaPropostas,
-        fontes,
-      ),
-      requisitos: saida.requisitos.map((r) =>
-        Requisito.criar(r.categoria, sanitizar(r.descricao), bindCitacao(r.citacao, fontes)),
-      ),
-      riscosBrutos: saida.riscos.map((r) =>
-        Risco.criar(sanitizar(r.descricao), r.severidade, bindCitacao(r.citacao, fontes)),
-      ),
-      paginas: entrada.paginas,
-    });
+    const bruto = await this.client.extrairViaFerramenta(montarRequisicaoExtracao(entrada), signal);
+    return interpretarSaidaExtracao(bruto, entrada);
   }
+}
+
+/**
+ * CAMADA 1 + 2 (A11 §2) — instrução fixa (system) separada do edital (dado delimitado); contexto
+ * MÍNIMO (P-54): só o edital e anexos vão ao modelo, nunca classe crítica/estratégia comercial.
+ * Pura e sem tecnologia: o caminho síncrono e o batch produzem a MESMA requisição a partir dela.
+ */
+export function montarRequisicaoExtracao(entrada: EntradaExtracaoDTO): LlmExtracaoRequest {
+  return {
+    modelo: escolherModelo(entrada),
+    system: INSTRUCAO_EXTRACAO,
+    userContent: montarConteudoUsuario(entrada),
+    ferramenta: FERRAMENTA_EXTRACAO,
+  };
+}
+
+/**
+ * Interpreta a saída CRUA da ferramenta (do caminho síncrono OU do lote) e a transforma no agregado.
+ * A saída do modelo é NÃO-confiável: camada 3 valida por schema (rejeita, não conserta), camadas 4+6
+ * sanitizam os textos e ligam cada citação ao texto-fonte — conteúdo sem trecho que casa não vira fato.
+ */
+export function interpretarSaidaExtracao(bruto: unknown, entrada: EntradaExtracaoDTO): ExtracaoEdital {
+  // CAMADA 3 — o que não bate no schema é rejeitado (SaidaLlmInvalidaError), nunca "consertado".
+  const saida = validarSaidaExtracao(bruto);
+
+  // CAMADA 4 + 6 — sanitiza os textos (anti-XSS armazenado) e liga cada citação ao texto-fonte.
+  const fontes = normalizar([entrada.texto, ...entrada.anexos].join('\n'));
+
+  return ExtracaoEdital.montar({
+    editalId: EditalId(entrada.editalId),
+    objeto: campoFato(sanitizar(saida.objeto.valor), saida.objeto, fontes),
+    valorEstimado: campoFato<number | null>(saida.valorEstimado.valor, saida.valorEstimado, fontes),
+    dataAberturaPropostas: campoFato<Date | null>(
+      parseData(saida.dataAberturaPropostas.valor),
+      saida.dataAberturaPropostas,
+      fontes,
+    ),
+    requisitos: saida.requisitos.map((r) =>
+      Requisito.criar(r.categoria, sanitizar(r.descricao), bindCitacao(r.citacao, fontes)),
+    ),
+    riscosBrutos: saida.riscos.map((r) =>
+      Risco.criar(sanitizar(r.descricao), r.severidade, bindCitacao(r.citacao, fontes)),
+    ),
+    paginas: entrada.paginas,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -159,8 +167,9 @@ interface SaidaExtracaoBruta {
   riscos: RiscoBruto[];
 }
 
-const CATEGORIAS: readonly string[] = ['juridica', 'fiscal', 'tecnica', 'economica'];
-const SEVERIDADES: readonly string[] = ['baixa', 'media', 'alta'];
+/** Vocabulário canônico da validação (camada 3). Exportado para o schema da ferramenta não divergir. */
+export const CATEGORIAS: readonly string[] = ['juridica', 'fiscal', 'tecnica', 'economica'];
+export const SEVERIDADES: readonly string[] = ['baixa', 'media', 'alta'];
 
 function validarSaidaExtracao(bruto: unknown): SaidaExtracaoBruta {
   const o = objeto(bruto, 'saída');

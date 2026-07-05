@@ -372,10 +372,13 @@ export interface ExtracaoRepository {
   salvar(extracao: ExtracaoEdital, signal?: AbortSignal): Promise<void>;
 }
 
-// Triagem é escopada ao tenant/cliente (P-49).
+// Triagem é escopada ao tenant/cliente (P-49). A leitura por chave natural recebe o ESCOPO
+// (tenantId/clienteFinalId) além do sub-key: a chave única é (tenant, edital, perfil) (P-45), então
+// filtrar só por (edital, perfil) não é único sob multi-tenant → escopa a query; authz por objeto
+// (§5.3, P-51) fica como defesa em profundidade.
 export interface TriagemRepository {
   salvar(triagem: Triagem, signal?: AbortSignal): Promise<void>;
-  porEditalEPerfil(editalId: EditalId, perfilId: PerfilId, signal?: AbortSignal): Promise<Triagem | null>;
+  porEditalEPerfil(tenantId: TenantId, clienteFinalId: ClienteFinalId, editalId: EditalId, perfilId: PerfilId, signal?: AbortSignal): Promise<Triagem | null>;
 }
 
 // Perfil de Habilitação: leitura de Identidade & Organização (Cliente-Fornecedor, P-43). A Triagem
@@ -468,7 +471,9 @@ export interface SolicitarTriagemInput {
 }
 export interface ExtrairEditalInput {
   editalId: string; texto: string; temTextoSelecionavel: boolean;
-  anexosRefs: string[]; signal?: AbortSignal;
+  anexosRefs: string[];
+  paginas: number;               // nº de páginas medido ao hidratar → alimenta EntradaExtracaoDTO.paginas → ExtracaoEdital.paginas (§3); obrigatório para o read path (paginasEdital, §4.2). RAD-30.
+  signal?: AbortSignal;
 }
 // Input do worker: o consumidor de `triagem.solicitada` hidrata o conteúdo do edital
 // (texto/anexos) e o limiar antes de invocar o use case (A03 §4.5 usa editalTexto no input).
@@ -569,7 +574,7 @@ function projetarLeitura(triagem: Triagem, extracao: ExtracaoEdital): TriagemLei
 
 ```ts
 // application/use-cases/extrair-edital.ts
-// Trigger: interno na 1ª triagem, ou evento edital.ingerido (pré-extração na ingestão — docs/10 §7).
+// Trigger: interno na 1ª triagem, ou evento edital.ingerido (pré-extração em LOTE na ingestão — docs/10 §7.1 / P-92).
 // Cacheia por edital (P-45): só chama o LLM UMA vez por edital, independente de quantos perfis triam.
 export class ExtrairEditalUseCase {
   constructor(
@@ -596,6 +601,7 @@ export class ExtrairEditalUseCase {
     const entrada: EntradaExtracaoDTO = {
       editalId: input.editalId, texto: input.texto,
       temTextoSelecionavel: input.temTextoSelecionavel, anexos,
+      paginas: input.paginas,                                // obrigatório em EntradaExtracaoDTO (§4.2) → ExtracaoEdital.paginas (§3)
     };
 
     // O adapter aplica a defesa de injeção (A11 §2) e valida a saída por schema (camada 3).
@@ -682,7 +688,7 @@ export class AnthropicLlmGateway implements LlmGateway {
     // como DADO em mensagem separada, entre delimitadores. Conteúdo do edital nunca é concatenado no
     // prompt de instrução, e nunca pode reescrevê-la.
     const resposta = await this.client.messages.create({
-      model: escolherModelo(entrada),        // Sonnet no caso comum; Opus em editais difíceis (A01 §98 / P-66)
+      model: escolherModelo(entrada),        // 3 tiers por dificuldade: Haiku (fácil) / Sonnet / Opus (difícil) — P-93, validado no gold set (A16); P-66
       system: INSTRUCAO_EXTRACAO,            // fixa, versionada, roda no gold set a cada mudança (A16 §2.4)
       messages: [{
         role: 'user',
@@ -735,7 +741,10 @@ export class PostgresTriagemRepository implements TriagemRepository {
     // INSERT com tenant_id e cliente_final_id — isolamento estrutural (docs/05 §3).
     throw new Error('não implementado — ilustrativo');
   }
-  async porEditalEPerfil(/* ... */): Promise<Triagem | null> {
+  async porEditalEPerfil(/* tenantId, clienteFinalId, editalId, perfilId, signal */): Promise<Triagem | null> {
+    // SELECT ... WHERE tenant_id=$1 AND cliente_final_id=$2 AND edital_id=$3 AND perfil_id=$4 — escopo
+    // no WHERE (a chave única é (tenant, edital, perfil)): sem ele, (edital, perfil) não é único sob
+    // multi-tenant e rows[0] seria arbitrário. Authz por objeto (§5.3) segue como defesa em profundidade.
     throw new Error('não implementado — ilustrativo');
   }
 }
@@ -791,7 +800,7 @@ Metas numéricas (recall ≥ 95%, precisão ≥ 90%, fidelidade ≥ 98%, custo/e
 
 | Evento | Direção | Emissor / Consumidor | Payload |
 |--------|---------|----------------------|---------|
-| `edital.ingerido` | consome | Ingestão → Triagem (pré-extração) | `numeroControlePNCP`, atributos normalizados |
+| `edital.ingerido` | consome | Ingestão → Triagem (pré-extração **em lote**, P-92) | `numeroControlePNCP`, atributos normalizados |
 | `triagem.solicitada` | publica/consome | `SolicitarTriagemUseCase` (API) → worker `TriarEditalUseCase` | `tenantId`, `usuarioId`, `editalId`, `perfilId` |
 | `triagem.concluida` | publica | `TriarEditalUseCase` → API/front (e Gestão da Participação no *Next*) | `editalId`, `perfilId`, `campos`+`citacoes`+`confianca`, `recomendacao`, `riscos`, `tenantId` |
 | `extracao.concluida` | interno | intra-contexto (aquece o cache) | `editalId`, `confianca` |
@@ -819,7 +828,11 @@ Metas numéricas (recall ≥ 95%, precisão ≥ 90%, fidelidade ≥ 98%, custo/e
 |------------|-----------|
 | P-18 | Gold set rotulado + metas finais de qualidade (recall/precisão/fidelidade) — spec em A16 |
 | P-19 | Fixar os limiares de confiança por campo (`limiarConfianca`, `is_critico`), calibrados no gold set |
-| P-20 / P-38 | Teto de custo de IA por edital + alarme como guardrail de negócio |
+| P-20 / P-38 | Teto de custo de IA por edital + alarme como guardrail de negócio (alavancas em P-92–P-95, RAD-53) |
+| P-92 | Pré-extração em **lote** (Message Batches) na ingestão — Tier A (preserva inferência), impl RAD-54 |
+| P-93 | Router de modelo por dificuldade (Haiku 4.5 / Sonnet 5 / Opus 4.8) — Tier B, gate no gold set (`escolherModelo`) |
+| P-94 | Minimização de input (pré-filtro de seções candidatas) + teto por edital via `count_tokens` — Tier B (`montarConteudoUsuario`) |
+| P-95 | Prompt caching do prefixo estável (tools→system) — condicional a few-shot do gold set (NO-OP hoje) |
 | P-51 | Testes de autorização por objeto (perfil × clienteFinal) como gate de release |
 | P-54 | Minimização do dado enviado ao LLM + DPA/residência com o provedor |
 | P-66 | LLM: API direta Anthropic vs. via nuvem (Bedrock/Vertex) para residência/DPA |

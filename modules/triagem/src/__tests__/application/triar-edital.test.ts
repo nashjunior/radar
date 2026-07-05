@@ -132,9 +132,30 @@ describe('TriarEditalUseCase', () => {
     await expect(uc.executar({ ...INPUT, limiarConfianca: 0.7 }, noop)).rejects.toThrow(
       ConfiancaInsuficienteError,
     );
-    expect(porId).not.toHaveBeenCalled(); // nem chega a resolver o perfil
+    expect(porId).toHaveBeenCalled(); // authz do perfil roda ANTES do gate (defesa em profundidade)
     expect(salvarTriagem).not.toHaveBeenCalled();
     expect(publicar).not.toHaveBeenCalled();
+  });
+
+  it('fila envenenada: perfil de OUTRO cliente NÃO dispara a extração PAGA (authz antes da extração)', async () => {
+    // Cache-miss (`existente: null`): na ordem antiga o `llm.extrair` PAGO rodaria antes do authz.
+    // Com o authz por objeto à frente, a chamada paga fica fechada atrás dele — protege contra fila
+    // envenenada (RAD-56 #3 / fronteira AB9-cost-DoS).
+    const { uc, extrair, salvarExtracao, salvarTriagem } = deps({
+      existente: null,
+      perfil: PerfilHabilitacao.de({
+        id: PERFIL,
+        clienteFinalId: ClienteFinalId('cliente-999'),
+        habJuridica: [],
+        habFiscal: ['CND'],
+        habTecnica: [],
+        habEconomica: [],
+      }),
+    });
+    await expect(uc.executar(INPUT, noop)).rejects.toThrow(AcessoNegadoError);
+    expect(extrair).not.toHaveBeenCalled(); // a extração paga nunca dispara para um perfil não autorizado
+    expect(salvarExtracao).not.toHaveBeenCalled();
+    expect(salvarTriagem).not.toHaveBeenCalled();
   });
 
   it('perfil inexistente → PerfilNaoEncontradoError (erro de orquestração, 404)', async () => {

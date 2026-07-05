@@ -37,22 +37,25 @@ export class TriarEditalUseCase {
   ) {}
 
   async executar(input: TriarEditalInput, signal: AbortSignal): Promise<TriagemDTO> {
-    // 1. Extração CACHEADA por edital (P-45). Cache-miss → 1 chamada de LLM (A10 §4.5).
+    // 1. Autorização POR OBJETO (P-51 / AB1) ANTES da extração paga: o perfil deve pertencer ao
+    //    clienteFinal solicitante. O perfil não é insumo da extração — checá-lo primeiro fecha a
+    //    chamada PAGA de LLM (passo 2) atrás do authz, protegendo contra fila envenenada (defesa em
+    //    profundidade, além da checagem de `SolicitarTriagem`). Perfil inexistente é erro de
+    //    orquestração (404); perfil de OUTRO cliente é IDOR (403).
+    const perfil = await this.perfis.porId(input.perfilId, signal);
+    if (perfil === null) throw new PerfilNaoEncontradoError(input.perfilId);
+    if (perfil.clienteFinalId !== input.clienteFinalId) throw new AcessoNegadoError();
+
+    // 2. Extração CACHEADA por edital (P-45). Cache-miss → 1 chamada de LLM (A10 §4.5).
     let extracao = await this.extracoes.porEdital(input.editalId, signal);
     if (extracao === null) {
       extracao = await this.llm.extrair(input.conteudo, signal);
       await this.extracoes.salvar(extracao, signal);
     }
 
-    // 2. Gate de confiança (docs/10 §4). Abaixo do limiar → leitura assistida (docs/10 §6):
+    // 3. Gate de confiança (docs/10 §4). Abaixo do limiar → leitura assistida (docs/10 §6):
     //    nunca apresentar palpite como certeza. Limiar vem da política por campo (P-19).
     if (!extracao.suficiente(input.limiarConfianca)) throw new ConfiancaInsuficienteError();
-
-    // 3. Autorização POR OBJETO (P-51 / AB1): o perfil deve pertencer ao clienteFinal solicitante.
-    //    Perfil inexistente é erro de orquestração (404); perfil de OUTRO cliente é IDOR (403).
-    const perfil = await this.perfis.porId(input.perfilId, signal);
-    if (perfil === null) throw new PerfilNaoEncontradoError(input.perfilId);
-    if (perfil.clienteFinalId !== input.clienteFinalId) throw new AcessoNegadoError();
 
     // 4. Aderência POR PERFIL (não cacheável) — regra de domínio pura.
     const triagem = Triagem.avaliar(extracao, perfil, input.tenantId);

@@ -127,8 +127,8 @@ erDiagram
 - **Worker assíncrono**, disparado por `triagem.solicitada` — nunca no caminho síncrono da API (custo e latência).
 - **Edital como dado não-confiável** (docs/05, §4): instruções separadas do conteúdo; nada extraído é executado — defesa contra prompt-injection.
 - **Saída estruturada** com citação da fonte e **score de confiança** por campo; abaixo do limiar, marca "verificar" e não pré-preenche (docs/10, §4).
-- **Cache da extração por edital**: a `EXTRACAO_EDITAL` (objeto, requisitos, prazos, citações) é **1 por edital** e serve todos — corta custo (docs/08, §4). A **aderência** (`TRIAGEM`) é calculada **por perfil** (1 por edital × empresa), pois depende do perfil de habilitação — não é compartilhável. Separar as duas é o que faz cache e correção conviverem.
-- **Modelo:** Claude, família atual — *Sonnet* no caso comum, *Opus* nos editais difíceis; a escolha final e o **custo/edital** são guardrail de docs/10, §7. `[A VALIDAR]`
+- **Cache da extração por edital + pré-extração em lote na ingestão**: a `EXTRACAO_EDITAL` (objeto, requisitos, prazos, citações) é **1 por edital** e serve todos — corta custo (docs/08, §4). Como não é sensível à latência (docs/10, §7), a extração roda **assíncrona e em lote quando o edital é ingerido** (`edital.ingerido`), antes de o usuário pedir a triagem — ~50% mais barata e já pronta na hora (P-92). A **aderência** (`TRIAGEM`) é calculada **por perfil** (1 por edital × empresa), pois depende do perfil de habilitação — não é compartilhável. Separar as duas é o que faz cache e correção conviverem.
+- **Modelo por dificuldade:** Claude, família atual — três faixas pela dificuldade do edital: *Haiku* nos fáceis (PDF nativo, item único, modalidade simples), *Sonnet* no caso comum, *Opus* nos difíceis; cada faixa é validada no gold set (docs/10, §5) e o **custo/edital** é guardrail de docs/10, §7. `[A VALIDAR — P-93]`
 - **Fallback:** baixa confiança → leitura assistida (destacar trechos, sem decidir); PDF-imagem → OCR (docs/10, §6).
 
 ## 7. Como cada NFR é atingido
@@ -140,7 +140,7 @@ erDiagram
 | Latência de triagem | Worker assíncrono + cache por edital (§6) |
 | Isolamento tenant (0) | `tenantId` em toda entidade/evento; filtro central; RLS no *Next* (A01, §6) |
 | Auditabilidade (100%) | `Audit log` append-only em API e Triagem (A01, §7) |
-| Custo de IA sob teto | Triagem assíncrona, cacheada, sob demanda (§6) |
+| Custo de IA sob teto | Triagem assíncrona e cacheada; pré-extração em lote na ingestão + modelo por dificuldade + minimização de entrada (§6; P-92–P-95) |
 | Resiliência de fonte | Retry idempotente + monitor de saúde + degradação graciosa (A02, §5) |
 
 ## 8. Segurança por camada (docs/05, §4) no desenho
@@ -159,7 +159,7 @@ O desacoplamento por eventos (A01, §2) é o que torna essa evolução aditiva: 
 ## 10. Riscos arquiteturais e pendências
 
 - **Dependência do contrato do PNCP** — mitigado por validação + monitor (A02, §5), mas o *schema* pode mudar; confirmar Swagger é P-26.
-- **Custo de IA** pode furar a unidade econômica — mitigado por cache/assincronia; teto é P-20 (docs/10).
+- **Custo de IA** pode furar a unidade econômica — mitigado por cache/assincronia e pelas alavancas de RAD-53 (lote na ingestão P-92, modelo por dificuldade P-93, minimização de entrada P-94, cache de prefixo P-95); teto é P-20/P-38 (docs/10).
 - **Frescor vs. rate-limit da fonte** — a cadência de polling é um equilíbrio; é P-29.
 
 Pendências de arquitetura consolidadas em [docs/98](../docs/98-decisoes-e-pendencias.md) (P-26 a P-30).

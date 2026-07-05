@@ -9,11 +9,17 @@
  * Refs: arquitetura/17 §4.3, docs/98 P-86.
  */
 
-import type { EditalId, PerfilId } from '@radar/kernel';
+import type { ClienteFinalId, EditalId, PerfilId, TenantId } from '@radar/kernel';
 import type { ExtracaoRepository, TriagemRepository } from '@radar/triagem';
 
 export const triagemStub: TriagemRepository = {
-  async porEditalEPerfil(_editalId: EditalId, _perfilId: PerfilId, _signal: AbortSignal) {
+  async porEditalEPerfil(
+    _tenantId: TenantId,
+    _clienteFinalId: ClienteFinalId,
+    _editalId: EditalId,
+    _perfilId: PerfilId,
+    _signal: AbortSignal,
+  ) {
     return null;
   },
   async salvar(_triagem, _signal) {

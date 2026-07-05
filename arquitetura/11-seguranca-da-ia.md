@@ -31,6 +31,10 @@ flowchart LR
 | **6** | **Citação verificável** | cada afirmação linka o trecho-fonte (10 §4) — conteúdo **inventado** por injeção não tem citação que bate, e fica detectável. Regra de qualidade que também é de segurança. | 10 §4 |
 | **7** | **Limites** | timeout, teto de custo (anti cost-DoS) e rate-limit por usuário na triagem. | A07 AB9 |
 
+> **Minimização do input reforça a camada 2 (P-94, RAD-53).** Além de "não enviar a classe crítica", o worker manda ao modelo **só as seções candidatas** do edital (objeto, habilitação, prazos, valores), não o documento inteiro (docs/10, §7.1) — encolhe a superfície de injeção **e** o custo. Invariante que o pré-filtro não pode quebrar: a **camada 6** (citação verificável) valida o trecho contra o **texto-fonte completo**, não só o recorte enviado; uma seção descartada pelo filtro simplesmente não pode ser citada — o campo fica "verificar", nunca inventado. O consumo é medido com `count_tokens` para impor o teto (camada 7 · P-20/P-38).
+>
+> **Recusa do modelo reforça a camada 7 (RAD-55).** Quando o provedor devolve `stop_reason: "refusal"`, o `content` vem vazio/parcial; o adaptador trata a recusa **antes** de ler a saída e a mapeia para erro de domínio (nunca fabrica extração) — coerente com "a saída do LLM é também não-confiável" (camada 3).
+
 ## 3. Direta vs. indireta
 
 - **Indireta (principal):** o payload vem no **edital/anexo** — a fonte não-confiável. É o vetor central e o que as camadas 1–6 endereçam.
@@ -62,5 +66,6 @@ Aprofunda documento 05, §4 (princípio) e §9 (classe crítica); é testada em 
 
 - Conjunto de editais adversariais + red-team de prompt injection no CI (§4). `[A VALIDAR]` → P-72
 - Schema de validação da saída do LLM + política de sanitização de saída (§2, camadas 3–4). `[A VALIDAR]` → P-73
+- Minimização do input (pré-filtro de seções candidatas) preservando as camadas 2 e 6 (§2). `[A VALIDAR]` → P-94
 
 Rastreadas em [../docs/98](../docs/98-decisoes-e-pendencias.md).

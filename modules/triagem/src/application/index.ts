@@ -14,8 +14,10 @@ export type {
   EventPublisher,
   ExtracaoRepository,
   LlmGateway,
+  LlmLoteGateway,
   ObjectStorage,
   PerfilGateway,
+  ResultadoLote,
   TriagemRepository,
 } from './ports.js';
 export {
@@ -33,5 +35,10 @@ export { SolicitarTriagemUseCase } from './use-cases/solicitar-triagem.js';
 export type { SolicitarTriagemInput } from './use-cases/solicitar-triagem.js';
 export { ExtrairEditalUseCase } from './use-cases/extrair-edital.js';
 export type { ExtrairEditalInput } from './use-cases/extrair-edital.js';
+export { ExtrairEditaisEmLoteUseCase } from './use-cases/extrair-editais-lote.js';
+export type {
+  ExtrairEditalLoteItem,
+  ResultadoExtracaoLoteDTO,
+} from './use-cases/extrair-editais-lote.js';
 export { TriarEditalUseCase } from './use-cases/triar-edital.js';
 export type { TriarEditalInput } from './use-cases/triar-edital.js';

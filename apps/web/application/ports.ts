@@ -11,3 +11,22 @@ export interface TriagemGateway {
     signal: AbortSignal,
   ): Promise<TriagemViewModel | null>;
 }
+
+/**
+ * Port de autenticação — implementado por CognitoOidcGateway (prod) ou DevAuthGateway (dev).
+ * A UI interage via AuthProvider/useAuth; nunca acessa o gateway diretamente.
+ * Refs: docs/98 P-08, P-91, arquitetura/08 §3.
+ */
+export interface AuthPort {
+  /** Retorna o ID token JWT atual, ou null se não autenticado/expirado. */
+  obterToken(): Promise<string | null>;
+  /** Inicia o fluxo de login (redireciona para o Cognito Hosted UI). */
+  iniciarLogin(): Promise<void>;
+  /** Encerra a sessão. */
+  encerrarSessao(): Promise<void>;
+  /**
+   * Troca o authorization code por tokens (callback do IdP).
+   * Deve ser invocado quando a URL contém code= e state=.
+   */
+  processarCallback(): Promise<void>;
+}
