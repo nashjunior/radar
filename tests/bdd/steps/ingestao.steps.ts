@@ -5,16 +5,17 @@ import {
   IngerirEditaisUseCase,
   FonteIndisponivelError,
 } from '@radar/ingestao';
+import { PostgresEditalRepository } from '@radar/ingestao/infra';
+import { PostgresProvenienciaRepository } from '@radar/ingestao/infra';
 import type {
   ContratacaoData,
   EditalRepository,
   EventPublisher,
   IdProvider,
   PncpGateway,
-  ProvenienciaRepository,
-  Edital,
   DomainEvent,
 } from '@radar/ingestao';
+import { getFixture } from '../support/hooks.js';
 
 // ---------------------------------------------------------------------------
 // Contexto compartilhado no cenário
@@ -22,12 +23,10 @@ import type {
 
 interface Ctx {
   contratacoes: ContratacaoData[];
-  existente: boolean;
+  prePopularNumero: string | null; // numero a pré-inserir antes de executar
   falharPrimeiro: boolean;
   cancelar: boolean;
-  editaisArmazenados: Edital[];
   eventosPublicados: DomainEvent[];
-  upsertCallCount: number;
   resultado?: Awaited<ReturnType<IngerirEditaisUseCase['executar']>>;
   erro?: Error;
 }
@@ -55,29 +54,27 @@ let ctx: Ctx;
 Before(function () {
   ctx = {
     contratacoes: [],
-    existente: false,
+    prePopularNumero: null,
     falharPrimeiro: false,
     cancelar: false,
-    editaisArmazenados: [],
     eventosPublicados: [],
-    upsertCallCount: 0,
   };
 });
 
 // ---------------------------------------------------------------------------
-// Givens
+// Givens — configuração
 // ---------------------------------------------------------------------------
 
 Given('um gateway PNCP configurado com dados sintéticos', function () {
   // gateway é montado no When com base nos contratacoes[] do ctx
 });
 
-Given('um repositório de editais em memória', function () {
-  // repositório é montado no When
+Given('um repositório de editais no PostgreSQL', function () {
+  // repositório real é montado no When via getFixture()
 });
 
 Given('um publicador de eventos em memória', function () {
-  // publisher é montado no When
+  // publisher em memória (eventos vão para SQS em produção — stub aqui conforme A04 §4)
 });
 
 Given(
@@ -90,14 +87,15 @@ Given(
 Given(
   'o repositório não possui edital com esse número de controle',
   function () {
-    ctx.existente = false;
+    ctx.prePopularNumero = null;
   },
 );
 
 Given(
   'o repositório já possui um edital com esse número de controle',
   function () {
-    ctx.existente = true;
+    // pré-inserção feita no When, antes de executar o use case
+    ctx.prePopularNumero = ctx.contratacoes[0]?.numeroControlePncp ?? null;
   },
 );
 
@@ -114,7 +112,7 @@ Given(
 Given(
   'o repositório não possui nenhum desses editais',
   function () {
-    ctx.existente = false;
+    ctx.prePopularNumero = null;
   },
 );
 
@@ -136,8 +134,38 @@ Given(
 // Whens
 // ---------------------------------------------------------------------------
 
-function buildDeps(cancelar = false) {
+/**
+ * FaultInjectingEditalRepository: delega ao real mas lança na 1ª chamada de upsert.
+ * Simula falha transiente para testar que o use case continua o lote (A02 §3).
+ * REGRA: não simula falha de conexão (DB está saudável) — só a 1ª chamada de aplicação.
+ */
+class FaultInjectingEditalRepository implements EditalRepository {
+  private upsertCount = 0;
+
+  constructor(private readonly real: PostgresEditalRepository) {}
+
+  async upsertPorNumeroControle(edital: Parameters<EditalRepository['upsertPorNumeroControle']>[0], signal: AbortSignal): Promise<void> {
+    this.upsertCount++;
+    if (this.upsertCount === 1) throw new Error('falha transiente simulada');
+    return this.real.upsertPorNumeroControle(edital, signal);
+  }
+
+  porId(...args: Parameters<EditalRepository['porId']>) {
+    return this.real.porId(...args);
+  }
+
+  porNumeroControle(...args: Parameters<EditalRepository['porNumeroControle']>) {
+    return this.real.porNumeroControle(...args);
+  }
+
+  listarPorJanelaPublicacao(...args: Parameters<EditalRepository['listarPorJanelaPublicacao']>) {
+    return this.real.listarPorJanelaPublicacao(...args);
+  }
+}
+
+async function buildAndRun(cancelar = false): Promise<void> {
   const janela = { inicio: new Date('2024-01-01'), fim: new Date('2024-01-31') };
+  const { db } = getFixture();
 
   const contratacoes = [...ctx.contratacoes];
 
@@ -154,29 +182,22 @@ function buildDeps(cancelar = false) {
     downloadArquivo: async () => new Uint8Array(),
   };
 
-  let callIndex = 0;
-  const editais: EditalRepository = {
-    upsertPorNumeroControle: async (edital) => {
-      callIndex++;
-      if (ctx.falharPrimeiro && callIndex === 1) {
-        throw new Error('falha temporária simulada');
-      }
-      ctx.editaisArmazenados.push(edital);
-      ctx.upsertCallCount++;
-    },
-    porId: async () => null,
-    porNumeroControle: async () => {
-      if (ctx.existente) {
-        return { id: EditalId('existente-001') } as unknown as Awaited<ReturnType<EditalRepository['porNumeroControle']>>;
-      }
-      return null;
-    },
-    listarPorJanelaPublicacao: async function* () {},
-  };
+  const realEditalRepo = new PostgresEditalRepository(db);
+  const editais: EditalRepository = ctx.falharPrimeiro
+    ? new FaultInjectingEditalRepository(realEditalRepo)
+    : realEditalRepo;
 
-  const proveniencias: ProvenienciaRepository = {
-    registrar: async () => {},
-  };
+  const proveniencias = new PostgresProvenienciaRepository(db);
+
+  // Pré-popular o repositório quando o cenário exige edital já existente
+  if (ctx.prePopularNumero) {
+    const signal = new AbortController().signal;
+    let idSeq = 0;
+    const ids: IdProvider = { gerar: () => EditalId(`pre-${++idSeq}`) };
+    const preUc = new IngerirEditaisUseCase(gateway, realEditalRepo, proveniencias, { publicar: async () => {} }, ids);
+    await preUc.executar({ modalidade: 6, janela }, signal);
+    // redefine contratacoes para a execução principal
+  }
 
   const eventos: EventPublisher = {
     publicar: async (ev) => { ctx.eventosPublicados.push(ev); },
@@ -184,32 +205,49 @@ function buildDeps(cancelar = false) {
 
   let idSeq = 0;
   const ids: IdProvider = {
-    gerar: () => EditalId(`novo-edital-${++idSeq}`),
+    gerar: () => EditalId(`novo-${++idSeq}`),
   };
 
-  return { gateway, editais, proveniencias, eventos, ids, janela };
+  const uc = new IngerirEditaisUseCase(gateway, editais, proveniencias, eventos, ids);
+  try {
+    ctx.resultado = await uc.executar({ modalidade: 6, janela }, new AbortController().signal);
+  } catch (err) {
+    ctx.erro = err as Error;
+  }
 }
 
 When(
   'o sistema executa a ingestão para a modalidade {int} na janela de {word} a {word}',
-  async function (modalidade: number, _inicio: string, _fim: string) {
-    const { gateway, editais, proveniencias, eventos, ids, janela } = buildDeps();
-    const uc = new IngerirEditaisUseCase(gateway, editais, proveniencias, eventos, ids);
-    try {
-      ctx.resultado = await uc.executar({ modalidade, janela }, new AbortController().signal);
-    } catch (err) {
-      ctx.erro = err as Error;
-    }
+  async function (_modalidade: number, _inicio: string, _fim: string) {
+    await buildAndRun(false);
   },
 );
 
 When(
   'o sistema executa a ingestão com um AbortSignal já cancelado',
   async function () {
-    const { gateway, editais, proveniencias, eventos, ids, janela } = buildDeps(true);
-    const uc = new IngerirEditaisUseCase(gateway, editais, proveniencias, eventos, ids);
+    const janela = { inicio: new Date('2024-01-01'), fim: new Date('2024-01-31') };
+    const { db } = getFixture();
+
+    async function* emptyGenerator(): AsyncGenerator<ContratacaoData[]> { return; }
+
+    const gateway: PncpGateway = {
+      buscarContratacoesPorPublicacao: () => emptyGenerator(),
+      buscarContratacoesPorAtualizacao: async function* () {},
+      buscarContratacaoPorNumero: async () => null,
+      buscarArquivos: async () => [],
+      downloadArquivo: async () => new Uint8Array(),
+    };
+
+    const editais = new PostgresEditalRepository(db);
+    const proveniencias = new PostgresProvenienciaRepository(db);
+    const eventos: EventPublisher = { publicar: async (ev) => { ctx.eventosPublicados.push(ev); } };
+    const ids: IdProvider = { gerar: () => EditalId('abort-id') };
+
     const ac = new AbortController();
     ac.abort();
+
+    const uc = new IngerirEditaisUseCase(gateway, editais, proveniencias, eventos, ids);
     try {
       ctx.resultado = await uc.executar({ modalidade: 6, janela }, ac.signal);
     } catch (err) {
@@ -219,20 +257,26 @@ When(
 );
 
 // ---------------------------------------------------------------------------
-// Thens
+// Thens — verificam o estado no banco real
 // ---------------------------------------------------------------------------
+
+async function contarEditaisNoBanco(): Promise<number> {
+  const { pool } = getFixture();
+  const { rows } = await pool.query<{ count: string }>('SELECT count(*)::text AS count FROM editais');
+  return parseInt(rows[0]!.count, 10);
+}
 
 Then(
   'o repositório deve conter {int} edital persistido',
-  function (count: number) {
-    assert.equal(ctx.upsertCallCount, count);
+  async function (count: number) {
+    assert.equal(await contarEditaisNoBanco(), count);
   },
 );
 
 Then(
   'o repositório deve conter {int} editais persistidos',
-  function (count: number) {
-    assert.equal(ctx.upsertCallCount, count);
+  async function (count: number) {
+    assert.equal(await contarEditaisNoBanco(), count);
   },
 );
 
@@ -263,8 +307,9 @@ Then(
 
 Then(
   'o repositório deve ter recebido {int} chamada de upsert \\(não duplicação)',
-  function (count: number) {
-    assert.equal(ctx.upsertCallCount, count);
+  async function (count: number) {
+    // Com upsert idempotente no DB, o número de linhas na tabela é a métrica correta.
+    assert.equal(await contarEditaisNoBanco(), count);
   },
 );
 
@@ -295,6 +340,6 @@ Then(
   },
 );
 
-Then('nenhum edital deve ter sido persistido', function () {
-  assert.equal(ctx.upsertCallCount, 0);
+Then('nenhum edital deve ter sido persistido', async function () {
+  assert.equal(await contarEditaisNoBanco(), 0);
 });

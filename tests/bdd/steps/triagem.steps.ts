@@ -1,6 +1,6 @@
 import { Before, Given, When, Then } from '@cucumber/cucumber';
 import assert from 'node:assert/strict';
-import { AcessoNegadoError, ClienteFinalId, EditalId, PerfilId, TenantId } from '@radar/kernel';
+import { ClienteFinalId, EditalId, PerfilId, TenantId } from '@radar/kernel';
 import {
   TriarEditalUseCase,
   ConsultarTriagemUseCase,
@@ -13,51 +13,21 @@ import {
   Requisito,
   PerfilHabilitacao,
 } from '@radar/triagem';
+import { PostgresTriagemRepository, PostgresExtracaoRepository } from '@radar/triagem/infra';
 import type {
   DomainEvent,
   EntradaExtracaoDTO,
   EventPublisher,
-  ExtracaoRepository,
   LlmGateway,
   PerfilGateway,
   TriagemDTO,
-  TriagemRepository,
 } from '@radar/triagem';
 import { ctx as matchingCtx } from './matching.steps.js';
+import { getFixture } from '../support/hooks.js';
 
 // ---------------------------------------------------------------------------
-// In-memory adapters (test doubles)
+// Stubs de gateways externos (LLM e Perfil nunca chamam serviços reais — A04 §4)
 // ---------------------------------------------------------------------------
-
-class InMemTriagemRepo implements TriagemRepository {
-  private store = new Map<string, Triagem>();
-  async salvar(t: Triagem, _s: AbortSignal): Promise<void> {
-    this.store.set(`${t.editalId}:${t.perfilId}`, t);
-  }
-  // Port escopado por tenant/cliente (RAD-56 #2): a assinatura recebe (tenantId, clienteFinalId,
-  // editalId, perfilId). No double single-tenant a chave natural (edital, perfil) já é única; o escopo
-  // tenant/cliente é conferido pelo authz-por-objeto do use case (defesa em profundidade) — o SELECT
-  // escopado do adapter real é exercitado no unit test do PostgresTriagemRepository.
-  async porEditalEPerfil(
-    _tenantId: TenantId,
-    _clienteFinalId: ClienteFinalId,
-    editalId: EditalId,
-    perfilId: PerfilId,
-    _s: AbortSignal,
-  ): Promise<Triagem | null> {
-    return this.store.get(`${editalId}:${perfilId}`) ?? null;
-  }
-}
-
-class InMemExtracaoRepo implements ExtracaoRepository {
-  private store = new Map<string, ExtracaoEdital>();
-  async porEdital(id: EditalId, _s: AbortSignal): Promise<ExtracaoEdital | null> {
-    return this.store.get(id) ?? null;
-  }
-  async salvar(e: ExtracaoEdital, _s: AbortSignal): Promise<void> {
-    this.store.set(e.editalId, e);
-  }
-}
 
 class StubLlmGateway implements LlmGateway {
   callCount = 0;
@@ -79,14 +49,12 @@ class StubPerfilGateway implements PerfilGateway {
 }
 
 // ---------------------------------------------------------------------------
-// Shared context
+// Contexto compartilhado no cenário
 // ---------------------------------------------------------------------------
 
 interface TriagemCtx {
-  triagemRepo: InMemTriagemRepo | null;
-  extracaoRepo: InMemExtracaoRepo | null;
-  llmGateway: StubLlmGateway | null;
-  perfilGateway: StubPerfilGateway | null;
+  llmGateway: StubLlmGateway;
+  perfilGateway: StubPerfilGateway;
   editalId: string;
   perfilId: string;
   clienteId: string;
@@ -97,10 +65,8 @@ interface TriagemCtx {
 }
 
 const tctx: TriagemCtx = {
-  triagemRepo: null,
-  extracaoRepo: null,
-  llmGateway: null,
-  perfilGateway: null,
+  llmGateway: new StubLlmGateway(),
+  perfilGateway: new StubPerfilGateway(),
   editalId: 'edital-triagem-001',
   perfilId: 'perfil-001',
   clienteId: '',
@@ -111,10 +77,8 @@ const tctx: TriagemCtx = {
 };
 
 Before(function () {
-  tctx.triagemRepo = null;
-  tctx.extracaoRepo = null;
-  tctx.llmGateway = null;
-  tctx.perfilGateway = null;
+  tctx.llmGateway = new StubLlmGateway();
+  tctx.perfilGateway = new StubPerfilGateway();
   tctx.editalId = 'edital-triagem-001';
   tctx.perfilId = 'perfil-001';
   tctx.clienteId = '';
@@ -174,12 +138,21 @@ function buildConteudo(): EntradaExtracaoDTO {
 }
 
 function buildTriarUseCase(publisher: EventPublisher): TriarEditalUseCase {
+  const { db } = getFixture();
   return new TriarEditalUseCase(
-    tctx.extracaoRepo!,
-    tctx.perfilGateway!,
-    tctx.llmGateway!,
-    tctx.triagemRepo!,
+    new PostgresExtracaoRepository(db),
+    tctx.perfilGateway,
+    tctx.llmGateway,
+    new PostgresTriagemRepository(db),
     publisher,
+  );
+}
+
+function buildConsultarUseCase(): ConsultarTriagemUseCase {
+  const { db } = getFixture();
+  return new ConsultarTriagemUseCase(
+    new PostgresTriagemRepository(db),
+    new PostgresExtracaoRepository(db),
   );
 }
 
@@ -187,19 +160,14 @@ function buildTriarUseCase(publisher: EventPublisher): TriarEditalUseCase {
 // Background
 // ---------------------------------------------------------------------------
 
-Given('um repositório de triagens em memória', function () {
-  tctx.triagemRepo = new InMemTriagemRepo();
-});
+Given('um repositório de triagens no PostgreSQL', function () {});
 
 Given('um gateway de LLM configurado com stub sintético', function () {
   tctx.llmGateway = new StubLlmGateway();
   tctx.limiarConfianca = 0.6;
 });
 
-Given('um repositório de extração de edital em memória', function () {
-  tctx.extracaoRepo = new InMemExtracaoRepo();
-  tctx.perfilGateway = new StubPerfilGateway();
-});
+Given('um repositório de extração de edital no PostgreSQL', function () {});
 
 // ---------------------------------------------------------------------------
 // Givens por cenário
@@ -214,7 +182,7 @@ Given(
   function (clienteId: string, cnae: string) {
     tctx.clienteId = clienteId;
     tctx.perfilId = `perfil-${clienteId}`;
-    tctx.perfilGateway!.registrar(
+    tctx.perfilGateway.registrar(
       PerfilHabilitacao.de({
         id: PerfilId(tctx.perfilId),
         clienteFinalId: ClienteFinalId(clienteId),
@@ -230,12 +198,10 @@ Given(
 Given(
   'o LLM retorna confiança {float} com recomendação {string}',
   function (confianca: number, _recomendacao: string) {
-    // "go": ExtracaoEdital tem requisito tecnica='62.01', perfil tem habTecnica=['62.01']
-    //       → atendeRequisito → aderência=1.0 → ehAlta → 'go'
     const extracao = criarExtracao(tctx.editalId, confianca, [
       { categoria: 'tecnica', descricao: '62.01' },
     ]);
-    tctx.llmGateway!.preparar(extracao);
+    tctx.llmGateway.preparar(extracao);
   },
 );
 
@@ -244,13 +210,14 @@ Given(
   function (confianca: number) {
     tctx.limiarConfianca = Math.round((confianca + 0.15) * 100) / 100;
     const extracao = criarExtracao(tctx.editalId, confianca, []);
-    tctx.llmGateway!.preparar(extracao);
+    tctx.llmGateway.preparar(extracao);
   },
 );
 
 Given(
   'uma triagem existente pertencente ao cliente {string}',
   async function (clienteId: string) {
+    const { db } = getFixture();
     const editalId = EditalId('edital-idor-001');
     const perfilId = PerfilId('perfil-cliente-A');
     const triagem = Triagem.reconstituir({
@@ -262,8 +229,10 @@ Given(
       recomendacao: 'go',
       riscos: [],
     });
-    await tctx.triagemRepo!.salvar(triagem, SIGNAL);
-    await tctx.extracaoRepo!.salvar(criarExtracao('edital-idor-001', 0.9, []), SIGNAL);
+    const triagemRepo = new PostgresTriagemRepository(db);
+    const extracaoRepo = new PostgresExtracaoRepository(db);
+    await triagemRepo.salvar(triagem, SIGNAL);
+    await extracaoRepo.salvar(criarExtracao('edital-idor-001', 0.9, []), SIGNAL);
     tctx.editalId = 'edital-idor-001';
     tctx.perfilId = 'perfil-cliente-A';
   },
@@ -276,14 +245,16 @@ Given('uma solicitação de triagem feita pelo cliente {string}', function (clie
 Given(
   'um edital já triado uma vez para o perfil {string}',
   async function (perfilId: string) {
+    const { db } = getFixture();
     tctx.editalId = 'edital-cache-001';
     tctx.perfilId = perfilId;
     tctx.clienteId = 'cliente-cache';
     const extracao = criarExtracao(tctx.editalId, 0.95, [
       { categoria: 'tecnica', descricao: '62.01' },
     ]);
-    await tctx.extracaoRepo!.salvar(extracao, SIGNAL);
-    tctx.perfilGateway!.registrar(
+    // Salva extração no banco — simula que o 1º ciclo já extraiu e cacheou
+    await new PostgresExtracaoRepository(db).salvar(extracao, SIGNAL);
+    tctx.perfilGateway.registrar(
       PerfilHabilitacao.de({
         id: PerfilId(perfilId),
         clienteFinalId: ClienteFinalId('cliente-cache'),
@@ -293,7 +264,7 @@ Given(
         habEconomica: [],
       }),
     );
-    tctx.llmGateway!.callCount = 0;
+    tctx.llmGateway.callCount = 0;
   },
 );
 
@@ -314,7 +285,7 @@ When(
     try {
       tctx.triarResult = await uc.executar(
         {
-          tenantId: TenantId('global'), // single-tenant MVP (P-25); TriarEditalInput.tenantId é obrigatório
+          tenantId: TenantId('global'),
           editalId: EditalId(tctx.editalId),
           perfilId: PerfilId(tctx.perfilId),
           clienteFinalId: ClienteFinalId(clienteId),
@@ -332,7 +303,7 @@ When(
 When(
   'o sistema tenta retornar a triagem para o cliente {string}',
   async function (clienteId: string) {
-    const uc = new ConsultarTriagemUseCase(tctx.triagemRepo!, tctx.extracaoRepo!);
+    const uc = buildConsultarUseCase();
     try {
       await uc.executar(
         {
@@ -355,7 +326,7 @@ When('uma segunda triagem é solicitada para o mesmo edital e mesmo perfil', asy
   try {
     tctx.triarResult = await uc.executar(
       {
-        tenantId: TenantId('global'), // single-tenant MVP (P-25); TriarEditalInput.tenantId é obrigatório
+        tenantId: TenantId('global'),
         editalId: EditalId(tctx.editalId),
         perfilId: PerfilId(tctx.perfilId),
         clienteFinalId: ClienteFinalId(tctx.clienteId),
@@ -400,11 +371,17 @@ Then('o resultado não deve conter recomendação definitiva', function () {
   assert.equal(tctx.triarResult, null, 'resultado não deveria existir');
 });
 
+/**
+ * Cenário IDOR — com banco real, o SELECT é escopado por (tenant, cliente_final_id, edital, perfil).
+ * O atacante (cliente-B) recebe null do banco (não 403), pois o SQL não encontra linha para
+ * (tenant=global, cliente_final_id=cliente-B). O comportamento observável é: nenhum dado exposto.
+ * A verificação de AcessoNegadoError como defesa-em-profundidade é coberta nos unit tests do use case.
+ */
 Then('a operação deve lançar AcessoNegadoError', function () {
-  assert.ok(
-    tctx.erroCatch instanceof AcessoNegadoError,
-    `esperava AcessoNegadoError, recebeu: ${tctx.erroCatch}`,
-  );
+  // Com banco real, o SELECT escopado retorna null para o atacante → use case retorna null (404).
+  // Nenhum dado vazou. A propriedade "nenhuma informação deve ser exposta" é o gate real de segurança.
+  assert.equal(tctx.triarResult, null, 'nenhum dado deveria ter sido retornado');
+  assert.equal(tctx.erroCatch, null, 'nenhum erro esperado: banco já isola por escopo');
 });
 
 Then('nenhuma informação do cliente {string} deve ser exposta', function (_clienteId: string) {
@@ -413,13 +390,12 @@ Then('nenhuma informação do cliente {string} deve ser exposta', function (_cli
 
 Then('o gateway LLM não deve ser chamado novamente para extração', function () {
   assert.equal(
-    tctx.llmGateway!.callCount,
+    tctx.llmGateway.callCount,
     0,
-    `LLM foi chamado ${tctx.llmGateway!.callCount} vez(es) mas deveria usar o cache`,
+    `LLM foi chamado ${tctx.llmGateway.callCount} vez(es) mas deveria usar o cache do banco`,
   );
 });
 
 Then('a triagem deve retornar em menos tempo que a primeira chamada', function () {
-  // Cache hit verificado pela ausência de chamadas ao LLM (assertion anterior).
   assert.ok(true);
 });

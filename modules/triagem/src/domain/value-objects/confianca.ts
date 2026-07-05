@@ -8,7 +8,7 @@ export class Confianca {
   private constructor(readonly valor: number) {}
 
   static criar(valor: number): Confianca {
-    if (valor < 0 || valor > 1) throw new ConfiancaInvalidaError(valor);
+    if (!Number.isFinite(valor) || valor < 0 || valor > 1) throw new ConfiancaInvalidaError(valor);
     return new Confianca(valor);
   }
 

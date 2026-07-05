@@ -12,7 +12,7 @@ Feature: Idempotência da ingestão de editais do PNCP
 
   Background:
     Given um gateway PNCP configurado com dados sintéticos
-    And um repositório de editais em memória
+    And um repositório de editais no PostgreSQL
     And um publicador de eventos em memória
 
   Scenario: Ingerir edital pela primeira vez

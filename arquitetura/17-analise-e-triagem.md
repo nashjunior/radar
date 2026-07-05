@@ -301,10 +301,12 @@ export class PerfilHabilitacao {
     readonly habEconomica: string[],             // campos definidos em docs/12 (P-50)
   ) {}
 
-  static de(dto: PerfilParaTriagemDTO): PerfilHabilitacao {
+  // Factory usado pelo PerfilHabilitacaoAdapter (infra) após o ACL traduzir o modelo externo.
+  // RAD-56: IDs chegam já branded (o cast string→PerfilId/ClienteFinalId é responsabilidade do adapter).
+  static de(props: { id: PerfilId; clienteFinalId: ClienteFinalId; habJuridica: string[]; habFiscal: string[]; habTecnica: string[]; habEconomica: string[] }): PerfilHabilitacao {
     return new PerfilHabilitacao(
-      dto.id as PerfilId, dto.clienteFinalId as ClienteFinalId,
-      dto.habJuridica, dto.habFiscal, dto.habTecnica, dto.habEconomica,
+      props.id, props.clienteFinalId,
+      props.habJuridica, props.habFiscal, props.habTecnica, props.habEconomica,
     );
   }
 
@@ -389,8 +391,9 @@ export interface TriagemRepository {
 // Como a Triagem NÃO possui o Perfil, o port é `PerfilGateway`. É um port consumer-defined, distinto do
 // `IdentidadeGateway` da Governança (§ docs/14 §5) — mesmo padrão (Gateway), consumidores e contratos
 // diferentes; só o `tenantId` é compartilhado (Shared Kernel).
+// RAD-56: ACL moveu para o adapter de infra → port devolve o modelo local conformante diretamente.
 export interface PerfilGateway {
-  porId(id: PerfilId, signal?: AbortSignal): Promise<PerfilParaTriagemDTO | null>;
+  porId(id: PerfilId, signal?: AbortSignal): Promise<PerfilHabilitacao | null>;
 }
 
 // Anexos do edital (PDFs) no object storage — baixados pela Ingestão (BaixarAnexosEditalUseCase,
@@ -424,14 +427,8 @@ export interface EntradaExtracaoDTO {
   // NUNCA inclui classe crítica / estratégia comercial — contexto mínimo ao LLM (P-54).
 }
 
-export interface PerfilParaTriagemDTO {
-  id: string;
-  clienteFinalId: string;
-  habJuridica: string[];
-  habFiscal: string[];
-  habTecnica: string[];
-  habEconomica: string[];
-}
+// PerfilParaTriagemDTO removido (RAD-56): o PerfilGateway agora devolve PerfilHabilitacao diretamente;
+// o ACL (cast string→branded IDs) vive no PerfilHabilitacaoAdapter (infra), não na application.
 
 export interface ExtracaoEditalDTO {
   editalId: string;
@@ -477,11 +474,13 @@ export interface ExtrairEditalInput {
 }
 // Input do worker: o consumidor de `triagem.solicitada` hidrata o conteúdo do edital
 // (texto/anexos) e o limiar antes de invocar o use case (A03 §4.5 usa editalTexto no input).
+// RAD-56: tenantId é campo obrigatório do input (resolvido no worker/borda; P-25: 'global' no MVP).
+// signal é parâmetro separado de executar(), não parte do DTO de entrada.
 export interface TriarEditalInput {
   editalId: string; perfilId: string; clienteFinalId: string;
+  tenantId: string;              // Shared Kernel (docs/13 §5) — 'global' no MVP single-tenant (P-25)
   conteudo: EntradaExtracaoDTO;  // hidratado pelo worker a partir do Catálogo/ObjectStorage
   limiarConfianca: number;       // da política de confiança (docs/10 §4, P-19)
-  signal?: AbortSignal;
 }
 ```
 
@@ -532,7 +531,8 @@ export class ConsultarTriagemUseCase {
     input: { tenantId: TenantId; editalId: EditalId; perfilId: PerfilId; clienteFinalId: ClienteFinalId },
     signal?: AbortSignal,
   ): Promise<TriagemLeituraDTO | null> {
-    const triagem = await this.triagens.porEditalEPerfil(input.editalId, input.perfilId, signal);
+    // RAD-56: porEditalEPerfil recebe (tenantId, clienteFinalId, editalId, perfilId, signal) — 5 params.
+    const triagem = await this.triagens.porEditalEPerfil(input.tenantId, input.clienteFinalId, input.editalId, input.perfilId, signal);
     if (!triagem) return null;                         // sem triagem → BFF 404 → SPA null
 
     // Autorização POR OBJETO (P-51 / AB1), nunca por filtro de query: escopo divergente lança —
@@ -628,32 +628,33 @@ export class TriarEditalUseCase {
     private readonly eventos: EventPublisher,
   ) {}
 
-  async executar(input: TriarEditalInput): Promise<TriagemDTO> {
+  async executar(input: TriarEditalInput, signal?: AbortSignal): Promise<TriagemDTO> {
     const editalId = input.editalId as EditalId;
     const perfilId = input.perfilId as PerfilId;
+    const tenantId = input.tenantId as TenantId;  // 'global' no MVP single-tenant (P-25)
 
-    // 1. Extração CACHEADA por edital (P-45). Cache-miss → 1 chamada de LLM (A10 §4.5).
-    let extracao = await this.extracoes.porEdital(editalId, input.signal);
+    // 1. Autorização POR OBJETO (P-51 / AB1) ANTES da extração paga: o perfil deve pertencer ao
+    //    clienteFinal solicitante. Checá-lo primeiro fecha a chamada PAGA de LLM (passo 2) atrás do
+    //    authz — protege contra fila envenenada (defesa em profundidade além de SolicitarTriagem).
+    //    RAD-56: PerfilGateway.porId() devolve PerfilHabilitacao diretamente (ACL no adapter de infra).
+    const perfil = await this.perfis.porId(perfilId, signal);
+    if (!perfil) throw new PerfilNaoEncontradoError(input.perfilId);
+    if (perfil.clienteFinalId !== input.clienteFinalId) throw new AcessoNegadoError();
+
+    // 2. Extração CACHEADA por edital (P-45). Cache-miss → 1 chamada de LLM (A10 §4.5).
+    let extracao = await this.extracoes.porEdital(editalId, signal);
     if (!extracao) {
-      extracao = await this.llm.extrair(input.conteudo, input.signal);
-      await this.extracoes.salvar(extracao, input.signal);
+      extracao = await this.llm.extrair(input.conteudo, signal);
+      await this.extracoes.salvar(extracao, signal);
     }
 
-    // 2. Gate de confiança (docs/10 §4). Abaixo do limiar → leitura assistida (docs/10 §6),
+    // 3. Gate de confiança (docs/10 §4). Abaixo do limiar → leitura assistida (docs/10 §6),
     //    nunca apresentar palpite como certeza. Limiar vem da política por campo (P-19).
     if (!extracao.suficiente(input.limiarConfianca)) throw new ConfiancaInsuficienteError();
 
-    // 3. Autorização POR OBJETO (P-51 / AB1): o perfil deve pertencer ao clienteFinal que solicita.
-    //    Reforça a checagem de SolicitarTriagem — defesa em profundidade contra IDOR/BOLA.
-    const perfilDto = await this.perfis.porId(perfilId, input.signal);
-    if (!perfilDto) throw new PerfilNaoEncontradoError(input.perfilId);
-    if (perfilDto.clienteFinalId !== input.clienteFinalId) throw new AcessoNegadoError();
-    const perfil = PerfilHabilitacao.de(perfilDto);
-
     // 4. Aderência POR PERFIL (não cacheável) — regra de domínio pura.
-    const tenantId = 'global' as TenantId;   // MVP single-tenant (P-25); real no Next
     const triagem = Triagem.avaliar(extracao, perfil, tenantId);
-    await this.triagens.salvar(triagem, input.signal);
+    await this.triagens.salvar(triagem, signal);
 
     // 5. triagem.concluida → API/front (A03 §3). Payload leva campos + citações + confiança.
     await this.eventos.publicar(new TriagemConcluida({
@@ -665,7 +666,7 @@ export class TriarEditalUseCase {
       aderencia: triagem.aderencia.valor,
       recomendacao: triagem.recomendacao,
       riscos: triagem.riscos.map(r => r.descricao),
-    }), input.signal);
+    }), signal);
 
     return TriagemDTO.de(triagem);   // a UI exibe com citação em um clique; usuário decide (HITL)
   }

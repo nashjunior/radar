@@ -6,6 +6,7 @@ import {
   CriterioDeMonitoramento,
   PalavrasChave,
 } from '@radar/matching';
+import { PostgresCriterioRepository, PostgresAlertaRepository, CryptoAlertaIdProvider } from '@radar/matching/infra';
 import type {
   AlertaDTO,
   CriterioComScore,
@@ -15,9 +16,9 @@ import type {
   CriterioRepository,
   EditalMatchingView,
   EventPublisher,
-  Alerta,
   DomainEvent,
 } from '@radar/matching';
+import { getFixture } from '../support/hooks.js';
 
 // ---------------------------------------------------------------------------
 // Contexto compartilhado no cenário
@@ -26,7 +27,6 @@ import type {
 interface Ctx {
   criterios: CriterioDeMonitoramento[];
   editalObjeto: string;
-  alertasSalvos: Alerta[];
   eventosPublicados: DomainEvent[];
   alertasRetornados: AlertaDTO[];
 }
@@ -34,7 +34,6 @@ interface Ctx {
 const ctx: Ctx = {
   criterios: [],
   editalObjeto: '',
-  alertasSalvos: [],
   eventosPublicados: [],
   alertasRetornados: [],
 };
@@ -42,7 +41,6 @@ const ctx: Ctx = {
 Before(function () {
   ctx.criterios = [];
   ctx.editalObjeto = '';
-  ctx.alertasSalvos = [];
   ctx.eventosPublicados = [];
   ctx.alertasRetornados = [];
 });
@@ -50,7 +48,9 @@ Before(function () {
 export { ctx };
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Scoring in-memory (determinístico para BDD)
+// BDD testa COMPORTAMENTO (alerta gerado ou não); a qualidade do SQL ts_rank é
+// coberta nos unit tests do PostgresCriterioRepository.
 // ---------------------------------------------------------------------------
 
 function computarScore(objeto: string, palavras: string[]): number {
@@ -62,8 +62,59 @@ function computarScore(objeto: string, palavras: string[]): number {
   return acertos.length > 0 ? 0.8 : 0.1;
 }
 
-function buildUseCase(): CasarEditalComCriteriosUseCase {
-  const criteriosAtivos = [...ctx.criterios];
+// ---------------------------------------------------------------------------
+// Repositório híbrido: persiste no Postgres, pontua em memória (BDD determinístico)
+// ---------------------------------------------------------------------------
+
+class BddCriterioRepository implements CriterioRepository {
+  private readonly real: PostgresCriterioRepository;
+  private activeForScoring: CriterioDeMonitoramento[] = [];
+
+  constructor(real: PostgresCriterioRepository) {
+    this.real = real;
+  }
+
+  setForScoring(criterios: CriterioDeMonitoramento[]): void {
+    this.activeForScoring = criterios;
+  }
+
+  salvar(criterio: CriterioDeMonitoramento, signal: AbortSignal) {
+    return this.real.salvar(criterio, signal);
+  }
+
+  porId(id: CriterioId, signal: AbortSignal) {
+    return this.real.porId(id, signal);
+  }
+
+  listarAtivos(signal: AbortSignal) {
+    return this.real.listarAtivos(signal);
+  }
+
+  async casarComEdital(edital: EditalParaMatchingDTO, _signal: AbortSignal): Promise<CriterioComScore[]> {
+    return this.activeForScoring.map((criterio): CriterioComScore => {
+      const palavras = [...(criterio.palavrasChave?.termos ?? [])];
+      const score = computarScore(edital.objetoDescricao, palavras);
+      return { criterio, score };
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+async function buildUseCase(): Promise<CasarEditalComCriteriosUseCase> {
+  const { db } = getFixture();
+  const signal = new AbortController().signal;
+
+  const realCriterioRepo = new PostgresCriterioRepository(db);
+  const criterioRepo = new BddCriterioRepository(realCriterioRepo);
+
+  // Persiste critérios do cenário no banco real
+  for (const c of ctx.criterios) {
+    await realCriterioRepo.salvar(c, signal);
+  }
+  criterioRepo.setForScoring(ctx.criterios);
 
   const editaiView: EditalMatchingView = {
     porId: async (id) => ({
@@ -78,33 +129,13 @@ function buildUseCase(): CasarEditalComCriteriosUseCase {
     }),
   };
 
-  const criterioRepo: CriterioRepository = {
-    salvar: async () => {},
-    porId: async () => null,
-    listarAtivos: async () => criteriosAtivos,
-    casarComEdital: async (edital) => {
-      return criteriosAtivos.map((criterio): CriterioComScore => {
-        const palavras = criterio.palavrasChave?.termos ?? [];
-        const score = computarScore(edital.objetoDescricao, palavras);
-        return { criterio, score };
-      });
-    },
-  };
-
-  const alertaRepo: AlertaRepository = {
-    salvar: async (alerta) => { ctx.alertasSalvos.push(alerta); },
-    porId: async () => null,
-    atualizarFeedback: async () => {},
-  };
+  const alertaRepo = new PostgresAlertaRepository(db);
 
   const publisher: EventPublisher = {
     publicar: async (ev) => { ctx.eventosPublicados.push(ev); },
   };
 
-  let alertaSeq = 0;
-  const alertaIds: AlertaIdProvider = {
-    gerar: () => AlertaId(`alerta-${++alertaSeq}`),
-  };
+  const alertaIds = new CryptoAlertaIdProvider();
 
   return new CasarEditalComCriteriosUseCase(
     editaiView, criterioRepo, alertaRepo, publisher, alertaIds,
@@ -124,8 +155,8 @@ function criarCriterio(clienteId: string, tenantId: string, palavras: string[]):
 // Givens
 // ---------------------------------------------------------------------------
 
-Given('um repositório de critérios em memória', function () {});
-Given('um repositório de alertas em memória', function () {});
+Given('um repositório de critérios no PostgreSQL', function () {});
+Given('um repositório de alertas no PostgreSQL', function () {});
 
 Given(
   'um critério de monitoramento com palavras-chave {string}',
@@ -165,7 +196,7 @@ Given(
 When(
   'o sistema executa o casamento do edital com os critérios',
   async function () {
-    const uc = buildUseCase();
+    const uc = await buildUseCase();
     ctx.alertasRetornados = await uc.executar(
       { editalId: EditalId('edital-test-001') },
       new AbortController().signal,
@@ -174,15 +205,31 @@ When(
 );
 
 // ---------------------------------------------------------------------------
-// Thens
+// Thens — verificam alertas persistidos no banco real
 // ---------------------------------------------------------------------------
 
-Then('um alerta deve ter sido gerado para o critério', function () {
-  assert.ok(ctx.alertasSalvos.length >= 1, 'nenhum alerta foi salvo');
+async function contarAlertasNoBanco(): Promise<number> {
+  const { pool } = getFixture();
+  const { rows } = await pool.query<{ count: string }>('SELECT count(*)::text AS count FROM alerta');
+  return parseInt(rows[0]!.count, 10);
+}
+
+async function buscarAlertasNoBanco() {
+  const { pool } = getFixture();
+  const { rows } = await pool.query<{
+    id: string; tenant_id: string; cliente_final_id: string; criterio_id: string;
+    edital_id: string; aderencia: string;
+  }>('SELECT * FROM alerta');
+  return rows;
+}
+
+Then('um alerta deve ter sido gerado para o critério', async function () {
+  assert.ok(ctx.alertasRetornados.length >= 1, 'nenhum alerta foi retornado pelo use case');
+  assert.ok(await contarAlertasNoBanco() >= 1, 'nenhum alerta foi persistido no banco');
 });
 
-Then('o alerta deve ter sido persistido no repositório', function () {
-  assert.ok(ctx.alertasSalvos.length >= 1);
+Then('o alerta deve ter sido persistido no repositório', async function () {
+  assert.ok(await contarAlertasNoBanco() >= 1);
 });
 
 Then('o evento {string} deve ter sido publicado', function (tipo: string) {
@@ -190,8 +237,9 @@ Then('o evento {string} deve ter sido publicado', function (tipo: string) {
   assert.ok(encontrado, `evento '${tipo}' não foi publicado`);
 });
 
-Then('nenhum alerta deve ter sido gerado', function () {
-  assert.equal(ctx.alertasSalvos.length, 0);
+Then('nenhum alerta deve ter sido gerado', async function () {
+  assert.equal(ctx.alertasRetornados.length, 0);
+  assert.equal(await contarAlertasNoBanco(), 0);
 });
 
 Then('nenhum evento deve ter sido publicado', function () {
@@ -200,30 +248,29 @@ Then('nenhum evento deve ter sido publicado', function () {
 
 Then(
   'somente o critério do cliente-A deve ter gerado alerta',
-  function () {
-    assert.equal(ctx.alertasSalvos.length, 1);
-    assert.equal(ctx.alertasSalvos[0]!.clienteFinalId, ClienteFinalId('cliente-A'));
+  async function () {
+    const alertas = await buscarAlertasNoBanco();
+    assert.equal(alertas.length, 1, `esperava 1 alerta, recebeu ${alertas.length}`);
+    assert.equal(alertas[0]!.cliente_final_id, ClienteFinalId('cliente-A'));
   },
 );
 
 Then(
   'somente o critério do tenant {string} deve ter gerado alerta',
-  function (tenantId: string) {
-    assert.equal(ctx.alertasSalvos.length, 1);
-    assert.equal(ctx.alertasSalvos[0]!.tenantId, TenantId(tenantId));
+  async function (tenantId: string) {
+    const alertas = await buscarAlertasNoBanco();
+    assert.equal(alertas.length, 1, `esperava 1 alerta, recebeu ${alertas.length}`);
+    assert.equal(alertas[0]!.tenant_id, TenantId(tenantId));
   },
 );
 
 Then(
   'o alerta do tenant {string} não contém dados do tenant {string}',
-  function (tenantEsperado: string, tenantProibido: string) {
-    const alertasDoTenantProibido = ctx.alertasSalvos.filter(
-      (a) => a.tenantId === TenantId(tenantProibido),
-    );
-    assert.equal(alertasDoTenantProibido.length, 0);
-    const alertasDoTenantEsperado = ctx.alertasSalvos.filter(
-      (a) => a.tenantId === TenantId(tenantEsperado),
-    );
-    assert.ok(alertasDoTenantEsperado.length >= 1);
+  async function (tenantEsperado: string, tenantProibido: string) {
+    const alertas = await buscarAlertasNoBanco();
+    const doProibido = alertas.filter((a) => a.tenant_id === TenantId(tenantProibido));
+    assert.equal(doProibido.length, 0, `dados do tenant proibido vazaram: ${tenantProibido}`);
+    const doEsperado = alertas.filter((a) => a.tenant_id === TenantId(tenantEsperado));
+    assert.ok(doEsperado.length >= 1, `nenhum alerta para o tenant esperado: ${tenantEsperado}`);
   },
 );

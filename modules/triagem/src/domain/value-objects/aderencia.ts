@@ -8,7 +8,7 @@ export class Aderencia {
   private constructor(readonly valor: number) {}
 
   static criar(valor: number): Aderencia {
-    if (valor < 0 || valor > 1) throw new AderenciaInvalidaError(valor);
+    if (!Number.isFinite(valor) || valor < 0 || valor > 1) throw new AderenciaInvalidaError(valor);
     return new Aderencia(valor);
   }
 

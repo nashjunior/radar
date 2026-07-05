@@ -10,8 +10,8 @@ Feature: Aderência e postura recall-alto no casamento de editais
   É preferível um alerta a mais a deixar passar um edital relevante.
 
   Background:
-    Given um repositório de critérios em memória
-    And um repositório de alertas em memória
+    Given um repositório de critérios no PostgreSQL
+    And um repositório de alertas no PostgreSQL
     And um publicador de eventos em memória
 
   Scenario: Edital acima do limiar de aderência gera alerta

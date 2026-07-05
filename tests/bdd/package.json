@@ -4,9 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --import tsx/esm node_modules/@cucumber/cucumber/bin/cucumber.js --import steps/ingestao.steps.ts --import steps/matching.steps.ts --import steps/triagem.steps.ts",
-    "test:matching": "node --import tsx/esm node_modules/@cucumber/cucumber/bin/cucumber.js --import steps/matching.steps.ts features/matching/**/*.feature",
-    "test:ingestao": "node --import tsx/esm node_modules/@cucumber/cucumber/bin/cucumber.js --import steps/ingestao.steps.ts features/ingestao/**/*.feature"
+    "test": "node --import tsx/esm node_modules/@cucumber/cucumber/bin/cucumber.js --import support/hooks.ts --import steps/ingestao.steps.ts --import steps/matching.steps.ts --import steps/triagem.steps.ts",
+    "test:matching": "node --import tsx/esm node_modules/@cucumber/cucumber/bin/cucumber.js --import support/hooks.ts --import steps/matching.steps.ts features/matching/**/*.feature",
+    "test:ingestao": "node --import tsx/esm node_modules/@cucumber/cucumber/bin/cucumber.js --import support/hooks.ts --import steps/ingestao.steps.ts features/ingestao/**/*.feature",
+    "test:triagem": "node --import tsx/esm node_modules/@cucumber/cucumber/bin/cucumber.js --import support/hooks.ts --import steps/triagem.steps.ts features/triagem/**/*.feature"
   },
   "dependencies": {
     "@radar/ingestao": "workspace:*",
@@ -16,6 +17,10 @@
   },
   "devDependencies": {
     "@cucumber/cucumber": "^11.0.0",
+    "@testcontainers/postgresql": "^10.0.0",
+    "@types/pg": "^8.11.10",
+    "pg": "^8.13.3",
+    "testcontainers": "^10.0.0",
     "tsx": "^4.0.0",
     "typescript": "^5.7.2"
   }

@@ -10,9 +10,9 @@ Feature: Decisão de triagem de editais (go/no-go)
   Autorização por objeto (IDOR): somente o dono do perfil acessa a triagem.
 
   Background:
-    Given um repositório de triagens em memória
+    Given um repositório de triagens no PostgreSQL
     And um gateway de LLM configurado com stub sintético
-    And um repositório de extração de edital em memória
+    And um repositório de extração de edital no PostgreSQL
 
   Scenario: Triagem com confiança da IA suficiente — retorna recomendação go/no-go
     Given um edital com objeto "Aquisição de software de TI" disponível para triagem

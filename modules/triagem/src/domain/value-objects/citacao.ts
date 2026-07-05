@@ -13,7 +13,7 @@ export class Citacao {
   ) {}
 
   static criar(pagina: number, trecho: string, secao?: string): Citacao {
-    if (pagina < 1 || trecho.trim().length === 0) throw new CitacaoInvalidaError();
+    if (!Number.isFinite(pagina) || pagina < 1 || trecho.trim().length === 0) throw new CitacaoInvalidaError();
     return new Citacao(pagina, secao ?? null, trecho.trim());
   }
 

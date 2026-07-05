@@ -186,6 +186,18 @@ importers:
       '@cucumber/cucumber':
         specifier: ^11.0.0
         version: 11.3.0
+      '@testcontainers/postgresql':
+        specifier: ^10.0.0
+        version: 10.28.0
+      '@types/pg':
+        specifier: ^8.11.10
+        version: 8.20.0
+      pg:
+        specifier: ^8.13.3
+        version: 8.22.0
+      testcontainers:
+        specifier: ^10.0.0
+        version: 10.28.0
       tsx:
         specifier: ^4.0.0
         version: 4.23.0
