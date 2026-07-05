@@ -20,6 +20,15 @@ export class PncpPollingScheduler {
     private readonly ingerirEditais: Pick<IngerirEditaisUseCase, 'executar'>,
     private readonly config: PncpPollingSchedulerConfig,
   ) {
+    if (config.modalidades.length === 0) {
+      throw new RangeError('modalidades não pode ser vazio');
+    }
+    if (!Number.isFinite(config.intervaloMs) || config.intervaloMs <= 0) {
+      throw new RangeError('intervaloMs deve ser > 0 e finito');
+    }
+    if (!Number.isFinite(config.tamanhoJanelaMs) || config.tamanhoJanelaMs <= 0) {
+      throw new RangeError('tamanhoJanelaMs deve ser > 0 e finito');
+    }
     this.agora = config.agora ?? (() => new Date());
   }
 

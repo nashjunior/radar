@@ -54,6 +54,57 @@ describe('PncpPollingScheduler', () => {
     expect(resultados).toHaveLength(2);
   });
 
+  describe('guardrails de config', () => {
+    const executar = vi.fn();
+    const useCase = { executar } as Pick<IngerirEditaisUseCase, 'executar'>;
+    const configValida = {
+      modalidades: [6] as readonly number[],
+      intervaloMs: 30_000,
+      tamanhoJanelaMs: 30_000,
+    };
+
+    it('lanca RangeError se modalidades estiver vazio', () => {
+      expect(
+        () => new PncpPollingScheduler(useCase, { ...configValida, modalidades: [] }),
+      ).toThrow(RangeError);
+    });
+
+    it('lanca RangeError se intervaloMs <= 0', () => {
+      expect(
+        () => new PncpPollingScheduler(useCase, { ...configValida, intervaloMs: 0 }),
+      ).toThrow(RangeError);
+      expect(
+        () => new PncpPollingScheduler(useCase, { ...configValida, intervaloMs: -1 }),
+      ).toThrow(RangeError);
+    });
+
+    it('lanca RangeError se tamanhoJanelaMs <= 0', () => {
+      expect(
+        () => new PncpPollingScheduler(useCase, { ...configValida, tamanhoJanelaMs: 0 }),
+      ).toThrow(RangeError);
+      expect(
+        () => new PncpPollingScheduler(useCase, { ...configValida, tamanhoJanelaMs: -100 }),
+      ).toThrow(RangeError);
+    });
+
+    it('constroi e executa um ciclo com config valida', async () => {
+      const signal = new AbortController().signal;
+      executar.mockResolvedValueOnce({
+        modalidade: 6,
+        janela: { inicio: '', fim: '' },
+        ingeridos: 0,
+        atualizados: 0,
+        erros: 0,
+      });
+      const scheduler = new PncpPollingScheduler(useCase, {
+        ...configValida,
+        agora: () => new Date('2026-07-05T12:00:00.000Z'),
+      });
+      const resultados = await scheduler.executarCiclo(signal);
+      expect(resultados).toHaveLength(1);
+    });
+  });
+
   it('nao chama o use case quando o signal ja esta abortado', async () => {
     const ctrl = new AbortController();
     ctrl.abort();
