@@ -146,5 +146,29 @@ describe('RegistrarFeedbackTriagemUseCase', () => {
 
       expect(triagens.porEditalEPerfil).toHaveBeenCalledWith(TENANT, CLIENTE, EDITAL, PERFIL, noop);
     });
+
+    it('repassa o signal ao publicar evento', async () => {
+      const { triagens, eventos, publicar } = repos(triagemConcluida());
+      const uc = new RegistrarFeedbackTriagemUseCase(triagens, eventos);
+
+      await uc.executar({ ...BASE_INPUT, tipo: 'aceita' }, noop);
+
+      expect(publicar).toHaveBeenCalledWith(expect.any(Object), noop);
+    });
+  });
+
+  describe('comportamento com triagem em estado não-concluído (gap RAD-81)', () => {
+    it('aceita feedback em triagem processando — sem guarda de status atual', async () => {
+      // Documentação de gap: o use case não valida status antes de emitir evento.
+      // Implicação: feedback sobre triagem ainda em processamento é aceito silenciosamente.
+      // Se isso for indesejável, adicionar guarda de status aqui e atualizar este teste.
+      const triagemPendente = Triagem.pendente(EDITAL, PERFIL, TENANT, CLIENTE);
+      const { triagens, eventos, publicar } = repos(triagemPendente);
+      const uc = new RegistrarFeedbackTriagemUseCase(triagens, eventos);
+
+      await uc.executar({ ...BASE_INPUT, tipo: 'aceita' }, noop);
+
+      expect(publicar).toHaveBeenCalledOnce();
+    });
   });
 });

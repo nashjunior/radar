@@ -44,7 +44,10 @@ export class RegistroAuditoria {
   ) {}
 
   static criar(props: CriarRegistroProps): RegistroAuditoria {
-    if (!props.baseLegal.trim()) throw new AuditoriaBaseLegalInvalidaError();
+    // trim() não captura zero-width spaces (U+200B–U+200D) nem BOM (U+FEFF) — strip explícito.
+    // eslint-disable-next-line no-control-regex
+    if (!props.baseLegal.replace(/[\s\u200B-\u200D\uFEFF]/g, ''))
+      throw new AuditoriaBaseLegalInvalidaError();
     return new RegistroAuditoria(
       props.id,
       props.usuarioId,

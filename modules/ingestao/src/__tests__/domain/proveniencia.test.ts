@@ -38,6 +38,13 @@ describe('Proveniencia', () => {
       expect(a.equals(b)).toBe(false);
     });
 
+    it('retorna false quando baseLegal difere', () => {
+      const dt = new Date('2024-01-01T00:00:00Z');
+      const a = Proveniencia.criar({ fonte: 'PNCP', baseLegal: 'Lei 14.133/2021', coletadoEm: dt });
+      const b = Proveniencia.criar({ fonte: 'PNCP', baseLegal: 'Decreto 10.024/2019', coletadoEm: dt });
+      expect(a.equals(b)).toBe(false);
+    });
+
     it('retorna false quando coletadoEm difere', () => {
       const a = Proveniencia.criar({ fonte: 'PNCP', baseLegal: 'Lei 14.133/2021', coletadoEm: new Date('2024-01-01T00:00:00Z') });
       const b = Proveniencia.criar({ fonte: 'PNCP', baseLegal: 'Lei 14.133/2021', coletadoEm: new Date('2024-02-01T00:00:00Z') });

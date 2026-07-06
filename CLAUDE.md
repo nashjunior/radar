@@ -41,9 +41,9 @@ Comandos (na raiz, via `turbo`): `pnpm dev` · `pnpm build` · `pnpm typecheck` 
 - **Segurança e conformidade são transversais, não um módulo.** Nenhum fluxo que toque dados de terceiros ou fontes públicas avança sem responder: *qual a base legal e qual o controle de segurança?* Todo fluxo (docs/03) tem controle (docs/05) e base legal (docs/02).
 - **Linguagem ubíqua e cross-references.** Use os termos do glossário (docs/06). Links entre documentos são relativos (inclusive cross-folder `../docs/…` ↔ `../arquitetura/…`) — não os quebre. Ao adicionar/renomear um documento, atualize o índice do README correspondente.
 
-## Stack (decidida — P-27, docs/98)
+## Stack (decidida — ver [docs/98](docs/98-decisoes-e-pendencias.md) P-27)
 
-**TypeScript** como linguagem única; **PostgreSQL** (full-text para o matching no MVP; RLS para multi-tenant no *Next*); **fila gerenciada** de eventos (retry + DLQ); **object storage** S3-compatível para anexos; **Anthropic Claude** na triagem. Organização: **Clean Architecture por bounded context** (camadas domain/application/infra, ports & adapters) num **monorepo pnpm+turbo**; comunicação por **eventos** dentro do monólito, **gRPC** só para chamada síncrona cross-domain. `tenantId` em toda entidade desde o dia 1, mesmo single-tenant no MVP. (Detalhe fino ainda aberto: provedor P-64, região P-28, LLM direto-vs-nuvem P-66, modelo/custo P-20.)
+Resumo de 1 linha: TypeScript único + Postgres + fila gerenciada + object storage S3 + Claude, monólito modular por bounded context, eventos internos/gRPC só cross-domain síncrono. Detalhe completo (incl. *seam* Go/Python) e pendências finas (provedor P-64, região P-28, LLM direto-vs-nuvem P-66, custo P-20) estão em P-27 — não duplicar aqui.
 
 ## Convenções de código (Clean Architecture por módulo)
 
@@ -59,24 +59,18 @@ Extraídas do `modules/ingestao` (referência viva). Um módulo = um bounded con
 
 ## Skills e agentes disponíveis
 
-Nos **documentos**, há um loop de trabalho: **planejar antes de editar, revisar depois de editar.**
+O Claude Code já expõe automaticamente nome + descrição de cada skill/agente disponível — não duplicado aqui. Só o essencial que não está em nenhum `SKILL.md`/`agents/*.md` individual, o **loop entre eles**:
 
-- **`planejar-doc`** (porta da frente) — produz um plano assertivo **antes** de editar (mapeia os docs pertinentes, trata docs/13 como autoridade estratégica e o doc 98 como registro de decisões, entrega passos concretos `doc:§` e aponta o `P-NN` a atualizar). Use ao criar/alterar um doc, propor mudança de modelo/fluxo/decisão ou resolver um `[A VALIDAR]`. **Não edita nem revisa** — apenas planeja.
-
-As duas abaixo são a porta dos fundos e **apenas reportam — nunca modificam**:
-
-- **`auditar-docs`** — audita a consistência interna da documentação (links/âncoras quebrados, citações legais divergentes, termos fora do glossário, fontes sem entrada em 06, `P-NN` citados mas ausentes do 98, índices desatualizados, itens `[A VALIDAR]` em aberto). Use para auditar, checar divergências ou validar cross-references.
-- **`revisar-ddd`** — revisa a integridade do modelo estratégico de DDD (bounded contexts e agregados entre docs/13 ↔ docs/12 ↔ arquitetura/03, vazamento de linguagem ubíqua, direção do context map, padrões de integração, invariantes que cruzam documentos). Use para revisar o design de domínio.
-
-No **código**, há um agente de revisão (só reporta):
-
-- **`guardiao-arquitetura`** (agente) — valida a Clean Architecture do código: direção de dependências (para dentro), isolamento entre bounded contexts, entities/VOs imutáveis com factory `criar`, use cases `executar` throw-based (`DomainError`, não `Result`), ports em `application`, branded IDs do `@radar/kernel`, ACL do PNCP e eventos cross-context. Roda sobre o diff de trabalho. Complementa `revisar-ddd`: **código** vs. **modelo-nos-docs** — ao mexer numa fronteira/agregado, cruze os dois.
+- **Documentos:** planejar antes de editar (`planejar-doc`, porta da frente) → editar → revisar depois (`auditar-docs`, `revisar-ddd`, porta dos fundos). As duas de revisão só reportam, nunca modificam.
+- **Código:** `guardiao-arquitetura` (camadas/DDD) e `guardiao-seguranca` (docs/05, segurança/LGPD) são agentes-irmãos que revisam o **mesmo diff** por ângulos diferentes — cruze os dois ao mexer em fronteira, dado de cliente ou autenticação. `criar-modulo` é a única skill que **escreve** arquivos (scaffolding).
+- **Cruzando código e docs:** `avisar-contrato-front` e `pesquisar-fonte` completam o conjunto — ambas só relatam/rascunham, nunca agem sozinhas (nunca abrem issue, nunca editam doc).
 
 ## Como trabalhar aqui
 
+- **Inferir vs. verificar (economia de contexto).** Não busque/leia o que já responde com confiança — input evitado é o corte de contexto mais barato (nem paga cache). Exceção dura: **citação legal, contrato do PNCP, classe de dado crítico (docs/05 §9) e derivação de `tenantId`** — aí **sempre verifique na fonte**, nunca confie no que o modelo "acha que sabe". Reversível/barato → infira primeiro; exato/irreversível → verifique sempre. Quanto mais fraco o modelo, mais para o lado de verificar (a própria confiança não é sinal confiável).
 - Faça mudanças cirúrgicas e fiéis ao estilo dos documentos existentes; preserve numeração, tabelas e o padrão de cross-reference.
 - Após editar a documentação, considere rodar a skill `auditar-docs` para checar que nada quebrou.
-- Após alterar código de um módulo (`domain/application/infra`), deixe o `guardiao-arquitetura` validar o diff (camadas, isolamento entre contextos, convenções) **antes de finalizar/PR** — **Claude:** o subagente (`.claude/agents/guardiao-arquitetura.md`, auto-delegável); **Codex** (não invoca subagentes): a **skill** homônima (`.claude/skills/guardiao-arquitetura/`), que valida o próprio diff. Corrija as ❌ violações; ao tocar numa fronteira/agregado, cruze também com `revisar-ddd`.
+- Após alterar código de um módulo (`domain/application/infra`), deixe o `guardiao-arquitetura` validar o diff (camadas, isolamento entre contextos, convenções) **antes de finalizar/PR** — **Claude:** o subagente (`.claude/agents/guardiao-arquitetura.md`, auto-delegável); **Codex** (não invoca subagentes): a **skill** homônima (`.claude/skills/guardiao-arquitetura/`), que valida o próprio diff. Corrija as ❌ violações; ao tocar numa fronteira/agregado, cruze também com `revisar-ddd`. Ao tocar dado pessoal, dado de cliente, prompt de LLM, autenticação/tenant ou segredo, rode também o par irmão `guardiao-seguranca` (mesma dupla subagente/skill).
 - **Contrato é fronteira back↔front — mudou contrato, avise o front.** Qualquer alteração em `shared/contracts` (proto/gRPC) ou num contrato de API/evento que o front consome **notifica o front (Flávia)** — abra issue/comentário descrevendo a mudança (o cliente/stub gerado dela muda). **Nunca altere contrato silenciosamente**; mudança breaking exige o aviso antes do merge.
 - **Economia de token — resposta mínima ao operador.** Sua *comunicação* (mensagens entre passos, resumos, confirmações) é só o necessário: sem preâmbulo, sem narrar ação rotineira ('Agora vou…', 'Deixa eu ver…'), sem recapitular o que já apareceu no histórico. Silêncio por padrão entre tool calls; escreva só ao **achar algo, mudar de direção ou travar** (1 frase); ao terminar, **1–2 frases** de resultado. Isso vale para a **fala**, **não** para os **deliverables** — docs e código continuam tão completos quanto a tarefa exige. Corte token de conversa, não de substância.
 - Não commite nem faça push sem o usuário pedir.

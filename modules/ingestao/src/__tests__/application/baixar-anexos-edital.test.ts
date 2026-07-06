@@ -97,6 +97,8 @@ describe('BaixarAnexosEditalUseCase', () => {
       };
       const storage: ObjectStorage = {
         armazenar: vi.fn().mockResolvedValue('editais/edital-001/anexos/edital.pdf'),
+        obter: vi.fn(),
+        deletar: vi.fn(),
       };
       const uc = new BaixarAnexosEditalUseCase(gateway, editais, storage);
 

@@ -35,7 +35,7 @@ AB1 não se prova só no fluxo de Triagem: **todo** recurso com ID controlável 
 | `CRITERIO_MONITORAMENTO` | `DefinirCriterioMonitoramentoUseCase` (§2) | ler / escrever | `clienteFinalId` | `AcessoNegadoError` |
 | `ALERTA` | `RegistrarFeedbackAlertaUseCase` (§2) | ler / escrever | `clienteFinalId` | `AcessoNegadoError` |
 | `TRIAGEM` | `TriarEditalUseCase` / `SolicitarTriagemUseCase` (§3) | ler / disparar | `perfil.clienteFinalId == input.clienteFinalId` | `AcessoNegadoError` |
-| `PERFIL_HABILITACAO` | `GerenciarPerfilHabilitacaoUseCase` (§6) | ler / escrever | `clienteFinalId` | `AcessoNegadoError` |
+| `PERFIL_HABILITACAO` | `ConsultarPerfilHabilitacaoUseCase` (ler) / `GerenciarPerfilHabilitacaoUseCase` (escrever) (§6) | ler / escrever | `clienteFinalId` | `AcessoNegadoError` |
 | `PREFERENCIA_NOTIFICACAO` | `DefinirPreferenciasNotificacaoUseCase` (§4) | ler / escrever | `usuarioId`/`tenantId` | `AcessoNegadoError` |
 | `SOLICITACAO_TITULAR` | `AtenderSolicitacaoTitularUseCase` (§5) | criar / ler | titular verificado + vínculo | `IdentidadeNaoVerificadaError` / `AcessoNegadoError` |
 | `AUDIT_LOG` | `RegistrarAuditoriaUseCase` (§5) | ler | `tenantId` | `AcessoNegadoError` |
