@@ -66,6 +66,20 @@ export function criterioParaDTO(c: CriterioDeMonitoramento): CriterioDTO {
   };
 }
 
+/** Snapshot de métricas de qualidade do matching para um tenant (docs/08 §3, P-14). */
+export interface MetricasMatchingDTO {
+  /** Ratio de alertas marcados relevantes / total com feedback. null se ainda não há feedback. */
+  precisao: number | null;
+  /** Alvo de precisão: 60% (docs/08 §3). */
+  precisaoAlvo: number;
+  /** Ratio de clientes com ≥1 alerta relevante na janela / total com ≥1 alerta na janela. null se sem dados. */
+  ativacao: number | null;
+  /** Alvo de ativação: 50% (docs/08 §3). */
+  ativacaoAlvo: number;
+  /** Janela de ativação em dias usada no cálculo. */
+  janelaEmDias: number;
+}
+
 export function alertaParaDTO(a: Alerta): AlertaDTO {
   return {
     id: a.id,

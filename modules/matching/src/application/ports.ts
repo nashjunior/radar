@@ -1,4 +1,4 @@
-import type { AlertaId, CriterioId } from '@radar/kernel';
+import type { AlertaId, CriterioId, EditalId, TenantId } from '@radar/kernel';
 import type { Alerta } from '../domain/entities/alerta.js';
 import type { CriterioDeMonitoramento } from '../domain/entities/criterio-de-monitoramento.js';
 import type {
@@ -17,7 +17,7 @@ import type { DomainEvent } from './events.js';
  * O Matching nunca escreve no Catálogo — isolamento entre bounded contexts (docs/13 §4).
  */
 export interface EditalMatchingView {
-  porId(id: string, signal: AbortSignal): Promise<EditalParaMatchingDTO | null>;
+  porId(id: EditalId, signal: AbortSignal): Promise<EditalParaMatchingDTO | null>;
 }
 
 /** Repositório do agregado CriterioDeMonitoramento. */
@@ -72,4 +72,29 @@ export interface AlertaIdProvider {
 /** Provedor da data/hora atual. Injetado na infra para testabilidade. */
 export interface ClockProvider {
   agora(): Date;
+}
+
+/**
+ * Consulta agregados de métricas de qualidade do matching (P-14, P-15, docs/08 §3).
+ * Somente leitura — não altera estado. Implementado na infra via SQL sobre alertas + feedbacks.
+ */
+export interface MetricaMatchingRepository {
+  /**
+   * Precisão: alertas marcados relevantes / total de alertas com feedback, por tenant.
+   * Retorna contagens brutas para cálculo do ratio na camada de aplicação.
+   */
+  precisao(
+    tenantId: TenantId,
+    signal: AbortSignal,
+  ): Promise<{ relevantes: number; comFeedback: number }>;
+
+  /**
+   * Ativação: clientes que receberam ≥1 alerta relevante dentro da janela / total de clientes
+   * com ≥1 alerta gerado na mesma janela (docs/08 §3 — meta ≥50%).
+   */
+  ativacao(
+    tenantId: TenantId,
+    janelaEmDias: number,
+    signal: AbortSignal,
+  ): Promise<{ ativados: number; total: number }>;
 }

@@ -17,8 +17,8 @@ export class PostgresAlertaRepository implements AlertaRepository {
   async salvar(alerta: Alerta, signal: AbortSignal): Promise<void> {
     await this.db.query(
       `INSERT INTO alerta
-         (id, tenant_id, cliente_final_id, criterio_id, edital_id, aderencia, relevante)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)
+         (id, tenant_id, cliente_final_id, criterio_id, edital_id, aderencia, relevante, criado_em)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())
        ON CONFLICT (id) DO NOTHING`,
       [
         alerta.id,
