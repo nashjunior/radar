@@ -10,6 +10,7 @@
  */
 import { GetTriagemUseCase } from '@/application/use-cases/get-triagem';
 import { GetEditalUseCase } from '@/application/use-cases/get-edital';
+import { FeedbackTriagemUseCase } from '@/application/use-cases/feedback-triagem';
 import { DefinirCriterioUseCase } from '@/application/use-cases/definir-criterio';
 import { RegistrarFeedbackUseCase } from '@/application/use-cases/registrar-feedback';
 import { TriagemHttpGateway } from '@/infra/api/triagem-http-gateway';
@@ -41,6 +42,7 @@ const editalGateway = new EditalStubGateway();
 export const useCases = {
   getTriagem: new GetTriagemUseCase(triagemGateway),
   getEdital: new GetEditalUseCase(editalGateway),
+  feedbackTriagem: new FeedbackTriagemUseCase(triagemGateway),
   definirCriterio: new DefinirCriterioUseCase(matchingGateway),
   registrarFeedback: new RegistrarFeedbackUseCase(matchingGateway),
 } as const;
