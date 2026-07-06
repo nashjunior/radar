@@ -122,6 +122,12 @@ export interface ObjectStorage {
     metadados: { contentType: string },
     signal: AbortSignal,
   ): Promise<string>;
+
+  /** Leitura de bytes por chave. Usado pelo read-path da Triagem (RAD-94/P-96). */
+  obter(chave: string, signal: AbortSignal): Promise<Uint8Array>;
+
+  /** Exclusão por chave. Necessário para retenção/expurgo (RAD-101, P-30, LGPD). */
+  deletar(chave: string, signal: AbortSignal): Promise<void>;
 }
 
 /** Gerador de IDs únicos (UUID v4). Injetado na infra para isolabilidade. */

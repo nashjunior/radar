@@ -41,6 +41,17 @@ Observação: no MVP monólito modular (A01, §2), API e workers podem coabitar 
 | **LLM (Claude)** | triagem (10) | API direta **ou** via nuvem (Bedrock/Vertex) — decisão de residência/DPA (P-54, P-66) |
 | **E-mail transacional** | alertas/digest | entregabilidade |
 
+### Object storage — tiering e retenção (S3, P-30/P-44)
+
+**Tiering:** nativo via S3, sem código de aplicação. Bucket de anexos (`radar-editais-{env}`) configurado com **S3 Intelligent-Tiering** ou duas lifecycle rules:
+
+1. `Standard → Glacier Instant Retrieval` após X dias de não-acesso (X = prazo a definir, P-30; Glacier Instant = latência ms, sem restore assíncrono, adequado para triagem sob demanda).
+2. `Glacier Instant → Deep Archive` para editais terminais que nunca mais serão lidos.
+
+**Decisão de design (RAD-121):** sem SDK customizado de zip+manifesto — o overhead por objeto só vira custo relevante em dezenas de milhões de objetos com perfil arquivar-e-quase-nunca-restaurar. Para o volume do MVP, Intelligent-Tiering cobre sem complexidade de restore assíncrono ou expurgo-sobre-zip (crítico para P-30/LGPD).
+
+**Expurgo LGPD:** `AplicarRetencaoUseCase` chama `ObjectStorage.deletar()` por chave para remoção individual de objetos — não há consolidação em zip, então o expurgo é atômico e não precisa descompactar (RAD-101, P-30).
+
 ## 4. Equivalentes por provedor (evitar lock-in)
 
 Escolher **primitivas portáveis** (container OCI, Postgres, fila, blob) mantém a opção aberta:
