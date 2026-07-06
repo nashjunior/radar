@@ -3,8 +3,8 @@ import { ClienteFinalId, TenantId } from '@radar/kernel';
 import { RegistrarAuditoriaUseCase } from '../../application/use-cases/registrar-auditoria.js';
 import type { RegistrarAuditoriaInput } from '../../application/use-cases/registrar-auditoria.js';
 import type { AuditLogIdProvider, AuditLogRepository } from '../../application/ports.js';
-import { AuditoriaIndisponivelError } from '../../domain/errors/index.js';
-import { RegistroAuditoria } from '../../domain/entities/registro-auditoria.js';
+import { AuditoriaBaseLegalInvalidaError, AuditoriaIndisponivelError } from '../../domain/errors/index.js';
+import { AuditLogId, RegistroAuditoria } from '../../domain/entities/registro-auditoria.js';
 
 const noop = new AbortController().signal;
 const AGORA = new Date('2026-07-06T00:00:00Z');
@@ -23,7 +23,7 @@ const INPUT: RegistrarAuditoriaInput = {
 function deps(overrides?: { registrar?: ReturnType<typeof vi.fn> }) {
   const registrar = overrides?.registrar ?? vi.fn().mockResolvedValue(undefined);
   const auditLog: AuditLogRepository = { registrar };
-  const idProvider: AuditLogIdProvider = { gerar: vi.fn().mockReturnValue('audit-001') };
+  const idProvider: AuditLogIdProvider = { gerar: vi.fn().mockReturnValue(AuditLogId('audit-001')) };
   const clock = { agora: () => AGORA };
   return { auditLog, idProvider, clock, registrar };
 }
@@ -95,6 +95,15 @@ describe('RegistrarAuditoriaUseCase', () => {
       const capturado = await uc.executar(INPUT, noop).catch(e => e);
       expect(capturado).toBeInstanceOf(AuditoriaIndisponivelError);
       expect(capturado).not.toBe(erroInterno);
+    });
+  });
+
+  describe('baseLegal — validação de runtime (docs/05 §5/§8)', () => {
+    it.each(['', '   '])('lança AuditoriaBaseLegalInvalidaError quando baseLegal é "%s"', async (baseLegal) => {
+      const { auditLog, idProvider, clock } = deps();
+      const uc = new RegistrarAuditoriaUseCase(auditLog, idProvider, clock);
+
+      await expect(uc.executar({ ...INPUT, baseLegal }, noop)).rejects.toThrow(AuditoriaBaseLegalInvalidaError);
     });
   });
 

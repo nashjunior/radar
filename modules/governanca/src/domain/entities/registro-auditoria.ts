@@ -1,4 +1,5 @@
 import type { ClienteFinalId, TenantId } from '@radar/kernel';
+import { AuditoriaBaseLegalInvalidaError } from '../errors/index.js';
 
 declare const __brand: unique symbol;
 
@@ -43,6 +44,7 @@ export class RegistroAuditoria {
   ) {}
 
   static criar(props: CriarRegistroProps): RegistroAuditoria {
+    if (!props.baseLegal.trim()) throw new AuditoriaBaseLegalInvalidaError();
     return new RegistroAuditoria(
       props.id,
       props.usuarioId,

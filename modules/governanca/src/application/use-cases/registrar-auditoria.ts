@@ -1,7 +1,7 @@
 import type { ClienteFinalId, TenantId } from '@radar/kernel';
-import { AuditLogId, RegistroAuditoria } from '../../domain/entities/registro-auditoria.js';
+import { RegistroAuditoria } from '../../domain/entities/registro-auditoria.js';
 import { AuditoriaIndisponivelError } from '../../domain/errors/index.js';
-import type { AuditLogIdProvider, AuditLogRepository } from '../ports.js';
+import type { AuditLogIdProvider, AuditLogRepository, Clock } from '../ports.js';
 
 export interface RegistrarAuditoriaInput {
   readonly usuarioId: string;
@@ -23,12 +23,12 @@ export class RegistrarAuditoriaUseCase {
   constructor(
     private readonly auditLog: AuditLogRepository,
     private readonly idProvider: AuditLogIdProvider,
-    private readonly clock: { agora(): Date },
+    private readonly clock: Clock,
   ) {}
 
   async executar(input: RegistrarAuditoriaInput, signal: AbortSignal): Promise<void> {
     const registro = RegistroAuditoria.criar({
-      id: AuditLogId(this.idProvider.gerar()),
+      id: this.idProvider.gerar(),
       usuarioId: input.usuarioId,
       recurso: input.recurso,
       acao: input.acao,
