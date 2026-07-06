@@ -42,3 +42,8 @@ export { PostgresExtracaoRepository } from './adapters/postgres-extracao-reposit
 export { PostgresTriagemRepository } from './adapters/postgres-triagem-repository.js';
 export { S3ObjectStorage } from './adapters/s3-object-storage.js';
 export { SqsEventPublisher } from './adapters/sqs-event-publisher.js';
+export { TriagemBatchWorker } from './queue/triagem-batch-worker.js';
+export type {
+  EditalIngeridoMsg as TriagemEditalIngeridoMsg,
+  TriagemBatchWorkerOpts,
+} from './queue/triagem-batch-worker.js';

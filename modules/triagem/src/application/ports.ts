@@ -90,3 +90,31 @@ export interface LlmLoteGateway {
 export interface EventPublisher {
   publicar(evento: DomainEvent, signal: AbortSignal): Promise<void>;
 }
+
+// ---------------------------------------------------------------------------
+// ACL para leitura cross-contexto Ingestão → Triagem (docs/13 §5, P-96).
+// Triagem lê apenas o contrato publicado pelo Open-Host da Ingestão —
+// nunca acessa a base da Ingestão diretamente (dependency aponta pra dentro do core).
+// ---------------------------------------------------------------------------
+
+/** Ref de um documento materializado no object storage. */
+export interface ArquivoRef {
+  readonly nome: string;
+  readonly storageKey: string;
+  readonly tipoMime: string;
+}
+
+/** Conjunto de refs de documentos de um edital, já disponíveis para leitura. */
+export interface DocumentosRef {
+  readonly editalId: EditalId;
+  readonly arquivos: readonly ArquivoRef[];
+}
+
+/**
+ * Gateway (ACL) para obter as referências de documentos de um edital.
+ * Implementado por um adapter no composition root (apps/api) que chama o
+ * `DocumentosDoEditalPort` do módulo Ingestão — a Triagem nunca vê o modelo interno.
+ */
+export interface DocumentosEditalGateway {
+  obterRefs(editalId: EditalId, signal: AbortSignal): Promise<DocumentosRef>;
+}

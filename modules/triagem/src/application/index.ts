@@ -11,6 +11,9 @@ export type {
 } from './dtos.js';
 export { extracaoParaDTO, triagemParaDTO } from './dtos.js';
 export type {
+  ArquivoRef,
+  DocumentosEditalGateway,
+  DocumentosRef,
   EventPublisher,
   ExtracaoRepository,
   LlmGateway,
