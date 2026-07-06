@@ -13,10 +13,11 @@ import { Hono } from 'hono';
 import { logger } from 'hono/logger';
 import { ConsultarTriagemUseCase } from '@radar/triagem';
 import {
+  ConsultarMetricasMatchingUseCase,
   DefinirCriterioMonitoramentoUseCase,
   RegistrarFeedbackAlertaUseCase,
 } from '@radar/matching';
-import { CryptoCriterioIdProvider, CryptoAlertaIdProvider } from '@radar/matching/infra';
+import { CryptoCriterioIdProvider } from '@radar/matching/infra';
 import { healthRouter } from './routes/health.js';
 import { criarTriagemRouter } from './routes/triagem.js';
 import { criarMatchingRouter } from './routes/matching.js';
@@ -27,6 +28,7 @@ import {
   alertaStub,
   faixaValorStub,
   eventPublisherStub,
+  metricaStub,
   systemClock,
 } from './infra/matching-stub.js';
 
@@ -45,6 +47,7 @@ export function criarApp(): Hono {
     systemClock,
   );
   const registrarFeedback = new RegistrarFeedbackAlertaUseCase(alertaStub, eventPublisherStub);
+  const consultarMetricas = new ConsultarMetricasMatchingUseCase(metricaStub);
 
   const app = new Hono();
 
@@ -55,7 +58,7 @@ export function criarApp(): Hono {
 
   // API principal — tenant obrigatório
   app.route('/api/triagem', criarTriagemRouter({ consultarTriagem, perfilAtivo }));
-  app.route('/api/matching', criarMatchingRouter({ definirCriterio, registrarFeedback, perfilAtivo }));
+  app.route('/api/matching', criarMatchingRouter({ definirCriterio, registrarFeedback, consultarMetricas, perfilAtivo }));
 
   // Catch-all 404
   app.notFound((c) => c.json({ code: 'NAO_ENCONTRADO', mensagem: 'Rota não encontrada.' }, 404));

@@ -18,6 +18,7 @@ import type {
   CriterioRepository,
   EventPublisher,
   FaixaValorReferencia,
+  MetricaMatchingRepository,
 } from '@radar/matching';
 import type { AlertaId, CriterioId } from '@radar/kernel';
 
@@ -61,3 +62,12 @@ export const eventPublisherStub: EventPublisher = {
 };
 
 export const systemClock = { agora: () => new Date() };
+
+export const metricaStub: MetricaMatchingRepository = {
+  async precisao(_tenantId, _signal) {
+    return { relevantes: 0, comFeedback: 0 };
+  },
+  async ativacao(_tenantId, _janelaEmDias, _signal) {
+    return { ativados: 0, total: 0 };
+  },
+};

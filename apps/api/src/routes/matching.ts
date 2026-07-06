@@ -12,7 +12,11 @@
  *   pertencer ao clienteFinalId do token; caso contrário → 403.
  *   Pode ser usado independente de RAD-76.
  *
- * Refs: RAD-77, docs/14 §2 (US-04/US-06), arquitetura/17 §5.3 (authz por objeto),
+ * GET /api/matching/metricas
+ *   RAD-78: Expõe precisão (P-14) e ativação (docs/08 §3) do tenant autenticado.
+ *   Gate P-21: somente leitura — nenhum limiar de matching é alterado.
+ *
+ * Refs: RAD-77, RAD-78, docs/14 §2 (US-04/US-06), arquitetura/17 §5.3 (authz por objeto),
  *       modules/matching/src/application/use-cases/*, P-51.
  */
 
@@ -20,6 +24,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { AlertaId } from '@radar/kernel';
 import type {
+  ConsultarMetricasMatchingUseCase,
   DefinirCriterioMonitoramentoUseCase,
   RegistrarFeedbackAlertaUseCase,
 } from '@radar/matching';
@@ -30,6 +35,7 @@ import type { PerfilAtivoGateway } from '../ports/perfil-ativo-gateway.js';
 export interface MatchingContainer {
   definirCriterio: DefinirCriterioMonitoramentoUseCase;
   registrarFeedback: RegistrarFeedbackAlertaUseCase;
+  consultarMetricas: ConsultarMetricasMatchingUseCase;
   perfilAtivo: PerfilAtivoGateway;
 }
 
@@ -78,6 +84,28 @@ export function criarMatchingRouter(container: MatchingContainer): Hono {
       );
 
       return c.json(resultado, 201);
+    } catch (err) {
+      return responderErro(c, err);
+    }
+  });
+
+  // GET /metricas — RAD-78 ConsultarMetricasMatching
+  router.get('/metricas', async (c) => {
+    const tenantId = c.get('tenantId');
+    const signal = c.req.raw.signal;
+    const janelaParam = c.req.query('janelaEmDias');
+    const janelaEmDias = janelaParam ? Number(janelaParam) : undefined;
+
+    if (janelaEmDias !== undefined && (!Number.isInteger(janelaEmDias) || janelaEmDias < 1)) {
+      return c.json({ code: 'PARAMETRO_INVALIDO', mensagem: 'janelaEmDias deve ser inteiro positivo.' }, 400);
+    }
+
+    try {
+      const resultado = await container.consultarMetricas.executar(
+        { tenantId, ...(janelaEmDias !== undefined ? { janelaEmDias } : {}) },
+        signal,
+      );
+      return c.json(resultado);
     } catch (err) {
       return responderErro(c, err);
     }
