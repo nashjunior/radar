@@ -28,5 +28,10 @@ export function editalParaDTO(edital: Edital): EditalDTO {
       quantidade: i.quantidade,
       valorUnitarioEstimado: i.valorUnitarioEstimado?.valor ?? null,
     })),
+    proveniencia: {
+      fonte: edital.proveniencia.fonte,
+      dataColeta: edital.proveniencia.coletadoEm.toISOString(),
+      baseLegal: edital.proveniencia.baseLegal,
+    },
   };
 }
