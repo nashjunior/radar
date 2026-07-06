@@ -12,10 +12,23 @@
 import { Hono } from 'hono';
 import { logger } from 'hono/logger';
 import { ConsultarTriagemUseCase } from '@radar/triagem';
+import {
+  DefinirCriterioMonitoramentoUseCase,
+  RegistrarFeedbackAlertaUseCase,
+} from '@radar/matching';
+import { CryptoCriterioIdProvider, CryptoAlertaIdProvider } from '@radar/matching/infra';
 import { healthRouter } from './routes/health.js';
 import { criarTriagemRouter } from './routes/triagem.js';
+import { criarMatchingRouter } from './routes/matching.js';
 import { PerfilAtivoConfigAdapter } from './infra/perfil-ativo-config-adapter.js';
 import { triagemStub, extracaoStub } from './infra/triagem-stub.js';
+import {
+  criterioStub,
+  alertaStub,
+  faixaValorStub,
+  eventPublisherStub,
+  systemClock,
+} from './infra/matching-stub.js';
 
 /** Seed de tenants — obrigatório em runtime para que o endpoint responda 200. */
 const tenantSeed = process.env['TENANT_SEED'] ?? '{}';
@@ -23,6 +36,15 @@ const perfilAtivo = PerfilAtivoConfigAdapter.fromJson(tenantSeed);
 
 export function criarApp(): Hono {
   const consultarTriagem = new ConsultarTriagemUseCase(triagemStub, extracaoStub);
+
+  const definirCriterio = new DefinirCriterioMonitoramentoUseCase(
+    criterioStub,
+    faixaValorStub,
+    eventPublisherStub,
+    new CryptoCriterioIdProvider(),
+    systemClock,
+  );
+  const registrarFeedback = new RegistrarFeedbackAlertaUseCase(alertaStub, eventPublisherStub);
 
   const app = new Hono();
 
@@ -33,6 +55,7 @@ export function criarApp(): Hono {
 
   // API principal — tenant obrigatório
   app.route('/api/triagem', criarTriagemRouter({ consultarTriagem, perfilAtivo }));
+  app.route('/api/matching', criarMatchingRouter({ definirCriterio, registrarFeedback, perfilAtivo }));
 
   // Catch-all 404
   app.notFound((c) => c.json({ code: 'NAO_ENCONTRADO', mensagem: 'Rota não encontrada.' }, 404));

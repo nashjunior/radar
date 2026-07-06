@@ -22,6 +22,7 @@ export interface ErroApiPayload {
 const NOT_FOUND_CODES = new Set([
   'TRIAGEM_NAO_ENCONTRADA',
   'EDITAL_NAO_ENCONTRADO',
+  'ALERTA_NAO_ENCONTRADO',
 ]);
 
 /**
