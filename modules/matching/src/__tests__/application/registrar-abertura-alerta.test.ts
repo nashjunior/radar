@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AcessoNegadoError, AlertaId, ClienteFinalId, CriterioId, TenantId } from '@radar/kernel';
+import { AcessoNegadoError, AlertaId, ClienteFinalId, CriterioId, EditalId, TenantId } from '@radar/kernel';
 import { Alerta } from '../../domain/entities/alerta.js';
 import { AderenciaMatching } from '../../domain/value-objects/aderencia-matching.js';
 import { AlertaNaoEncontradoError } from '../../domain/errors/index.js';
@@ -12,7 +12,7 @@ function criarAlerta(clienteFinalId: string): Alerta {
     tenantId: TenantId('tenant-a'),
     clienteFinalId: ClienteFinalId(clienteFinalId),
     criterioId: CriterioId('crit-001'),
-    editalId: 'edital-001' as any,
+    editalId: EditalId('edital-001'),
     aderencia: AderenciaMatching.criar(0.8),
   });
 }
