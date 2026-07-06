@@ -87,3 +87,25 @@ export interface MatchingApiGateway {
 export interface EditalGateway {
   buscarDetalhes(editalId: EditalId, signal: AbortSignal): Promise<EditalDetalhe | null>;
 }
+
+// ---------------------------------------------------------------------------
+// Perfil de Habilitação (US-15 · RAD-110)
+// Contrato definitivo publicado em RAD-109. Enquanto pendente, stub é usado.
+// ---------------------------------------------------------------------------
+
+/** Quatro campos texto-livre do MVP — sem upload, sem ObjectStorage (P-99 resolvido). */
+export interface PerfilHabilitacaoDTO {
+  habJuridica: string;
+  habFiscal: string;
+  habTecnica: string;
+  habEconomica: string;
+}
+
+/**
+ * Port de perfil de habilitação — GET/PUT /api/perfil-habilitacao (futuro).
+ * Implementado por PerfilHabilitacaoStubGateway até RAD-109 publicar o endpoint.
+ */
+export interface PerfilHabilitacaoGateway {
+  consultar(signal: AbortSignal): Promise<PerfilHabilitacaoDTO | null>;
+  salvar(input: PerfilHabilitacaoDTO, signal: AbortSignal): Promise<void>;
+}

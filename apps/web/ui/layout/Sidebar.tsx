@@ -1,7 +1,7 @@
 import { NavItem } from '@/ui/components';
 import { useTheme } from '@/ui/providers/theme-provider';
 
-type Route = 'dashboard' | 'alertas' | 'triagem' | 'configurar';
+type Route = 'dashboard' | 'alertas' | 'triagem' | 'configurar' | 'perfil';
 
 interface SidebarProps {
   current: Route;
@@ -11,6 +11,7 @@ interface SidebarProps {
 const NAV_ITEMS: { route: Route; icon: string; label: string }[] = [
   { route: 'dashboard',  icon: '📊', label: 'Dashboard' },
   { route: 'alertas',    icon: '🔔', label: 'Alertas' },
+  { route: 'perfil',     icon: '📋', label: 'Perfil de Habilitação' },
   { route: 'configurar', icon: '⚙️', label: 'Configurar Radar' },
 ];
 

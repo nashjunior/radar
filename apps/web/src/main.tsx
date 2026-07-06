@@ -9,10 +9,11 @@ import { DashboardPage } from '@/ui/pages/dashboard-page';
 import { AlertasPage } from '@/ui/pages/alertas-page';
 import { TriagemPage } from '@/ui/pages/triagem-page';
 import { ConfigurarPage } from '@/ui/pages/configurar-page';
+import { PerfilHabilitacaoPage } from '@/ui/pages/perfil-habilitacao-page';
 import { LoginPage } from '@/ui/pages/login-page';
 import './globals.css';
 
-type Route = 'dashboard' | 'alertas' | 'triagem' | 'configurar';
+type Route = 'dashboard' | 'alertas' | 'triagem' | 'configurar' | 'perfil';
 
 function App() {
   const [route, setRoute] = useState<Route>('dashboard');
@@ -33,6 +34,7 @@ function App() {
       {route === 'alertas'    && <AlertasPage onTriagem={openTriagem} />}
       {route === 'triagem'    && <TriagemPage editalId={triagemId} onBack={() => setRoute('alertas')} />}
       {route === 'configurar' && <ConfigurarPage />}
+      {route === 'perfil'     && <PerfilHabilitacaoPage />}
     </AppLayout>
   );
 }
