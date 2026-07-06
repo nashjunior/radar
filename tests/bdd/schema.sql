@@ -39,8 +39,9 @@ CREATE TABLE IF NOT EXISTS triagem (
   cliente_final_id TEXT    NOT NULL,
   edital_id        TEXT    NOT NULL,
   perfil_id        TEXT    NOT NULL,
-  aderencia        NUMERIC NOT NULL,
-  recomendacao     TEXT    NOT NULL,
+  status           TEXT    NOT NULL DEFAULT 'concluida',
+  aderencia        NUMERIC,
+  recomendacao     TEXT,
   riscos           JSONB   NOT NULL DEFAULT '[]',
   UNIQUE (tenant_id, edital_id, perfil_id)
 );

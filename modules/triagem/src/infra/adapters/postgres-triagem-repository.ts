@@ -1,6 +1,6 @@
 import { ClienteFinalId, EditalId, PerfilId, TenantId } from '@radar/kernel';
 import { Triagem } from '../../domain/triagem.js';
-import type { Recomendacao } from '../../domain/triagem.js';
+import type { Recomendacao, TriagemStatus } from '../../domain/triagem.js';
 import { Aderencia } from '../../domain/value-objects/aderencia.js';
 import { Citacao } from '../../domain/value-objects/citacao.js';
 import { Risco } from '../../domain/value-objects/risco.js';
@@ -28,9 +28,10 @@ export class PostgresTriagemRepository implements TriagemRepository {
   async salvar(triagem: Triagem, signal: AbortSignal): Promise<void> {
     await this.db.query(
       `INSERT INTO triagem
-         (tenant_id, cliente_final_id, edital_id, perfil_id, aderencia, recomendacao, riscos)
-       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+         (tenant_id, cliente_final_id, edital_id, perfil_id, status, aderencia, recomendacao, riscos)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
        ON CONFLICT (tenant_id, edital_id, perfil_id) DO UPDATE SET
+         status       = EXCLUDED.status,
          aderencia    = EXCLUDED.aderencia,
          recomendacao = EXCLUDED.recomendacao,
          riscos       = EXCLUDED.riscos`,
@@ -39,8 +40,9 @@ export class PostgresTriagemRepository implements TriagemRepository {
         triagem.clienteFinalId,
         triagem.editalId,
         triagem.perfilId,
-        triagem.aderencia.valor,
-        triagem.recomendacao,
+        triagem.status,
+        triagem.aderencia?.valor ?? null,
+        triagem.recomendacao ?? null,
         JSON.stringify(triagem.riscos.map(riscoToJson)),
       ],
       { signal },
@@ -60,7 +62,7 @@ export class PostgresTriagemRepository implements TriagemRepository {
     // podendo carregar a linha de OUTRO tenant. Com o escopo, o match é a chave única → 1 linha
     // determinística. O authz por objeto do use case (A17 §5.3, P-51) segue como defesa em profundidade.
     const { rows } = await this.db.query<Row>(
-      `SELECT tenant_id, cliente_final_id, edital_id, perfil_id, aderencia, recomendacao, riscos
+      `SELECT tenant_id, cliente_final_id, edital_id, perfil_id, status, aderencia, recomendacao, riscos
          FROM triagem
         WHERE tenant_id = $1 AND cliente_final_id = $2 AND edital_id = $3 AND perfil_id = $4`,
       [tenantId, clienteFinalId, editalId, perfilId],
@@ -86,8 +88,9 @@ interface Row {
   cliente_final_id: string;
   edital_id: string;
   perfil_id: string;
-  aderencia: number;
-  recomendacao: string;
+  status: string;
+  aderencia: number | null;
+  recomendacao: string | null;
   riscos: RiscoJson[];
 }
 
@@ -105,8 +108,9 @@ function rowToTriagem(row: Row): Triagem {
     perfilId: PerfilId(row.perfil_id),
     tenantId: TenantId(row.tenant_id),
     clienteFinalId: ClienteFinalId(row.cliente_final_id),
-    aderencia: Aderencia.criar(Number(row.aderencia)),
-    recomendacao: row.recomendacao as Recomendacao,
+    status: (row.status ?? 'concluida') as TriagemStatus,
+    aderencia: row.aderencia !== null ? Aderencia.criar(Number(row.aderencia)) : null,
+    recomendacao: row.recomendacao !== null ? (row.recomendacao as Recomendacao) : null,
     riscos: row.riscos.map((r) =>
       Risco.criar(
         r.descricao,

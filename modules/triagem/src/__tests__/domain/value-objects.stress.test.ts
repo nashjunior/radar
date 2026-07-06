@@ -269,7 +269,7 @@ describe('Triagem.avaliar — limiar go/no-go em aderência exata 0.7', () => {
       habEconomica: [],
     });
     const triagem = Triagem.avaliar(extracaoSimples(reqs), perfil, TENANT);
-    expect(triagem.aderencia.valor).toBeCloseTo(0.7);
+    expect(triagem.aderencia!.valor).toBeCloseTo(0.7);
     expect(triagem.recomendacao).toBe('go');
   });
 
@@ -287,7 +287,7 @@ describe('Triagem.avaliar — limiar go/no-go em aderência exata 0.7', () => {
       habEconomica: [],
     });
     const triagem = Triagem.avaliar(extracaoSimples(reqs), perfil, TENANT);
-    expect(triagem.aderencia.valor).toBeCloseTo(0.6);
+    expect(triagem.aderencia!.valor).toBeCloseTo(0.6);
     expect(triagem.recomendacao).toBe('no-go');
   });
 
@@ -302,7 +302,7 @@ describe('Triagem.avaliar — limiar go/no-go em aderência exata 0.7', () => {
       habEconomica: [],
     });
     const triagem = Triagem.avaliar(extracaoSimples(reqs), perfil, TENANT);
-    expect(triagem.aderencia.valor).toBe(1);
+    expect(triagem.aderencia!.valor).toBe(1);
     expect(triagem.recomendacao).toBe('go');
   });
 

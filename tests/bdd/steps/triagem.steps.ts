@@ -225,6 +225,7 @@ Given(
       perfilId,
       tenantId: TenantId('global'),
       clienteFinalId: ClienteFinalId(clienteId),
+      status: 'concluida',
       aderencia: Aderencia.criar(1.0),
       recomendacao: 'go',
       riscos: [],

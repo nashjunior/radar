@@ -7,6 +7,7 @@ export type {
   ExtracaoEditalDTO,
   RiscoDTO,
   TriagemDTO,
+  TriagemEnvelopeDTO,
   TriagemLeituraDTO,
 } from './dtos.js';
 export { extracaoParaDTO, triagemParaDTO } from './dtos.js';

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { AcessoNegadoError, ClienteFinalId, EditalId, PerfilId, TenantId } from '@radar/kernel';
 import { SolicitarTriagemUseCase } from '../../application/use-cases/solicitar-triagem.js';
 import type { SolicitarTriagemInput } from '../../application/use-cases/solicitar-triagem.js';
-import type { EventPublisher, PerfilGateway } from '../../application/ports.js';
+import type { EventPublisher, PerfilGateway, TriagemRepository } from '../../application/ports.js';
 import { PerfilHabilitacao } from '../../domain/perfil-habilitacao.js';
 
 const noop = new AbortController().signal;
@@ -33,13 +33,17 @@ function deps(perfil: PerfilHabilitacao | null) {
   const publicar = vi.fn().mockResolvedValue(undefined);
   const perfis: PerfilGateway = { porId };
   const eventos: EventPublisher = { publicar };
-  return { perfis, eventos, porId, publicar };
+  const triagens: TriagemRepository = {
+    porEditalEPerfil: vi.fn().mockResolvedValue(null),
+    salvar: vi.fn().mockResolvedValue(undefined),
+  };
+  return { perfis, triagens, eventos, porId, publicar };
 }
 
 describe('SolicitarTriagemUseCase', () => {
   it('publica triagem.solicitada com o payload do comando e propaga o signal (P-78)', async () => {
-    const { perfis, eventos, porId, publicar } = deps(PERFIL_HAB);
-    await new SolicitarTriagemUseCase(perfis, eventos).executar(INPUT, noop);
+    const { perfis, triagens, eventos, porId, publicar } = deps(PERFIL_HAB);
+    await new SolicitarTriagemUseCase(perfis, triagens, eventos).executar(INPUT, noop);
 
     expect(porId).toHaveBeenCalledWith(PERFIL, noop);
     expect(publicar).toHaveBeenCalledTimes(1);
@@ -55,15 +59,15 @@ describe('SolicitarTriagemUseCase', () => {
   });
 
   it('nega e NÃO enfileira quando o perfil não existe (não vaza existência — A17 §5.3)', async () => {
-    const { perfis, eventos, publicar } = deps(null);
+    const { perfis, triagens, eventos, publicar } = deps(null);
     await expect(
-      new SolicitarTriagemUseCase(perfis, eventos).executar(INPUT, noop),
+      new SolicitarTriagemUseCase(perfis, triagens, eventos).executar(INPUT, noop),
     ).rejects.toThrow(AcessoNegadoError);
     expect(publicar).not.toHaveBeenCalled();
   });
 
   it('nega e NÃO enfileira pedido de perfil de OUTRO cliente (IDOR/BOLA — P-51)', async () => {
-    const { perfis, eventos, publicar } = deps(
+    const { perfis, triagens, eventos, publicar } = deps(
       PerfilHabilitacao.de({
         id: PERFIL,
         clienteFinalId: ClienteFinalId('cliente-999'),
@@ -74,7 +78,7 @@ describe('SolicitarTriagemUseCase', () => {
       }),
     );
     await expect(
-      new SolicitarTriagemUseCase(perfis, eventos).executar(INPUT, noop),
+      new SolicitarTriagemUseCase(perfis, triagens, eventos).executar(INPUT, noop),
     ).rejects.toThrow(AcessoNegadoError);
     expect(publicar).not.toHaveBeenCalled();
   });

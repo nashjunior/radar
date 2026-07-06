@@ -34,25 +34,31 @@ export class TriagemHttpGateway implements TriagemGateway {
     if (!res.ok) throw new Error(`[TriagemHttpGateway] HTTP ${res.status}`);
 
     const data = (await res.json()) as {
-      editalId: string;
-      perfilId: string;
-      aderencia: number;
-      recomendacao: 'go' | 'no-go';
-      confiancaIA: number;
-      paginasEdital: number;
-      camposAnalise: { titulo: string; conteudo: string; fonte: string }[];
-      checklist: { ok: boolean; texto: string }[];
+      status: 'processando' | 'concluida' | 'incompleta' | 'falha_ocr' | 'recusada';
+      editalId?: string;
+      perfilId?: string;
+      aderencia?: number;
+      recomendacao?: 'go' | 'no-go';
+      confiancaIA?: number;
+      paginasEdital?: number;
+      camposAnalise?: { titulo: string; conteudo: string; fonte: string; estado: 'ok' | 'verificar' }[];
+      checklist?: { ok: boolean; texto: string }[];
     };
 
+    if (data.status === 'processando' || data.status === 'falha_ocr' || data.status === 'recusada') {
+      return { status: data.status };
+    }
+
     return {
-      editalId: mkEditalId(data.editalId),
-      perfilId: mkPerfilId(data.perfilId),
-      aderencia: data.aderencia,
-      recomendacao: data.recomendacao,
-      confiancaIA: data.confiancaIA,
-      paginasEdital: data.paginasEdital,
-      camposAnalise: data.camposAnalise,
-      checklist: data.checklist,
+      status: data.status,
+      editalId: mkEditalId(data.editalId!),
+      perfilId: mkPerfilId(data.perfilId!),
+      aderencia: data.aderencia!,
+      recomendacao: data.recomendacao!,
+      confiancaIA: data.confiancaIA!,
+      paginasEdital: data.paginasEdital!,
+      camposAnalise: data.camposAnalise!,
+      checklist: data.checklist!,
     };
   }
 }

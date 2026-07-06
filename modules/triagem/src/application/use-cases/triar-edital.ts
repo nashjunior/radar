@@ -1,6 +1,11 @@
 import { AcessoNegadoError } from '@radar/kernel';
 import type { ClienteFinalId, EditalId, PerfilId, TenantId } from '@radar/kernel';
-import { ConfiancaInsuficienteError, PerfilNaoEncontradoError } from '../../domain/errors/index.js';
+import {
+  ConfiancaInsuficienteError,
+  ExtracaoRecusadaError,
+  OcrFalhouError,
+  PerfilNaoEncontradoError,
+} from '../../domain/errors/index.js';
 import { Triagem } from '../../domain/triagem.js';
 import { triagemParaDTO } from '../dtos.js';
 import type { EntradaExtracaoDTO, TriagemDTO } from '../dtos.js';
@@ -49,13 +54,33 @@ export class TriarEditalUseCase {
     // 2. Extração CACHEADA por edital (P-45). Cache-miss → 1 chamada de LLM (A10 §4.5).
     let extracao = await this.extracoes.porEdital(input.editalId, signal);
     if (extracao === null) {
-      extracao = await this.llm.extrair(input.conteudo, signal);
+      // OCR falhou ou modelo recusou → persiste estado degradado antes de re-lançar (RAD-79).
+      try {
+        extracao = await this.llm.extrair(input.conteudo, signal);
+      } catch (err) {
+        let degradada: Triagem;
+        if (err instanceof OcrFalhouError) {
+          degradada = Triagem.falhaOcr(input.editalId, input.perfilId, input.tenantId, perfil.clienteFinalId);
+        } else if (err instanceof ExtracaoRecusadaError) {
+          degradada = Triagem.recusada(input.editalId, input.perfilId, input.tenantId, perfil.clienteFinalId);
+        } else {
+          throw err;
+        }
+        await this.triagens.salvar(degradada, signal);
+        throw err;
+      }
       await this.extracoes.salvar(extracao, signal);
     }
 
     // 3. Gate de confiança (docs/10 §4). Abaixo do limiar → leitura assistida (docs/10 §6):
     //    nunca apresentar palpite como certeza. Limiar vem da política por campo (P-19).
-    if (!extracao.suficiente(input.limiarConfianca)) throw new ConfiancaInsuficienteError();
+    if (!extracao.suficiente(input.limiarConfianca)) {
+      await this.triagens.salvar(
+        Triagem.incompleta(input.editalId, input.perfilId, input.tenantId, perfil.clienteFinalId),
+        signal,
+      );
+      throw new ConfiancaInsuficienteError();
+    }
 
     // 4. Aderência POR PERFIL (não cacheável) — regra de domínio pura.
     const triagem = Triagem.avaliar(extracao, perfil, input.tenantId);
@@ -69,8 +94,8 @@ export class TriarEditalUseCase {
         editalId: triagem.editalId,
         perfilId: triagem.perfilId,
         confianca: extracao.confiancaGlobal().valor,
-        aderencia: triagem.aderencia.valor,
-        recomendacao: triagem.recomendacao,
+        aderencia: triagem.aderencia!.valor,
+        recomendacao: triagem.recomendacao!,
         riscos: triagem.riscos.map((r) => r.descricao),
       }),
       signal,

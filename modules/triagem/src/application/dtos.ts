@@ -34,12 +34,23 @@ export interface CampoAnaliseDTO {
   conteudo: string;
   /** Citação renderizada ("p. 12, seção 5.1") ou "" quando ausente. */
   fonte: string;
+  /** Flag explícito para a UI — evita inferência frágil via `conteudo === 'verificar'` (RAD-79). */
+  estado: 'ok' | 'verificar';
 }
 
 export interface ChecklistItemDTO {
   ok: boolean;
   texto: string;
 }
+
+/**
+ * Envelope de ciclo de vida do read path (RAD-79).
+ * `null` retornado pelo use case = `nunca_solicitada` (→ BFF 404).
+ * Campos de `TriagemLeituraDTO` presentes apenas quando `status` é `concluida` ou `incompleta`.
+ */
+export type TriagemEnvelopeDTO =
+  | { readonly status: 'processando' | 'falha_ocr' | 'recusada' }
+  | ({ readonly status: 'concluida' | 'incompleta' } & TriagemLeituraDTO);
 
 // ---------------------------------------------------------------------------
 // Contratos do caminho COMANDO/WORKER (A17 §4.2) — distintos do read DTO acima.
@@ -126,8 +137,8 @@ export function triagemParaDTO(t: Triagem): TriagemDTO {
   return {
     editalId: t.editalId,
     perfilId: t.perfilId,
-    aderencia: t.aderencia.valor,
-    recomendacao: t.recomendacao,
+    aderencia: t.aderencia!.valor,
+    recomendacao: t.recomendacao!,
     riscos: t.riscos.map((r) => ({
       descricao: r.descricao,
       severidade: r.severidade,

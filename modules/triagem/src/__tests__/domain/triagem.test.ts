@@ -50,7 +50,7 @@ describe('Triagem.avaliar (write path — A17 §3.3/§4.3)', () => {
       perfil,
       TENANT,
     );
-    expect(triagem.aderencia.valor).toBe(1);
+    expect(triagem.aderencia!.valor).toBe(1);
     expect(triagem.recomendacao).toBe('go');
     expect(triagem.editalId).toBe(EDITAL);
     expect(triagem.perfilId).toBe(PERFIL);
@@ -68,7 +68,7 @@ describe('Triagem.avaliar (write path — A17 §3.3/§4.3)', () => {
       perfil,
       TENANT,
     );
-    expect(triagem.aderencia.valor).toBeCloseTo(0.5);
+    expect(triagem.aderencia!.valor).toBeCloseTo(0.5);
     expect(triagem.recomendacao).toBe('no-go');
     expect(triagem.riscos.map((r) => r.descricao)).toEqual(['não atende: Registro CREA']);
   });

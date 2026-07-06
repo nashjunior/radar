@@ -44,7 +44,7 @@ describe('PostgresTriagemRepository.porEditalEPerfil — escopo por tenant/clien
     expect(opts).toEqual({ signal: noop }); // P-78 — último hop chega ao driver
     expect(triagem).toBeInstanceOf(Triagem);
     expect(triagem!.tenantId).toBe(TENANT);
-    expect(triagem!.aderencia.equals(Aderencia.criar(0.5))).toBe(true);
+    expect(triagem!.aderencia!.equals(Aderencia.criar(0.5))).toBe(true);
   });
 
   it('sem linha no escopo → null (fail-closed: BFF 404), nunca uma linha de outro tenant', async () => {

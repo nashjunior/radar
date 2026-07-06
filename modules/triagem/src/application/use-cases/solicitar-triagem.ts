@@ -1,7 +1,8 @@
 import { AcessoNegadoError } from '@radar/kernel';
 import type { ClienteFinalId, EditalId, PerfilId, TenantId } from '@radar/kernel';
+import { Triagem } from '../../domain/triagem.js';
 import { TriagemSolicitada } from '../events.js';
-import type { EventPublisher, PerfilGateway } from '../ports.js';
+import type { EventPublisher, PerfilGateway, TriagemRepository } from '../ports.js';
 
 export interface SolicitarTriagemInput {
   editalId: EditalId;
@@ -12,22 +13,35 @@ export interface SolicitarTriagemInput {
 }
 
 /**
- * Trigger: Usuário (API). Faz a 1ª verificação de autorização (defesa em profundidade) e publica o
- * comando na fila — a triagem em si é assíncrona (custo/latência, A03 §§1,3; A00 princípio 6).
- * NÃO chama o LLM nem toca a extração: só valida o escopo e enfileira.
+ * Trigger: Usuário (API). Faz a 1ª verificação de autorização (defesa em profundidade), persiste o
+ * estado `processando` (para que o read path saiba distinguir de `nunca_solicitada` — RAD-79) e
+ * publica o comando na fila — a triagem em si é assíncrona (custo/latência, A03 §§1,3; A00 princípio 6).
+ * NÃO chama o LLM nem toca a extração.
  */
 export class SolicitarTriagemUseCase {
   constructor(
     private readonly perfis: PerfilGateway,
+    private readonly triagens: TriagemRepository,
     private readonly eventos: EventPublisher,
   ) {}
 
   async executar(input: SolicitarTriagemInput, signal: AbortSignal): Promise<void> {
-    // Autorização POR OBJETO já na borda (P-51 / AB1): não enfileira pedido de perfil alheio. Perfil
-    // ausente e perfil de outro cliente colapsam no MESMO erro — não vaza existência (A17 §5.3).
+    // Autorização POR OBJETO já na borda (P-51 / AB1): não enfileira pedido de perfil alheio.
     const perfil = await this.perfis.porId(input.perfilId, signal);
     if (perfil === null || perfil.clienteFinalId !== input.clienteFinalId) {
       throw new AcessoNegadoError();
+    }
+
+    // Persiste `processando` se não há triagem existente — não sobrescreve `concluida`/`incompleta`
+    // para que um segundo clique de um usuário não apague o resultado anterior (idempotente).
+    const existente = await this.triagens.porEditalEPerfil(
+      input.tenantId, input.clienteFinalId, input.editalId, input.perfilId, signal,
+    );
+    if (existente === null) {
+      await this.triagens.salvar(
+        Triagem.pendente(input.editalId, input.perfilId, input.tenantId, perfil.clienteFinalId),
+        signal,
+      );
     }
 
     await this.eventos.publicar(

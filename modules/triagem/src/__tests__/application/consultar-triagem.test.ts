@@ -10,7 +10,14 @@ import { ConsultarTriagemUseCase } from '../../application/use-cases/consultar-t
 import type {
   ConsultarTriagemInput,
 } from '../../application/use-cases/consultar-triagem.js';
+import type { TriagemEnvelopeDTO, TriagemLeituraDTO } from '../../application/dtos.js';
 import type { ExtracaoRepository, TriagemRepository } from '../../application/ports.js';
+
+type ConcluideDTO = { status: 'concluida' } & TriagemLeituraDTO;
+function concluida(dto: TriagemEnvelopeDTO | null): ConcluideDTO {
+  if (!dto || dto.status !== 'concluida') throw new Error(`Esperado status 'concluida', obtido '${dto?.status}'`);
+  return dto as ConcluideDTO;
+}
 import { ExtracaoEdital } from '../../domain/extracao-edital.js';
 import { Triagem } from '../../domain/triagem.js';
 import { Aderencia } from '../../domain/value-objects/aderencia.js';
@@ -74,6 +81,7 @@ function triagemBase(overrides?: Partial<Parameters<typeof Triagem.reconstituir>
     perfilId: PERFIL,
     tenantId: TENANT,
     clienteFinalId: CLIENTE,
+    status: 'concluida',
     aderencia: Aderencia.criar(1 / 3),
     recomendacao: 'no-go',
     riscos: [
@@ -101,65 +109,109 @@ function repos(triagem: Triagem | null, extracao: ExtracaoEdital | null): {
 }
 
 describe('ConsultarTriagemUseCase', () => {
-  describe('read path feliz — TriagemLeituraDTO (A17 §4.2)', () => {
-    it('projeta aderência, recomendação, confiancaIA e paginasEdital do domínio', async () => {
+  describe('read path feliz — status concluida (A17 §4.2)', () => {
+    it('retorna envelope com status concluida e projeta aderência, recomendação, confiancaIA e paginasEdital', async () => {
       const { triagens, extracoes } = repos(triagemBase(), extracaoBase());
       const uc = new ConsultarTriagemUseCase(triagens, extracoes);
 
-      const dto = await uc.executar(INPUT, noop);
+      const raw = await uc.executar(INPUT, noop);
+      const dto = concluida(raw);
 
-      expect(dto).not.toBeNull();
-      expect(dto!.editalId).toBe(EDITAL);
-      expect(dto!.perfilId).toBe(PERFIL);
-      expect(dto!.aderencia).toBeCloseTo(1 / 3);
-      expect(dto!.recomendacao).toBe('no-go');
-      expect(dto!.confiancaIA).toBe(0.5); // menor dos 3 críticos (0.9, 0.8, 0.5) — citação null não afeta a confiança
-      expect(dto!.paginasEdital).toBe(42);
+      expect(dto.status).toBe('concluida');
+      expect(dto.editalId).toBe(EDITAL);
+      expect(dto.perfilId).toBe(PERFIL);
+      expect(dto.aderencia).toBeCloseTo(1 / 3);
+      expect(dto.recomendacao).toBe('no-go');
+      expect(dto.confiancaIA).toBe(0.5);
+      expect(dto.paginasEdital).toBe(42);
     });
 
     it('NÃO expõe riscos[] — o DTO não tem o campo', async () => {
       const { triagens, extracoes } = repos(triagemBase(), extracaoBase());
       const uc = new ConsultarTriagemUseCase(triagens, extracoes);
 
-      const dto = await uc.executar(INPUT, noop);
-
-      expect(dto).not.toHaveProperty('riscos');
+      const raw = await uc.executar(INPUT, noop);
+      expect(raw).not.toHaveProperty('riscos');
     });
 
-    it('converte riscos[] do domínio em checklist.ok:false (lacunas) e mantém atendidos em ok:true', async () => {
+    it('converte riscos[] em checklist.ok:false (lacunas) e mantém atendidos em ok:true', async () => {
       const { triagens, extracoes } = repos(triagemBase(), extracaoBase());
       const uc = new ConsultarTriagemUseCase(triagens, extracoes);
 
-      const dto = await uc.executar(INPUT, noop);
+      const dto = concluida(await uc.executar(INPUT, noop));
 
-      // 1 item por Requisito, na ordem da extração
-      expect(dto!.checklist).toEqual([
-        { ok: true, texto: 'Certidão CND' }, // atendido — não está nos riscos
-        { ok: false, texto: 'Atestado de acervo técnico' }, // lacuna
-        { ok: false, texto: 'Balanço patrimonial' }, // lacuna
+      expect(dto.checklist).toEqual([
+        { ok: true, texto: 'Certidão CND' },
+        { ok: false, texto: 'Atestado de acervo técnico' },
+        { ok: false, texto: 'Balanço patrimonial' },
       ]);
     });
 
-    it('projeta camposAnalise com fonte renderizada e "verificar" quando sem citação', async () => {
+    it('projeta camposAnalise com estado explícito, fonte renderizada e "verificar" quando sem citação', async () => {
       const { triagens, extracoes } = repos(triagemBase(), extracaoBase());
       const uc = new ConsultarTriagemUseCase(triagens, extracoes);
 
-      const dto = await uc.executar(INPUT, noop);
-      const porTitulo = Object.fromEntries(dto!.camposAnalise.map((c) => [c.titulo, c]));
+      const dto = concluida(await uc.executar(INPUT, noop));
+      const porTitulo = Object.fromEntries(dto.camposAnalise.map((c) => [c.titulo, c]));
 
       expect(porTitulo['Objeto']).toEqual({
         titulo: 'Objeto',
         conteudo: 'Aquisição de notebooks',
         fonte: 'p. 1, seção 1.1',
+        estado: 'ok',
       });
       expect(porTitulo['Valor estimado']!.fonte).toBe('p. 2, seção 2.3');
-      expect(porTitulo['Valor estimado']!.conteudo).toContain('R$');
-      // dataAberturaPropostas veio sem citação → "verificar", fonte vazia
+      expect(porTitulo['Valor estimado']!.estado).toBe('ok');
       expect(porTitulo['Abertura das propostas']).toEqual({
         titulo: 'Abertura das propostas',
         conteudo: 'verificar',
         fonte: '',
+        estado: 'verificar',
       });
+    });
+  });
+
+  describe('estados de ciclo de vida (RAD-79)', () => {
+    it('retorna { status: processando } quando triagem pendente', async () => {
+      const pendente = Triagem.pendente(EDITAL, PERFIL, TENANT, CLIENTE);
+      const { triagens, extracoes } = repos(pendente, null);
+      const uc = new ConsultarTriagemUseCase(triagens, extracoes);
+
+      const dto = await uc.executar(INPUT, noop);
+
+      expect(dto).toEqual({ status: 'processando' });
+      expect(extracoes.porEdital).not.toHaveBeenCalled();
+    });
+
+    it('retorna { status: falha_ocr } sem consultar extração', async () => {
+      const falha = Triagem.falhaOcr(EDITAL, PERFIL, TENANT, CLIENTE);
+      const { triagens, extracoes } = repos(falha, null);
+      const uc = new ConsultarTriagemUseCase(triagens, extracoes);
+
+      expect(await uc.executar(INPUT, noop)).toEqual({ status: 'falha_ocr' });
+      expect(extracoes.porEdital).not.toHaveBeenCalled();
+    });
+
+    it('retorna { status: recusada } sem consultar extração', async () => {
+      const recusada = Triagem.recusada(EDITAL, PERFIL, TENANT, CLIENTE);
+      const { triagens, extracoes } = repos(recusada, null);
+      const uc = new ConsultarTriagemUseCase(triagens, extracoes);
+
+      expect(await uc.executar(INPUT, noop)).toEqual({ status: 'recusada' });
+      expect(extracoes.porEdital).not.toHaveBeenCalled();
+    });
+
+    it('retorna envelope incompleta com campos "verificar" e checklist vazio', async () => {
+      const incompleta = Triagem.incompleta(EDITAL, PERFIL, TENANT, CLIENTE);
+      const { triagens, extracoes } = repos(incompleta, extracaoBase());
+      const uc = new ConsultarTriagemUseCase(triagens, extracoes);
+
+      const raw = await uc.executar(INPUT, noop);
+      expect(raw?.status).toBe('incompleta');
+      const dto = raw as ({ readonly status: 'incompleta' } & TriagemLeituraDTO);
+      expect(dto.aderencia).toBe(0);
+      expect(dto.recomendacao).toBe('no-go');
+      expect(dto.checklist).toEqual([]);
     });
   });
 

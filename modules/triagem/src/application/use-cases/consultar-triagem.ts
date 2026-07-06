@@ -3,7 +3,7 @@ import type { ClienteFinalId, EditalId, PerfilId, TenantId } from '@radar/kernel
 import type { ExtracaoEdital } from '../../domain/extracao-edital.js';
 import type { Triagem } from '../../domain/triagem.js';
 import type { CampoExtraido } from '../../domain/value-objects/campo-extraido.js';
-import type { CampoAnaliseDTO, TriagemLeituraDTO } from '../dtos.js';
+import type { CampoAnaliseDTO, TriagemEnvelopeDTO, TriagemLeituraDTO } from '../dtos.js';
 import type { ExtracaoRepository, TriagemRepository } from '../ports.js';
 
 export interface ConsultarTriagemInput {
@@ -30,8 +30,8 @@ export class ConsultarTriagemUseCase {
 
   async executar(
     input: ConsultarTriagemInput,
-    signal: AbortSignal, // obrigatório — convenção P-78 / A10 §1 (idem modules/ingestao)
-  ): Promise<TriagemLeituraDTO | null> {
+    signal: AbortSignal,
+  ): Promise<TriagemEnvelopeDTO | null> {
     const triagem = await this.triagens.porEditalEPerfil(
       input.tenantId,
       input.clienteFinalId,
@@ -39,10 +39,9 @@ export class ConsultarTriagemUseCase {
       input.perfilId,
       signal,
     );
-    if (triagem === null) return null; // sem triagem (ou fora do escopo do tenant) → BFF 404 → SPA null
+    if (triagem === null) return null; // nunca_solicitada → BFF 404
 
-    // Autorização POR OBJETO (P-51 / AB1), nunca por filtro de query: escopo divergente lança —
-    // o BFF mapeia AcessoNegadoError → 403 e a SPA também devolve null (nunca vaza o motivo; §5.3).
+    // Autorização POR OBJETO (P-51 / AB1) — verifica antes de retornar qualquer status.
     if (
       triagem.tenantId !== input.tenantId ||
       triagem.clienteFinalId !== input.clienteFinalId
@@ -50,34 +49,44 @@ export class ConsultarTriagemUseCase {
       throw new AcessoNegadoError();
     }
 
-    // Extração é catálogo GLOBAL (P-45): reidrata confiança/páginas/campos + a lista COMPLETA de
-    // requisitos — o checklist precisa dos ATENDIDOS, não só das lacunas guardadas em `triagem.riscos`.
-    const extracao = await this.extracoes.porEdital(input.editalId, signal);
-    if (extracao === null) return null; // triagem sem extração é estado inconsistente → ausente
+    // Estados sem dados: retorna só o status.
+    if (
+      triagem.status === 'processando' ||
+      triagem.status === 'falha_ocr' ||
+      triagem.status === 'recusada'
+    ) {
+      return { status: triagem.status };
+    }
 
-    return projetarLeitura(triagem, extracao);
+    // Estados com dados (concluida / incompleta): hidrata extração.
+    const extracao = await this.extracoes.porEdital(input.editalId, signal);
+    if (extracao === null) return null; // estado inconsistente → trata como ausente
+
+    return { status: triagem.status, ...projetarLeitura(triagem, extracao) };
   }
 }
 
 /**
  * Projeção domínio → `TriagemLeituraDTO`. Regra-chave: os `riscos[]` do domínio NÃO aparecem no
  * contrato de leitura — viram `checklist.ok === false` (docs/10 §4). `camposAnalise` é a face de
- * apresentação dos `CampoExtraido`.
+ * apresentação dos `CampoExtraido`. Para `incompleta`, aderência = 0 e checklist = [] (sem aderência computada).
  */
 export function projetarLeitura(triagem: Triagem, extracao: ExtracaoEdital): TriagemLeituraDTO {
-  const lacunas = new Set(triagem.riscos.map((r) => r.descricao)); // "não atende: <requisito>"
+  const lacunas = new Set(triagem.riscos.map((r) => r.descricao));
   return {
     editalId: triagem.editalId,
     perfilId: triagem.perfilId,
-    aderencia: triagem.aderencia.valor,
-    recomendacao: triagem.recomendacao,
+    aderencia: triagem.aderencia?.valor ?? 0,
+    recomendacao: triagem.recomendacao ?? 'no-go',
     confiancaIA: extracao.confiancaGlobal().valor,
     paginasEdital: extracao.paginas,
     camposAnalise: camposExibiveis(extracao),
-    checklist: extracao.requisitos.map((req) => ({
-      ok: !lacunas.has(`não atende: ${req.descricao}`),
-      texto: req.descricao,
-    })),
+    checklist: triagem.status === 'concluida'
+      ? extracao.requisitos.map((req) => ({
+          ok: !lacunas.has(`não atende: ${req.descricao}`),
+          texto: req.descricao,
+        }))
+      : [],
   };
 }
 
@@ -103,16 +112,17 @@ const CAMPOS_ANALISE: ReadonlyArray<{
 /**
  * `camposAnalise` = projeção dos `CampoExtraido`. `conteudo` = "verificar" quando o campo não é
  * exibível como fato (sem citação — §6, docs/10 §4); `fonte` = citação renderizada ("p. 12, seção
- * 5.1") ou "". O limiar de confiança já foi aplicado no write path (`ExtrairEdital`/`TriarEdital`,
- * RAD-30): no read path a ausência de citação utilizável é o sinal de "verificar".
+ * 5.1") ou "". `estado` é o flag explícito para a UI (RAD-79) — evita inferência frágil via texto.
  */
 function camposExibiveis(extracao: ExtracaoEdital): CampoAnaliseDTO[] {
   return CAMPOS_ANALISE.map(({ titulo, campo, render }) => {
     const c = campo(extracao);
+    const temCitacao = c.citacao !== null;
     return {
       titulo,
-      conteudo: c.citacao !== null ? render(c.valor) : 'verificar',
-      fonte: c.citacao !== null ? c.citacao.toString() : '',
+      conteudo: temCitacao ? render(c.valor) : 'verificar',
+      fonte: temCitacao ? c.citacao!.toString() : '',
+      estado: temCitacao ? 'ok' : 'verificar',
     };
   });
 }

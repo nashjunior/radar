@@ -127,13 +127,15 @@ describe('TriarEditalUseCase', () => {
     expect(salvarExtracao).not.toHaveBeenCalled();
   });
 
-  it('gate de confiança: abaixo do limiar → ConfiancaInsuficienteError (não tria nem publica)', async () => {
+  it('gate de confiança: abaixo do limiar → ConfiancaInsuficienteError, persiste incompleta e não publica (RAD-79)', async () => {
     const { uc, porId, salvarTriagem, publicar } = deps({ existente: extracao(0.4) });
     await expect(uc.executar({ ...INPUT, limiarConfianca: 0.7 }, noop)).rejects.toThrow(
       ConfiancaInsuficienteError,
     );
-    expect(porId).toHaveBeenCalled(); // authz do perfil roda ANTES do gate (defesa em profundidade)
-    expect(salvarTriagem).not.toHaveBeenCalled();
+    expect(porId).toHaveBeenCalled();
+    // RAD-79: persiste status 'incompleta' antes de re-lançar para que leitores vejam o estado
+    expect(salvarTriagem).toHaveBeenCalledOnce();
+    expect(salvarTriagem.mock.calls[0]![0].status).toBe('incompleta');
     expect(publicar).not.toHaveBeenCalled();
   });
 
