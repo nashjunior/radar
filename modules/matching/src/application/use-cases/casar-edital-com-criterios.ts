@@ -52,7 +52,7 @@ export class CasarEditalComCriteriosUseCase {
         tenantId: criterio.tenantId,
         clienteFinalId: criterio.clienteFinalId,
         criterioId: criterio.id,
-        editalId: edital.id as EditalId,
+        editalId: edital.id,
         aderencia,
       });
 

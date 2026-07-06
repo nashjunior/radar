@@ -139,8 +139,8 @@ interface Row {
 function rowToCriterio(row: Row): CriterioDeMonitoramento {
   return CriterioDeMonitoramento.reconstituir({
     id: CriterioId(row.id),
-    tenantId: row.tenant_id as TenantId,
-    clienteFinalId: row.cliente_final_id as ClienteFinalId,
+    tenantId: TenantId(row.tenant_id),
+    clienteFinalId: ClienteFinalId(row.cliente_final_id),
     ramoCnae: row.ramo_cnae ?? undefined,
     regiaoUf: row.regiao_uf ?? undefined,
     faixaValor:

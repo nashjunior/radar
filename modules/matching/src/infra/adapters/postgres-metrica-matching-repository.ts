@@ -51,7 +51,7 @@ export class PostgresMetricaMatchingRepository implements MetricaMatchingReposit
          SELECT cliente_final_id
          FROM alerta
          WHERE tenant_id = $1
-           AND criado_em >= NOW() - ($2 || ' days')::interval
+           AND criado_em >= NOW() - ($2::int * INTERVAL '1 day')
          GROUP BY cliente_final_id
        ),
        ativados AS (
@@ -59,7 +59,7 @@ export class PostgresMetricaMatchingRepository implements MetricaMatchingReposit
          FROM alerta
          WHERE tenant_id = $1
            AND relevante = true
-           AND criado_em >= NOW() - ($2 || ' days')::interval
+           AND criado_em >= NOW() - ($2::int * INTERVAL '1 day')
          GROUP BY cliente_final_id
        )
        SELECT
