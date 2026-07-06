@@ -1,7 +1,9 @@
 /** @figma nodeId=9:2 fileKey=SAbjXOQO4gFAH4syq7VdQf (Light) / 15:215 (Dark) */
 import { Badge, Button } from '@/ui/components';
 import { useTriagem } from '@/ui/hooks/use-triagem';
+import { useEdital } from '@/ui/hooks/use-edital';
 import { aderenciaLabel } from '@/domain/triagem-view-model';
+import { formatarDataColeta } from '@/domain/edital-detalhe';
 import type { CampoAnaliseIA, ChecklistItem } from '@/domain/triagem-view-model';
 
 interface TriagemPageProps {
@@ -11,6 +13,7 @@ interface TriagemPageProps {
 
 export function TriagemPage({ editalId, onBack }: TriagemPageProps) {
   const triagem = useTriagem({ editalId: editalId ?? '' });
+  const edital = useEdital(editalId ?? '');
 
   if (!editalId) {
     return (
@@ -94,30 +97,49 @@ export function TriagemPage({ editalId, onBack }: TriagemPageProps) {
         <span>Triagem</span>
       </div>
 
-      {/* Cabeçalho do edital — dados fixos até GetEditalUseCase existir */}
+      {/* Cabeçalho do edital — alimentado por GetEditalUseCase (RAD-111) */}
       <div style={{ background: 'var(--radar-color-bg-surface)', border: '1px solid var(--radar-color-border-default)', borderRadius: 'var(--radar-radius-lg)', padding: 'var(--radar-space-6)', marginBottom: 'var(--radar-space-6)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--radar-space-3)', marginBottom: 'var(--radar-space-3)' }}>
-          <Badge type="info" size="md">Pregão Eletrônico</Badge>
-          <span style={{ color: 'var(--radar-color-text-muted)', fontSize: 'var(--radar-font-size-sm)' }}>
-            PNCP · Nº 001/2026 · Min. da Educação
-          </span>
-        </div>
-        <h1 style={{ margin: '0 0 var(--radar-space-4)', fontSize: '1.1rem', fontWeight: 600, lineHeight: 1.4 }}>
-          Aquisição de equipamentos de informática para uso administrativo — Pregão Eletrônico nº 001/2026
-        </h1>
-        <div style={{ display: 'flex', gap: 'var(--radar-space-8)', fontSize: 'var(--radar-font-size-sm)' }}>
-          {[
-            { label: 'Valor estimado', value: 'R$ 85.000,00' },
-            { label: 'Abertura', value: '10/07/2026 às 14h' },
-            { label: 'Órgão', value: 'Min. da Educação — FNDE' },
-            { label: 'Modo', value: 'Disputa aberta' },
-          ].map(({ label, value }) => (
-            <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <span style={{ color: 'var(--radar-color-text-muted)', fontSize: '0.75rem' }}>{label}</span>
-              <span style={{ fontWeight: 500 }}>{value}</span>
+        {edital.status === 'success' ? (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--radar-space-3)', marginBottom: 'var(--radar-space-3)' }}>
+              <Badge type="info" size="md">{edital.data.modalidade}</Badge>
+              <span style={{ color: 'var(--radar-color-text-muted)', fontSize: 'var(--radar-font-size-sm)' }}>
+                Nº {edital.data.numero} · {edital.data.orgao.nome}
+              </span>
             </div>
-          ))}
-        </div>
+            <h1 style={{ margin: '0 0 var(--radar-space-4)', fontSize: '1.1rem', fontWeight: 600, lineHeight: 1.4 }}>
+              {edital.data.titulo}
+            </h1>
+            <div style={{ display: 'flex', gap: 'var(--radar-space-8)', fontSize: 'var(--radar-font-size-sm)', marginBottom: 'var(--radar-space-3)' }}>
+              {[
+                {
+                  label: 'Valor estimado',
+                  value: edital.data.valorEstimado !== null
+                    ? edital.data.valorEstimado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                    : '—',
+                },
+                {
+                  label: 'Abertura',
+                  value: new Date(edital.data.dataAbertura).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+                },
+                { label: 'Órgão', value: edital.data.orgao.nome },
+                { label: 'Modo', value: edital.data.modoDisputa },
+              ].map(({ label, value }) => (
+                <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <span style={{ color: 'var(--radar-color-text-muted)', fontSize: '0.75rem' }}>{label}</span>
+                  <span style={{ fontWeight: 500 }}>{value}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize: '0.6875rem', color: 'var(--radar-color-text-disabled, var(--radar-color-text-muted))' }}>
+              {edital.data.proveniencia.fonte} · Coletado em {formatarDataColeta(edital.data.proveniencia.dataColeta)} · {edital.data.proveniencia.baseLegal}
+            </div>
+          </>
+        ) : (
+          <div style={{ color: 'var(--radar-color-text-muted)', fontSize: 'var(--radar-font-size-sm)' }}>
+            {edital.status === 'loading' ? 'Carregando edital...' : 'Edital não encontrado.'}
+          </div>
+        )}
       </div>
 
       {/* Two-column layout */}

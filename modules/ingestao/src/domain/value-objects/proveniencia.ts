@@ -22,4 +22,16 @@ export class Proveniencia {
     if (!Number.isFinite(params.coletadoEm.getTime())) throw new ProvenienciaInvalidaError('coletadoEm');
     return new Proveniencia(params.fonte.trim(), params.baseLegal.trim(), params.coletadoEm);
   }
+
+  equals(other: Proveniencia): boolean {
+    return (
+      this.fonte === other.fonte &&
+      this.baseLegal === other.baseLegal &&
+      this.coletadoEm.getTime() === other.coletadoEm.getTime()
+    );
+  }
+
+  toString(): string {
+    return `${this.fonte} | ${this.baseLegal} | ${this.coletadoEm.toISOString()}`;
+  }
 }
