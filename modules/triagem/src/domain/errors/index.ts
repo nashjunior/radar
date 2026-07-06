@@ -90,3 +90,11 @@ export class PerfilNaoEncontradoError extends DomainError {
     super(`perfil de habilitação não encontrado: ${id}`);
   }
 }
+
+/** Triagem não encontrada para o par edital+perfil — feedback solicitado antes da triagem existir. Borda: 404. */
+export class TriagemNaoEncontradaError extends DomainError {
+  readonly code = 'TRIAGEM_NAO_ENCONTRADA' as const;
+  constructor(editalId: string, perfilId: string) {
+    super(`Triagem não encontrada: editalId=${editalId}, perfilId=${perfilId}`);
+  }
+}

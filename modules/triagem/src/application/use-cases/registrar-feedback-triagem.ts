@@ -1,7 +1,9 @@
-import { AcessoNegadoError, DomainError } from '@radar/kernel';
+import { AcessoNegadoError } from '@radar/kernel';
 import type { ClienteFinalId, EditalId, PerfilId, TenantId } from '@radar/kernel';
 import { TriagemAceita, TriagemContestada, TriagemDecisao } from '../events.js';
 import type { EventPublisher, TriagemRepository } from '../ports.js';
+import { TriagemNaoEncontradaError } from '../../domain/errors/index.js';
+export { TriagemNaoEncontradaError };
 
 /** Contexto comum de autorização por objeto (P-51). */
 interface BaseInput {
@@ -63,10 +65,3 @@ export class RegistrarFeedbackTriagemUseCase {
   }
 }
 
-/** Thrown when no triagem record exists for the given edital + perfil pair. Maps to HTTP 404. */
-export class TriagemNaoEncontradaError extends DomainError {
-  readonly code = 'TRIAGEM_NAO_ENCONTRADA' as const;
-  constructor(editalId: EditalId, perfilId: PerfilId) {
-    super(`Triagem não encontrada: editalId=${editalId}, perfilId=${perfilId}`);
-  }
-}

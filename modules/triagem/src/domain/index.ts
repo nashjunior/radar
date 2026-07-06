@@ -15,6 +15,7 @@ export {
   PerfilNaoEncontradoError,
   RequisitoInvalidoError,
   SaidaLlmInvalidaError,
+  TriagemNaoEncontradaError,
 } from './errors/index.js';
 export { Aderencia } from './value-objects/aderencia.js';
 export { CampoExtraido } from './value-objects/campo-extraido.js';
