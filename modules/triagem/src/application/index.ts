@@ -26,7 +26,10 @@ export type {
 } from './ports.js';
 export {
   ExtracaoConcluida,
+  TriagemAceita,
   TriagemConcluida,
+  TriagemContestada,
+  TriagemDecisao,
   TriagemSolicitada,
 } from './events.js';
 export type { DomainEvent } from './events.js';
@@ -46,3 +49,5 @@ export type {
 } from './use-cases/extrair-editais-lote.js';
 export { TriarEditalUseCase } from './use-cases/triar-edital.js';
 export type { TriarEditalInput } from './use-cases/triar-edital.js';
+export { RegistrarFeedbackTriagemUseCase, TriagemNaoEncontradaError } from './use-cases/registrar-feedback-triagem.js';
+export type { RegistrarFeedbackTriagemInput } from './use-cases/registrar-feedback-triagem.js';

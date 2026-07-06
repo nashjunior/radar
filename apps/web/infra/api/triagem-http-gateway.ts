@@ -81,4 +81,40 @@ export class TriagemHttpGateway implements TriagemGateway {
     const data = (await res.json()) as { editalId: string; estado: 'processando' };
     return { editalId: mkEditalId(data.editalId), estado: 'processando' };
   }
+
+  private async postFeedback(path: string, body: unknown, signal: AbortSignal): Promise<void> {
+    const token = await this.getToken();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await fetch(`${this.baseUrl}${path}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal,
+    });
+
+    if (res.status === 401) throw new SessaoExpiradaError();
+    if (!res.ok) throw new Error(`[TriagemHttpGateway] ${path} HTTP ${res.status}`);
+  }
+
+  async aceitar(input: { tenantId: TenantId; editalId: EditalId; perfilId: PerfilId }, signal: AbortSignal): Promise<void> {
+    return this.postFeedback(`/api/triagem/${encodeURIComponent(input.editalId)}/aceitar`, {}, signal);
+  }
+
+  async contestar(input: { tenantId: TenantId; editalId: EditalId; perfilId: PerfilId; motivo?: string }, signal: AbortSignal): Promise<void> {
+    return this.postFeedback(
+      `/api/triagem/${encodeURIComponent(input.editalId)}/contestar`,
+      { motivo: input.motivo ?? null },
+      signal,
+    );
+  }
+
+  async registrarDecisao(input: { tenantId: TenantId; editalId: EditalId; perfilId: PerfilId; go: boolean }, signal: AbortSignal): Promise<void> {
+    return this.postFeedback(
+      `/api/triagem/${encodeURIComponent(input.editalId)}/decisao`,
+      { go: input.go },
+      signal,
+    );
+  }
 }

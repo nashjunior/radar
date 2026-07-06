@@ -53,6 +53,59 @@ export class TriagemConcluida implements DomainEvent {
   }
 }
 
+/** Published Language (RAD-81): usuário aceitou a análise — UTI1 (aceitação). */
+export class TriagemAceita implements DomainEvent {
+  readonly type = 'triagem.aceita' as const;
+  readonly occurredAt: Date;
+
+  constructor(
+    readonly payload: {
+      readonly tenantId: TenantId;
+      readonly clienteFinalId: ClienteFinalId;
+      readonly editalId: EditalId;
+      readonly perfilId: PerfilId;
+    },
+  ) {
+    this.occurredAt = new Date();
+  }
+}
+
+/** Published Language (RAD-81): usuário contestou a análise — UTI1 (rejeição). */
+export class TriagemContestada implements DomainEvent {
+  readonly type = 'triagem.contestada' as const;
+  readonly occurredAt: Date;
+
+  constructor(
+    readonly payload: {
+      readonly tenantId: TenantId;
+      readonly clienteFinalId: ClienteFinalId;
+      readonly editalId: EditalId;
+      readonly perfilId: PerfilId;
+      readonly motivo: string | null;
+    },
+  ) {
+    this.occurredAt = new Date();
+  }
+}
+
+/** Published Language (RAD-81): usuário registrou decisão go/no-go — UTI2 (conversão). */
+export class TriagemDecisao implements DomainEvent {
+  readonly type = 'triagem.decisao' as const;
+  readonly occurredAt: Date;
+
+  constructor(
+    readonly payload: {
+      readonly tenantId: TenantId;
+      readonly clienteFinalId: ClienteFinalId;
+      readonly editalId: EditalId;
+      readonly perfilId: PerfilId;
+      readonly go: boolean;
+    },
+  ) {
+    this.occurredAt = new Date();
+  }
+}
+
 /**
  * Evento INTERNO ao contexto (A17 §8) — não é Published Language cross-context. Aquece o cache de
  * extração por edital (P-45); consumidores intra-contexto apenas.

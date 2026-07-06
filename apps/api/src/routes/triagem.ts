@@ -16,7 +16,11 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { EditalId } from '@radar/kernel';
-import type { ConsultarTriagemUseCase, SolicitarTriagemUseCase } from '@radar/triagem';
+import type {
+  ConsultarTriagemUseCase,
+  RegistrarFeedbackTriagemUseCase,
+  SolicitarTriagemUseCase,
+} from '@radar/triagem';
 import { responderErro } from '../errors.js';
 import { autenticarMiddleware } from '../middleware/tenant.js';
 import type { PerfilAtivoGateway } from '../ports/perfil-ativo-gateway.js';
@@ -24,6 +28,7 @@ import type { PerfilAtivoGateway } from '../ports/perfil-ativo-gateway.js';
 export interface TriagemContainer {
   consultarTriagem: ConsultarTriagemUseCase;
   solicitarTriagem: SolicitarTriagemUseCase;
+  registrarFeedback: RegistrarFeedbackTriagemUseCase;
   perfilAtivo: PerfilAtivoGateway;
 }
 
@@ -134,6 +139,96 @@ export function criarTriagemRouter(container: TriagemContainer): Hono {
       );
 
       return c.json({ editalId, estado: 'processando' as const }, 202);
+    } catch (err) {
+      return responderErro(c, err);
+    }
+  });
+
+  // POST /:editalId/aceitar — UTI1: usuário aceita a análise (RAD-81)
+  router.post('/:editalId/aceitar', async (c) => {
+    const tenantId = c.get('tenantId');
+    const signal = c.req.raw.signal;
+
+    let editalId: ReturnType<typeof EditalId>;
+    try { editalId = EditalId(c.req.param('editalId')); } catch {
+      return c.json({ code: 'EDITAL_ID_INVALIDO', mensagem: 'editalId inválido.' }, 400);
+    }
+
+    try {
+      const perfil = await container.perfilAtivo.resolverParaTenant(tenantId, signal);
+      if (!perfil) return c.json({}, 404);
+
+      await container.registrarFeedback.executar(
+        { tipo: 'aceita', tenantId, editalId, perfilId: perfil.perfilId, clienteFinalId: perfil.clienteFinalId },
+        signal,
+      );
+      return c.json({ ok: true }, 202);
+    } catch (err) {
+      return responderErro(c, err);
+    }
+  });
+
+  // POST /:editalId/contestar — UTI1: usuário contesta a análise (RAD-81)
+  router.post('/:editalId/contestar', async (c) => {
+    const tenantId = c.get('tenantId');
+    const signal = c.req.raw.signal;
+
+    let editalId: ReturnType<typeof EditalId>;
+    try { editalId = EditalId(c.req.param('editalId')); } catch {
+      return c.json({ code: 'EDITAL_ID_INVALIDO', mensagem: 'editalId inválido.' }, 400);
+    }
+
+    try {
+      const perfil = await container.perfilAtivo.resolverParaTenant(tenantId, signal);
+      if (!perfil) return c.json({}, 404);
+
+      const body = await c.req.json().catch(() => ({})) as { motivo?: string };
+      await container.registrarFeedback.executar(
+        {
+          tipo: 'contestada',
+          tenantId, editalId,
+          perfilId: perfil.perfilId,
+          clienteFinalId: perfil.clienteFinalId,
+          motivo: typeof body.motivo === 'string' ? body.motivo : null,
+        },
+        signal,
+      );
+      return c.json({ ok: true }, 202);
+    } catch (err) {
+      return responderErro(c, err);
+    }
+  });
+
+  // POST /:editalId/decisao — UTI2: usuário registra decisão go/no-go (RAD-81)
+  router.post('/:editalId/decisao', async (c) => {
+    const tenantId = c.get('tenantId');
+    const signal = c.req.raw.signal;
+
+    let editalId: ReturnType<typeof EditalId>;
+    try { editalId = EditalId(c.req.param('editalId')); } catch {
+      return c.json({ code: 'EDITAL_ID_INVALIDO', mensagem: 'editalId inválido.' }, 400);
+    }
+
+    try {
+      const perfil = await container.perfilAtivo.resolverParaTenant(tenantId, signal);
+      if (!perfil) return c.json({}, 404);
+
+      const body = await c.req.json().catch(() => null) as { go?: boolean } | null;
+      if (typeof body?.go !== 'boolean') {
+        return c.json({ code: 'CORPO_INVALIDO', mensagem: 'Campo "go" (boolean) obrigatório.' }, 400);
+      }
+
+      await container.registrarFeedback.executar(
+        {
+          tipo: 'decisao',
+          tenantId, editalId,
+          perfilId: perfil.perfilId,
+          clienteFinalId: perfil.clienteFinalId,
+          go: body.go,
+        },
+        signal,
+      );
+      return c.json({ ok: true }, 202);
     } catch (err) {
       return responderErro(c, err);
     }

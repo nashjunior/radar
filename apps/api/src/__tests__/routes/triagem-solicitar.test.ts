@@ -22,6 +22,7 @@ import { criarTriagemRouter } from '../../routes/triagem.js';
 import type { TriagemContainer } from '../../routes/triagem.js';
 import type {
   ConsultarTriagemUseCase,
+  RegistrarFeedbackTriagemUseCase,
   SolicitarTriagemUseCase,
 } from '@radar/triagem';
 
@@ -32,6 +33,7 @@ function buildApp(overrides?: Partial<TriagemContainer>): Hono {
   const container: TriagemContainer = {
     consultarTriagem: { executar: vi.fn().mockResolvedValue(null) } as unknown as ConsultarTriagemUseCase,
     solicitarTriagem: { executar: vi.fn().mockResolvedValue(undefined) } as unknown as SolicitarTriagemUseCase,
+    registrarFeedback: { executar: vi.fn().mockResolvedValue(undefined) } as unknown as RegistrarFeedbackTriagemUseCase,
     perfilAtivo: {
       resolverParaTenant: vi.fn().mockResolvedValue({
         perfilId: 'perfil-1',

@@ -11,7 +11,11 @@
 
 import { Hono } from 'hono';
 import { logger } from 'hono/logger';
-import { ConsultarTriagemUseCase, SolicitarTriagemUseCase } from '@radar/triagem';
+import {
+  ConsultarTriagemUseCase,
+  RegistrarFeedbackTriagemUseCase,
+  SolicitarTriagemUseCase,
+} from '@radar/triagem';
 import {
   ConsultarMetricasMatchingUseCase,
   DefinirCriterioMonitoramentoUseCase,
@@ -43,6 +47,7 @@ export function criarApp(): Hono {
     triagemStub,
     eventPublisherStub,
   );
+  const registrarFeedbackTriagem = new RegistrarFeedbackTriagemUseCase(triagemStub, eventPublisherStub);
 
   const definirCriterio = new DefinirCriterioMonitoramentoUseCase(
     criterioStub,
@@ -51,7 +56,7 @@ export function criarApp(): Hono {
     new CryptoCriterioIdProvider(),
     systemClock,
   );
-  const registrarFeedback = new RegistrarFeedbackAlertaUseCase(alertaStub, eventPublisherStub);
+  const registrarFeedbackAlerta = new RegistrarFeedbackAlertaUseCase(alertaStub, eventPublisherStub);
   const consultarMetricas = new ConsultarMetricasMatchingUseCase(metricaStub);
 
   const app = new Hono();
@@ -62,8 +67,8 @@ export function criarApp(): Hono {
   app.route('/health', healthRouter);
 
   // API principal — tenant obrigatório
-  app.route('/api/triagem', criarTriagemRouter({ consultarTriagem, solicitarTriagem, perfilAtivo }));
-  app.route('/api/matching', criarMatchingRouter({ definirCriterio, registrarFeedback, consultarMetricas, perfilAtivo }));
+  app.route('/api/triagem', criarTriagemRouter({ consultarTriagem, solicitarTriagem, registrarFeedback: registrarFeedbackTriagem, perfilAtivo }));
+  app.route('/api/matching', criarMatchingRouter({ definirCriterio, registrarFeedback: registrarFeedbackAlerta, consultarMetricas, perfilAtivo }));
 
   // Catch-all 404
   app.notFound((c) => c.json({ code: 'NAO_ENCONTRADO', mensagem: 'Rota não encontrada.' }, 404));

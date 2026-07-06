@@ -67,4 +67,16 @@ export class TriagemStubGateway implements TriagemGateway {
   ): Promise<{ editalId: EditalId; estado: 'processando' }> {
     return { editalId: mkEditalId(input.editalId), estado: 'processando' as const };
   }
+
+  async aceitar(_input: { tenantId: TenantId; editalId: EditalId; perfilId: PerfilId }, _signal: AbortSignal): Promise<void> {
+    /* stub */
+  }
+
+  async contestar(_input: { tenantId: TenantId; editalId: EditalId; perfilId: PerfilId; motivo?: string }, _signal: AbortSignal): Promise<void> {
+    /* stub */
+  }
+
+  async registrarDecisao(_input: { tenantId: TenantId; editalId: EditalId; perfilId: PerfilId; go: boolean }, _signal: AbortSignal): Promise<void> {
+    /* stub */
+  }
 }

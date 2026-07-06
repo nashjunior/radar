@@ -1,5 +1,6 @@
 import type { EditalId, PerfilId, TenantId } from '@radar/kernel';
 import type { TriagemViewModel } from '@/domain/triagem-view-model';
+import type { EditalDetalhe } from '@/domain/edital-detalhe';
 
 /**
  * Port de saída: repositório de triagens (implementado pela infra/).
@@ -15,6 +16,12 @@ export interface TriagemGateway {
     input: { tenantId: TenantId; editalId: EditalId; perfilId: PerfilId },
     signal: AbortSignal,
   ): Promise<{ editalId: EditalId; estado: 'processando' }>;
+  /** RAD-81 UTI1: usuário aceita a análise. */
+  aceitar(input: { tenantId: TenantId; editalId: EditalId; perfilId: PerfilId }, signal: AbortSignal): Promise<void>;
+  /** RAD-81 UTI1: usuário contesta a análise. motivo é opcional (minimização P-03). */
+  contestar(input: { tenantId: TenantId; editalId: EditalId; perfilId: PerfilId; motivo?: string }, signal: AbortSignal): Promise<void>;
+  /** RAD-81 UTI2: usuário registra decisão go/no-go. */
+  registrarDecisao(input: { tenantId: TenantId; editalId: EditalId; perfilId: PerfilId; go: boolean }, signal: AbortSignal): Promise<void>;
 }
 
 /**
@@ -66,4 +73,17 @@ export interface CriterioResposta {
 export interface MatchingApiGateway {
   definirCriterio(input: DefinirCriterioInput, signal: AbortSignal): Promise<CriterioResposta>;
   registrarFeedback(input: { alertaId: string; relevante: boolean }, signal: AbortSignal): Promise<void>;
+}
+
+// ---------------------------------------------------------------------------
+// Edital (US-03 · DetalheDoEdital — RAD-111)
+// Aguardando endpoint GET /api/editais/:id no BFF (A VALIDAR).
+// ---------------------------------------------------------------------------
+
+/**
+ * Port de edital — GET /api/editais/:id (futuro).
+ * Implementado por EditalStubGateway até o endpoint existir no BFF.
+ */
+export interface EditalGateway {
+  buscarDetalhes(editalId: EditalId, signal: AbortSignal): Promise<EditalDetalhe | null>;
 }
