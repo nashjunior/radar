@@ -10,6 +10,11 @@ export interface TriagemGateway {
     input: { tenantId: TenantId; editalId: EditalId; perfilId: PerfilId },
     signal: AbortSignal,
   ): Promise<TriagemViewModel | null>;
+  /** US-07 pull trigger: solicita análise por IA. Retorna 'processando'; idempotente. */
+  solicitar(
+    input: { tenantId: TenantId; editalId: EditalId; perfilId: PerfilId },
+    signal: AbortSignal,
+  ): Promise<{ editalId: EditalId; estado: 'processando' }>;
 }
 
 /**

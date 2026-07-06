@@ -11,7 +11,7 @@
 
 import { Hono } from 'hono';
 import { logger } from 'hono/logger';
-import { ConsultarTriagemUseCase } from '@radar/triagem';
+import { ConsultarTriagemUseCase, SolicitarTriagemUseCase } from '@radar/triagem';
 import {
   ConsultarMetricasMatchingUseCase,
   DefinirCriterioMonitoramentoUseCase,
@@ -38,6 +38,11 @@ const perfilAtivo = PerfilAtivoConfigAdapter.fromJson(tenantSeed);
 
 export function criarApp(): Hono {
   const consultarTriagem = new ConsultarTriagemUseCase(triagemStub, extracaoStub);
+  const solicitarTriagem = new SolicitarTriagemUseCase(
+    { porId: async () => null },  // PerfilGateway stub — retorna null (AcessoNegadoError) até Postgres
+    triagemStub,
+    eventPublisherStub,
+  );
 
   const definirCriterio = new DefinirCriterioMonitoramentoUseCase(
     criterioStub,
@@ -57,7 +62,7 @@ export function criarApp(): Hono {
   app.route('/health', healthRouter);
 
   // API principal — tenant obrigatório
-  app.route('/api/triagem', criarTriagemRouter({ consultarTriagem, perfilAtivo }));
+  app.route('/api/triagem', criarTriagemRouter({ consultarTriagem, solicitarTriagem, perfilAtivo }));
   app.route('/api/matching', criarMatchingRouter({ definirCriterio, registrarFeedback, consultarMetricas, perfilAtivo }));
 
   // Catch-all 404

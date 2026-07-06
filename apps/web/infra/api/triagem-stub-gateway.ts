@@ -60,4 +60,11 @@ export class TriagemStubGateway implements TriagemGateway {
       ],
     };
   }
+
+  async solicitar(
+    input: { tenantId: TenantId; editalId: EditalId; perfilId: PerfilId },
+    _signal: AbortSignal,
+  ): Promise<{ editalId: EditalId; estado: 'processando' }> {
+    return { editalId: mkEditalId(input.editalId), estado: 'processando' as const };
+  }
 }

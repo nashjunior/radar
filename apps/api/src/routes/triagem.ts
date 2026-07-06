@@ -1,29 +1,29 @@
 /**
- * Rota: GET /api/triagem/:editalId
+ * Rotas: GET /api/triagem/:editalId  e  POST /api/triagem/:editalId/solicitar
  *
- * Retorna o resultado de triagem de um edital para o perfil do tenant.
- * Semântica que a SPA (TriagemHttpGateway) já trata:
- *   - 200  → triagem encontrada
- *   - 404  → sem triagem para este edital/perfil (ou tenant desconhecido no TENANT_SEED)
- *   - 403  → authz por objeto falhou — nunca vazar cross-tenant (A17 §5.3)
+ * GET  → lê o resultado de triagem (ou estado de ciclo de vida: processando/falha_ocr/…)
+ * POST → dispara a triagem pull (US-07): persiste estado `processando` + publica triagem.solicitada
+ *
+ * Semântica HTTP:
+ *   GET  200 → triagem/estado encontrado   404 → nunca solicitada   403 → authz por objeto
+ *   POST 202 → enfileirado (idempotente)   403 → authz por objeto   404 → tenant desconhecido
  *
  * AbortSignal derivado do request propaga cancelamento ao use case.
  *
- * Refs: docs/98 P-86, arquitetura/17 §5.3, apps/web/infra/api/triagem-http-gateway.ts
+ * Refs: docs/98 P-86, arquitetura/17 §4.3/§5.3, apps/web/infra/api/triagem-http-gateway.ts
  */
 
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { EditalId } from '@radar/kernel';
-import type { ConsultarTriagemUseCase } from '@radar/triagem';
+import type { ConsultarTriagemUseCase, SolicitarTriagemUseCase } from '@radar/triagem';
 import { responderErro } from '../errors.js';
 import { autenticarMiddleware } from '../middleware/tenant.js';
 import type { PerfilAtivoGateway } from '../ports/perfil-ativo-gateway.js';
 
-const TRIAGEM_STATUS = ['processando', 'concluida', 'incompleta', 'falha_ocr', 'recusada'] as const;
-
 export interface TriagemContainer {
   consultarTriagem: ConsultarTriagemUseCase;
+  solicitarTriagem: SolicitarTriagemUseCase;
   perfilAtivo: PerfilAtivoGateway;
 }
 
@@ -105,6 +105,35 @@ export function criarTriagemRouter(container: TriagemContainer): Hono {
         : { status: resultado.status };
 
       return c.json(payload);
+    } catch (err) {
+      return responderErro(c, err);
+    }
+  });
+
+  // POST /:editalId/solicitar — US-07 pull trigger (RAD-80)
+  router.post('/:editalId/solicitar', async (c) => {
+    const editalIdRaw = c.req.param('editalId');
+    const tenantId = c.get('tenantId');
+    const signal = c.req.raw.signal;
+
+    let editalId: ReturnType<typeof EditalId>;
+    try {
+      editalId = EditalId(editalIdRaw);
+    } catch {
+      return c.json({ code: 'EDITAL_ID_INVALIDO', mensagem: 'editalId inválido.' }, 400);
+    }
+
+    try {
+      const perfil = await container.perfilAtivo.resolverParaTenant(tenantId, signal);
+      if (!perfil) return c.json({}, 404);
+
+      const { perfilId, clienteFinalId } = perfil;
+      await container.solicitarTriagem.executar(
+        { tenantId, editalId, perfilId, clienteFinalId },
+        signal,
+      );
+
+      return c.json({ editalId, estado: 'processando' as const }, 202);
     } catch (err) {
       return responderErro(c, err);
     }

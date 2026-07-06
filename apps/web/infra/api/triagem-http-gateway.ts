@@ -61,4 +61,24 @@ export class TriagemHttpGateway implements TriagemGateway {
       checklist: data.checklist!,
     };
   }
+
+  async solicitar(
+    input: { tenantId: TenantId; editalId: EditalId; perfilId: PerfilId },
+    signal: AbortSignal,
+  ): Promise<{ editalId: EditalId; estado: 'processando' }> {
+    const token = await this.getToken();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await fetch(
+      `${this.baseUrl}/api/triagem/${encodeURIComponent(input.editalId)}/solicitar`,
+      { method: 'POST', headers, signal },
+    );
+
+    if (res.status === 401) throw new SessaoExpiradaError();
+    if (!res.ok) throw new Error(`[TriagemHttpGateway.solicitar] HTTP ${res.status}`);
+
+    const data = (await res.json()) as { editalId: string; estado: 'processando' };
+    return { editalId: mkEditalId(data.editalId), estado: 'processando' };
+  }
 }
