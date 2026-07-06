@@ -6,9 +6,13 @@
  *   - VITE_DEV_AUTH_TOKEN definido → DevAuthGateway (dev local sem Cognito real)
  *   - Cognito vars definidas       → CognitoOidcGateway (produção/staging)
  * O gateway de triagem usa TriagemHttpGateway apontando para VITE_API_URL.
+ * O gateway de matching usa MatchingHttpGateway apontando para VITE_API_URL.
  */
 import { GetTriagemUseCase } from '@/application/use-cases/get-triagem';
+import { DefinirCriterioUseCase } from '@/application/use-cases/definir-criterio';
+import { RegistrarFeedbackUseCase } from '@/application/use-cases/registrar-feedback';
 import { TriagemHttpGateway } from '@/infra/api/triagem-http-gateway';
+import { MatchingHttpGateway } from '@/infra/api/matching-http-gateway';
 import { CognitoOidcGateway } from '@/infra/auth/cognito-oidc-gateway';
 import { DevAuthGateway } from '@/infra/auth/dev-auth-gateway';
 import type { AuthPort } from '@/application/ports';
@@ -26,13 +30,15 @@ export const authGateway: AuthPort = devToken
       ...(cognitoScope ? { scope: cognitoScope } : {}),
     });
 
-const triagemGateway = new TriagemHttpGateway(
-  (import.meta.env['VITE_API_URL'] as string | undefined) ?? '',
-  () => authGateway.obterToken(),
-);
+const apiBase = (import.meta.env['VITE_API_URL'] as string | undefined) ?? '';
+
+const triagemGateway = new TriagemHttpGateway(apiBase, () => authGateway.obterToken());
+const matchingGateway = new MatchingHttpGateway(apiBase, () => authGateway.obterToken());
 
 export const useCases = {
   getTriagem: new GetTriagemUseCase(triagemGateway),
+  definirCriterio: new DefinirCriterioUseCase(matchingGateway),
+  registrarFeedback: new RegistrarFeedbackUseCase(matchingGateway),
 } as const;
 
 export type UseCases = typeof useCases;

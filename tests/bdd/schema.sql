@@ -19,13 +19,14 @@ CREATE TABLE IF NOT EXISTS criterio_monitoramento (
 );
 
 CREATE TABLE IF NOT EXISTS alerta (
-  id               TEXT    PRIMARY KEY,
-  tenant_id        TEXT    NOT NULL,
-  cliente_final_id TEXT    NOT NULL,
-  criterio_id      TEXT    NOT NULL,
-  edital_id        TEXT    NOT NULL,
-  aderencia        NUMERIC NOT NULL,
-  relevante        BOOLEAN
+  id               TEXT        PRIMARY KEY,
+  tenant_id        TEXT        NOT NULL,
+  cliente_final_id TEXT        NOT NULL,
+  criterio_id      TEXT        NOT NULL,
+  edital_id        TEXT        NOT NULL,
+  aderencia        NUMERIC     NOT NULL,
+  relevante        BOOLEAN,
+  criado_em        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- ---------------------------------------------------------------------------

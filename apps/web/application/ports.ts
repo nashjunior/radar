@@ -30,3 +30,35 @@ export interface AuthPort {
    */
   processarCallback(): Promise<void>;
 }
+
+// ---------------------------------------------------------------------------
+// Matching (US-04 · DefinirCritério, US-06 · RegistrarFeedback)
+// Refs: apps/api/src/routes/matching.ts, arquitetura/15 §5.
+// ---------------------------------------------------------------------------
+
+export interface DefinirCriterioInput {
+  ramoCnae?: string;
+  regiaoUf?: string;
+  /** Código da faixa de valor da tabela de referência (Lei 14.133/2021). */
+  faixaValorCodigo?: string;
+  palavrasChave?: string[];
+}
+
+export interface CriterioResposta {
+  id: string;
+  ramoCnae: string | null;
+  regiaoUf: string | null;
+  faixaValorMin: number | null;
+  faixaValorMax: number | null;
+  palavrasChave: string[];
+  ativo: boolean;
+}
+
+/**
+ * Port de matching — POST /api/matching/criterios e PATCH /api/matching/alertas/:id/feedback.
+ * Implementado por MatchingHttpGateway (prod) ou MatchingStubGateway (dev/test).
+ */
+export interface MatchingApiGateway {
+  definirCriterio(input: DefinirCriterioInput, signal: AbortSignal): Promise<CriterioResposta>;
+  registrarFeedback(input: { alertaId: string; relevante: boolean }, signal: AbortSignal): Promise<void>;
+}
