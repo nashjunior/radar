@@ -2,7 +2,6 @@ import { CasarEditalComCriteriosUseCase } from '../application/use-cases/casar-e
 import { CryptoAlertaIdProvider } from './adapters/crypto-id-provider.js';
 import { PostgresAlertaRepository } from './adapters/postgres-alerta-repository.js';
 import { PostgresCriterioRepository } from './adapters/postgres-criterio-repository.js';
-import { PostgresEditalMatchingView } from './adapters/postgres-edital-matching-view.js';
 import { SqsEventPublisher } from './adapters/sqs-event-publisher.js';
 import { MatchingWorker } from './queue/matching-worker.js';
 
@@ -47,12 +46,10 @@ export function criarMatchingComposicao(
 ): MatchingComposicao {
   const criterioRepo = new PostgresCriterioRepository(db);
   const alertaRepo = new PostgresAlertaRepository(db);
-  const editalView = new PostgresEditalMatchingView(db);
   const publisher = new SqsEventPublisher(sqs, config.alertaGeradoQueueUrl);
   const alertaIds = new CryptoAlertaIdProvider();
 
   const casarEditalUC = new CasarEditalComCriteriosUseCase(
-    editalView,
     criterioRepo,
     alertaRepo,
     publisher,

@@ -91,6 +91,10 @@ export class IngerirEditaisUseCase {
               modalidadeCodigo: edital.modalidade.codigo,
               faseAtual: edital.faseAtual,
               dataAtualizacao: edital.dataAtualizacao,
+              objeto: edital.objeto,
+              orgaoUf: edital.orgao.uf,
+              valorEstimado: edital.valorEstimado?.valor ?? null,
+              dataPublicacao: edital.dataPublicacao,
             }),
             signal,
           );

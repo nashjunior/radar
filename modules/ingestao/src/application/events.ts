@@ -8,6 +8,9 @@ export interface DomainEvent {
 /**
  * Publicado pela Ingestão após upsert bem-sucedido.
  * Consumidores: Matching, Triagem, Inteligência (A03, §3 — Published Language).
+ *
+ * Snapshot de atributos normalizados incluído para que consumidores (Matching, Triagem)
+ * não precisem fazer leitura cross-contexto do DB da Ingestão (docs/13 §4-5, P-97).
  */
 export class EditalIngerido implements DomainEvent {
   readonly type = 'edital.ingerido' as const;
@@ -20,6 +23,14 @@ export class EditalIngerido implements DomainEvent {
       readonly modalidadeCodigo: number;
       readonly faseAtual: string;
       readonly dataAtualizacao: Date;
+      /** Objeto da contratação — necessário para matching por palavras-chave. */
+      readonly objeto: string;
+      /** UF do órgão contratante. */
+      readonly orgaoUf: string;
+      /** Valor estimado em reais. null quando não informado no edital. */
+      readonly valorEstimado: number | null;
+      /** Data de publicação original no PNCP. */
+      readonly dataPublicacao: Date;
     },
   ) {
     this.occurredAt = new Date();

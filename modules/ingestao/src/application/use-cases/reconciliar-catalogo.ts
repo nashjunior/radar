@@ -76,6 +76,10 @@ export class ReconciliarCatalogoUseCase {
               modalidadeCodigo: editalAtualizado.modalidade.codigo,
               faseAtual: editalAtualizado.faseAtual,
               dataAtualizacao: editalAtualizado.dataAtualizacao,
+              objeto: editalAtualizado.objeto,
+              orgaoUf: editalAtualizado.orgao.uf,
+              valorEstimado: editalAtualizado.valorEstimado?.valor ?? null,
+              dataPublicacao: editalAtualizado.dataPublicacao,
             }),
             signal,
           );

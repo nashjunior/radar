@@ -1,6 +1,6 @@
 import { Before, DataTable, Given, Then, When } from '@cucumber/cucumber';
 import assert from 'node:assert/strict';
-import { AlertaId, ClienteFinalId, CriterioId, EditalId, TenantId } from '@radar/kernel';
+import { ClienteFinalId, CriterioId, EditalId, TenantId } from '@radar/kernel';
 import {
   CasarEditalComCriteriosUseCase,
   CriterioDeMonitoramento,
@@ -14,7 +14,6 @@ import type {
   AlertaIdProvider,
   AlertaRepository,
   CriterioRepository,
-  EditalMatchingView,
   EventPublisher,
   DomainEvent,
 } from '@radar/matching';
@@ -26,21 +25,32 @@ import { getFixture } from '../support/hooks.js';
 
 interface Ctx {
   criterios: CriterioDeMonitoramento[];
-  editalObjeto: string;
+  edital: EditalParaMatchingDTO;
   eventosPublicados: DomainEvent[];
   alertasRetornados: AlertaDTO[];
 }
 
+const editalPadrao: EditalParaMatchingDTO = {
+  id: EditalId('edital-test-001'),
+  tenantScope: 'global',
+  modalidadeCodigo: 6,
+  objetoDescricao: '',
+  uf: 'SP',
+  cnae: null,
+  valorEstimado: null,
+  dataPublicacao: new Date('2024-01-10T10:00:00Z'),
+};
+
 const ctx: Ctx = {
   criterios: [],
-  editalObjeto: '',
+  edital: editalPadrao,
   eventosPublicados: [],
   alertasRetornados: [],
 };
 
 Before(function () {
   ctx.criterios = [];
-  ctx.editalObjeto = '';
+  ctx.edital = editalPadrao;
   ctx.eventosPublicados = [];
   ctx.alertasRetornados = [];
 });
@@ -116,29 +126,17 @@ async function buildUseCase(): Promise<CasarEditalComCriteriosUseCase> {
   }
   criterioRepo.setForScoring(ctx.criterios);
 
-  const editaiView: EditalMatchingView = {
-    porId: async (id) => ({
-      id: id as EditalId,
-      tenantScope: 'global' as const,
-      modalidadeCodigo: 6,
-      objetoDescricao: ctx.editalObjeto,
-      uf: 'SP',
-      cnae: null,
-      valorEstimado: null,
-      dataPublicacao: new Date('2024-01-10T10:00:00Z'),
-    }),
-  };
-
   const alertaRepo = new PostgresAlertaRepository(db);
 
   const publisher: EventPublisher = {
     publicar: async (ev) => { ctx.eventosPublicados.push(ev); },
   };
 
-  const alertaIds = new CryptoAlertaIdProvider();
+  const alertaIds: AlertaIdProvider = new CryptoAlertaIdProvider();
 
+  // P-97: edital passado diretamente no input — sem leitura cross-contexto
   return new CasarEditalComCriteriosUseCase(
-    editaiView, criterioRepo, alertaRepo, publisher, alertaIds,
+    criterioRepo, alertaRepo, publisher, alertaIds,
   );
 }
 
@@ -169,7 +167,7 @@ Given(
 Given(
   'um edital com objeto {string}',
   function (objeto: string) {
-    ctx.editalObjeto = objeto;
+    ctx.edital = { ...editalPadrao, objetoDescricao: objeto };
   },
 );
 
@@ -198,7 +196,7 @@ When(
   async function () {
     const uc = await buildUseCase();
     ctx.alertasRetornados = await uc.executar(
-      { editalId: EditalId('edital-test-001') },
+      { edital: ctx.edital },
       new AbortController().signal,
     );
   },

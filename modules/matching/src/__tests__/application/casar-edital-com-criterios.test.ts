@@ -7,7 +7,6 @@ import type {
   AlertaIdProvider,
   AlertaRepository,
   CriterioRepository,
-  EditalMatchingView,
   EventPublisher,
 } from '../../application/ports.js';
 import type { EditalParaMatchingDTO } from '../../application/dtos.js';
@@ -35,27 +34,8 @@ function criarCriterio(clienteFinalId: string): CriterioDeMonitoramento {
 }
 
 describe('CasarEditalComCriteriosUseCase', () => {
-  it('retorna lista vazia quando edital não existe', async () => {
-    const editais: EditalMatchingView = { porId: vi.fn().mockResolvedValue(null) };
-    const criterios: CriterioRepository = {
-      salvar: vi.fn(),
-      porId: vi.fn(),
-      listarAtivos: vi.fn(),
-      casarComEdital: vi.fn(),
-    };
-    const alertas: AlertaRepository = { salvar: vi.fn(), porId: vi.fn(), atualizarFeedback: vi.fn() };
-    const eventos: EventPublisher = { publicar: vi.fn() };
-    const ids: AlertaIdProvider = { gerar: vi.fn().mockReturnValue(AlertaId('uuid-1')) };
-
-    const uc = new CasarEditalComCriteriosUseCase(editais, criterios, alertas, eventos, ids);
-    const result = await uc.executar({ editalId: EditalId('inexistente') }, noop);
-
-    expect(result).toHaveLength(0);
-  });
-
   it('retorna lista vazia quando nenhum critério supera o limiar de aderência (< 0.3)', async () => {
     const criterio = criarCriterio('cliente-A');
-    const editais: EditalMatchingView = { porId: vi.fn().mockResolvedValue(editalFixture) };
     const criterios: CriterioRepository = {
       salvar: vi.fn(),
       porId: vi.fn(),
@@ -66,8 +46,8 @@ describe('CasarEditalComCriteriosUseCase', () => {
     const eventos: EventPublisher = { publicar: vi.fn() };
     const ids: AlertaIdProvider = { gerar: vi.fn().mockReturnValue(AlertaId('uuid-1')) };
 
-    const uc = new CasarEditalComCriteriosUseCase(editais, criterios, alertas, eventos, ids);
-    const result = await uc.executar({ editalId: EditalId('edital-001') }, noop);
+    const uc = new CasarEditalComCriteriosUseCase(criterios, alertas, eventos, ids);
+    const result = await uc.executar({ edital: editalFixture }, noop);
 
     expect(result).toHaveLength(0);
     expect(alertas.salvar).not.toHaveBeenCalled();
@@ -78,7 +58,6 @@ describe('CasarEditalComCriteriosUseCase', () => {
     const salvarAlerta = vi.fn().mockResolvedValue(undefined);
     const publicar = vi.fn().mockResolvedValue(undefined);
 
-    const editais: EditalMatchingView = { porId: vi.fn().mockResolvedValue(editalFixture) };
     const criterios: CriterioRepository = {
       salvar: vi.fn(),
       porId: vi.fn(),
@@ -89,8 +68,8 @@ describe('CasarEditalComCriteriosUseCase', () => {
     const eventos: EventPublisher = { publicar };
     const ids: AlertaIdProvider = { gerar: vi.fn().mockReturnValue(AlertaId('uuid-alerta')) };
 
-    const uc = new CasarEditalComCriteriosUseCase(editais, criterios, alertas, eventos, ids);
-    const result = await uc.executar({ editalId: EditalId('edital-001') }, noop);
+    const uc = new CasarEditalComCriteriosUseCase(criterios, alertas, eventos, ids);
+    const result = await uc.executar({ edital: editalFixture }, noop);
 
     expect(result).toHaveLength(1);
     expect(result[0]?.aderencia).toBe(0.75);
@@ -107,7 +86,6 @@ describe('CasarEditalComCriteriosUseCase', () => {
       palavrasChave: PalavrasChave.criar(['ti']),
     });
 
-    const editais: EditalMatchingView = { porId: vi.fn().mockResolvedValue(editalFixture) };
     const criterios: CriterioRepository = {
       salvar: vi.fn(),
       porId: vi.fn(),
@@ -122,8 +100,8 @@ describe('CasarEditalComCriteriosUseCase', () => {
     let idCounter = 0;
     const ids: AlertaIdProvider = { gerar: vi.fn().mockImplementation(() => AlertaId(`uuid-${++idCounter}`)) };
 
-    const uc = new CasarEditalComCriteriosUseCase(editais, criterios, alertas, eventos, ids);
-    const result = await uc.executar({ editalId: EditalId('edital-001') }, noop);
+    const uc = new CasarEditalComCriteriosUseCase(criterios, alertas, eventos, ids);
+    const result = await uc.executar({ edital: editalFixture }, noop);
 
     expect(result).toHaveLength(2);
     const clienteFinals = result.map(a => a.clienteFinalId);

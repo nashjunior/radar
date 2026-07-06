@@ -1,4 +1,4 @@
-import type { AlertaId, CriterioId, EditalId, TenantId } from '@radar/kernel';
+import type { AlertaId, CriterioId, TenantId } from '@radar/kernel';
 import type { Alerta } from '../domain/entities/alerta.js';
 import type { CriterioDeMonitoramento } from '../domain/entities/criterio-de-monitoramento.js';
 import type {
@@ -11,14 +11,6 @@ import type { DomainEvent } from './events.js';
 // ---------------------------------------------------------------------------
 // Ports de saída — nomenclatura por papel, adapter por tecnologia (A10 §8)
 // ---------------------------------------------------------------------------
-
-/**
- * Visão somente-leitura do Catálogo para o Matching.
- * O Matching nunca escreve no Catálogo — isolamento entre bounded contexts (docs/13 §4).
- */
-export interface EditalMatchingView {
-  porId(id: EditalId, signal: AbortSignal): Promise<EditalParaMatchingDTO | null>;
-}
 
 /** Repositório do agregado CriterioDeMonitoramento. */
 export interface CriterioRepository {
