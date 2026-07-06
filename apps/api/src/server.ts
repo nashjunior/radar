@@ -21,12 +21,18 @@ import {
   DefinirCriterioMonitoramentoUseCase,
   RegistrarFeedbackAlertaUseCase,
 } from '@radar/matching';
+import { GerenciarPerfilHabilitacaoUseCase } from '@radar/identidade';
+import { DefinirPreferenciasNotificacaoUseCase } from '@radar/notificacao';
 import { CryptoCriterioIdProvider } from '@radar/matching/infra';
 import { healthRouter } from './routes/health.js';
 import { criarTriagemRouter } from './routes/triagem.js';
 import { criarMatchingRouter } from './routes/matching.js';
+import { criarIdentidadeRouter } from './routes/identidade.js';
+import { criarNotificacaoRouter } from './routes/notificacao.js';
 import { PerfilAtivoConfigAdapter } from './infra/perfil-ativo-config-adapter.js';
 import { triagemStub, extracaoStub } from './infra/triagem-stub.js';
+import { perfilRepositoryStub, perfilIdProviderStub } from './infra/identidade-stub.js';
+import { preferenciaStub } from './infra/notificacao-stub.js';
 import {
   criterioStub,
   alertaStub,
@@ -48,6 +54,13 @@ export function criarApp(): Hono {
     eventPublisherStub,
   );
   const registrarFeedbackTriagem = new RegistrarFeedbackTriagemUseCase(triagemStub, eventPublisherStub);
+  const gerenciarPerfil = new GerenciarPerfilHabilitacaoUseCase(
+    perfilRepositoryStub,
+    perfilIdProviderStub,
+    eventPublisherStub,
+  );
+
+  const definirPreferencias = new DefinirPreferenciasNotificacaoUseCase(preferenciaStub);
 
   const definirCriterio = new DefinirCriterioMonitoramentoUseCase(
     criterioStub,
@@ -69,6 +82,8 @@ export function criarApp(): Hono {
   // API principal — tenant obrigatório
   app.route('/api/triagem', criarTriagemRouter({ consultarTriagem, solicitarTriagem, registrarFeedback: registrarFeedbackTriagem, perfilAtivo }));
   app.route('/api/matching', criarMatchingRouter({ definirCriterio, registrarFeedback: registrarFeedbackAlerta, consultarMetricas, perfilAtivo }));
+  app.route('/api/identidade', criarIdentidadeRouter({ gerenciarPerfil, perfilAtivo }));
+  app.route('/api/notificacao', criarNotificacaoRouter({ definirPreferencias }));
 
   // Catch-all 404
   app.notFound((c) => c.json({ code: 'NAO_ENCONTRADO', mensagem: 'Rota não encontrada.' }, 404));
