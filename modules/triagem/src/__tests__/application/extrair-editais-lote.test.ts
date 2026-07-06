@@ -124,4 +124,51 @@ describe('ExtrairEditaisEmLoteUseCase', () => {
     expect(res.falhas).toBe(1);
     expect(d.salvar).toHaveBeenCalledTimes(1);
   });
+
+  it('lista vazia → retorna zeros sem chamar o LLM', async () => {
+    const d = deps([]);
+    const res = await new ExtrairEditaisEmLoteUseCase(d.llmLote, d.extracoes, d.storage).executar([], noop);
+    expect(res).toEqual({ extraidos: 0, cacheHits: 0, ignorados: 0, insuficientes: 0, falhas: 0 });
+    expect(d.extrairLote).not.toHaveBeenCalled();
+  });
+
+  it('temTextoSelecionavel:true + texto vazio → vai ao LLM (OCR pode encontrar texto nos anexos)', async () => {
+    // Documenta comportamento intencional: o guard `!temTextoSelecionavel && texto.trim() === ''` usa AND,
+    // então um item com temTextoSelecionavel=true e texto vazio passa para o lote mesmo sem texto.
+    const d = deps([{ editalId: EditalId('A'), ok: true, extracao: extracao('A', 0.9) }]);
+    const res = await new ExtrairEditaisEmLoteUseCase(d.llmLote, d.extracoes, d.storage).executar(
+      [item('A', { temTextoSelecionavel: true, texto: '' })],
+      noop,
+    );
+    expect(d.extrairLote).toHaveBeenCalledOnce();
+    expect(res.extraidos).toBe(1);
+    expect(res.ignorados).toBe(0);
+  });
+
+  it('lote com todos os quatro desfechos — contadores corretos', async () => {
+    // cache-hit(C), ignorado(D), ok(A), insuficiente(B), falha(E)
+    const d = deps(
+      [
+        { editalId: EditalId('A'), ok: true, extracao: extracao('A', 0.9) },
+        { editalId: EditalId('B'), ok: true, extracao: extracao('B', 0) },
+        { editalId: EditalId('E'), ok: false, motivo: 'timeout' },
+      ],
+      { C: extracao('C', 0.8) },
+    );
+    const res = await new ExtrairEditaisEmLoteUseCase(d.llmLote, d.extracoes, d.storage).executar(
+      [
+        item('A'),
+        item('B'),
+        item('C'),
+        item('D', { temTextoSelecionavel: false, texto: '' }),
+        item('E'),
+      ],
+      noop,
+    );
+    expect(res.extraidos).toBe(1);
+    expect(res.cacheHits).toBe(1);
+    expect(res.ignorados).toBe(1);
+    expect(res.insuficientes).toBe(1);
+    expect(res.falhas).toBe(1);
+  });
 });

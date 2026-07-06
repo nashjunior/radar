@@ -22,9 +22,9 @@ export interface ReconstituirTriagemProps {
   tenantId: TenantId;
   clienteFinalId: ClienteFinalId;
   status: TriagemStatus;
-  /** Não-null quando status é 'concluida' ou 'incompleta'. */
+  /** Não-null apenas quando status é 'concluida'. Null para todos os estados degradados. */
   aderencia: Aderencia | null;
-  /** Não-null quando status é 'concluida'. */
+  /** Não-null apenas quando status é 'concluida'. */
   recomendacao: Recomendacao | null;
   riscos: readonly Risco[];
 }

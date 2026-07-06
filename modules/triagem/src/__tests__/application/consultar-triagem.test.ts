@@ -233,6 +233,17 @@ describe('ConsultarTriagemUseCase', () => {
 
       await expect(uc.executar(INPUT, noop)).rejects.toThrow(AcessoNegadoError);
     });
+
+    it('auth check dispara ANTES de retornar status para estado degradado — IDOR não vaza status cross-tenant', async () => {
+      // Mesmo para `processando`, onde o status é retornado sem extração,
+      // a guarda de autorização deve disparar antes de qualquer informação ser revelada.
+      const pendenteCrossCliente = Triagem.pendente(EDITAL, PERFIL, TENANT, ClienteFinalId('cliente-alheio'));
+      const { triagens, extracoes } = repos(pendenteCrossCliente, null);
+      const uc = new ConsultarTriagemUseCase(triagens, extracoes);
+
+      await expect(uc.executar(INPUT, noop)).rejects.toThrow(AcessoNegadoError);
+      expect(extracoes.porEdital).not.toHaveBeenCalled();
+    });
   });
 
   describe('ausências → null (BFF 404 → SPA null)', () => {

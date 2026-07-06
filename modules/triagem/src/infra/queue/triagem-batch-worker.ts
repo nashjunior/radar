@@ -1,4 +1,4 @@
-import { DomainError, EditalId } from '@radar/kernel';
+import { EditalId } from '@radar/kernel';
 import type {
   DocumentosEditalGateway,
   ObjectStorage,
@@ -83,11 +83,7 @@ export class TriagemBatchWorker {
         const item = await this.hidratar(msg, signal);
         if (item) itens.push(item);
       } catch (err) {
-        if (err instanceof DomainError) {
-          await this.dlq.encaminhar({ editalId: msg.editalId }, err);
-        } else {
-          await this.dlq.encaminhar({ editalId: msg.editalId }, err);
-        }
+        await this.dlq.encaminhar({ editalId: msg.editalId }, err);
       }
     }
 

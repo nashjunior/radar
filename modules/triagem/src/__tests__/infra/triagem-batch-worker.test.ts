@@ -137,4 +137,51 @@ describe('TriagemBatchWorker', () => {
     await vi.runAllTimersAsync();
     expect(extrairLoteUC.executar).not.toHaveBeenCalled();
   });
+
+  it('timer reinicia após flush por tamanho — itens posteriores recebem novo timer', async () => {
+    const { worker, extrairLoteUC } = buildWorker({ tamanhoBatch: 2, janelaMs: 5_000, storageKeys: ['k1'] });
+
+    // Primeiro lote: tamanho flush em e1+e2
+    await worker.enfileirar(msg('e1'), signal);
+    await worker.enfileirar(msg('e2'), signal);
+    expect(extrairLoteUC.executar).toHaveBeenCalledOnce();
+
+    // Terceiro item chega depois — novo timer deve ser agendado
+    await worker.enfileirar(msg('e3'), signal);
+    expect(extrairLoteUC.executar).toHaveBeenCalledOnce(); // ainda não disparou
+
+    await vi.runAllTimersAsync();
+    expect(extrairLoteUC.executar).toHaveBeenCalledTimes(2); // timer do e3 disparou
+
+    worker.teardown();
+  });
+
+  it('use case lança exceção → flush() resolve sem crashar (worker resiliente)', async () => {
+    const worker = new (await import('../../infra/queue/triagem-batch-worker.js')).TriagemBatchWorker(
+      { executar: vi.fn().mockRejectedValue(new Error('lote falhou')) } as any,
+      { obterRefs: vi.fn(async (id: any) => docsRef(id, ['k1'])) },
+      { obterTextoAnexo: vi.fn().mockResolvedValue('texto') },
+      { encaminhar: vi.fn().mockResolvedValue(undefined) },
+      { tamanhoBatch: 1, janelaMs: 60_000 },
+    );
+
+    await expect(worker.enfileirar(msg('e1'), signal)).resolves.toBeUndefined();
+
+    worker.teardown();
+  });
+
+  it('todos os itens do lote falham na hidratação → DLQ chamado para cada um, use case não chamado', async () => {
+    const err = new Error('gateway indisponível');
+    const { worker, extrairLoteUC, dlq } = buildWorker({ tamanhoBatch: 2, docsError: err });
+
+    await worker.enfileirar(msg('e1'), signal);
+    await worker.enfileirar(msg('e2'), signal);
+
+    expect(dlq.encaminhar).toHaveBeenCalledTimes(2);
+    expect(dlq.encaminhar).toHaveBeenCalledWith({ editalId: 'e1' }, err);
+    expect(dlq.encaminhar).toHaveBeenCalledWith({ editalId: 'e2' }, err);
+    expect(extrairLoteUC.executar).not.toHaveBeenCalled();
+
+    worker.teardown();
+  });
 });
