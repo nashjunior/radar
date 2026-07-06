@@ -2,6 +2,7 @@
 import { Badge, Button } from '@/ui/components';
 import { useTriagem } from '@/ui/hooks/use-triagem';
 import { aderenciaLabel } from '@/domain/triagem-view-model';
+import type { CampoAnaliseIA, ChecklistItem } from '@/domain/triagem-view-model';
 
 interface TriagemPageProps {
   editalId?: string | undefined;
@@ -50,6 +51,31 @@ export function TriagemPage({ editalId, onBack }: TriagemPageProps) {
   }
 
   const { data } = triagem;
+
+  /* Triagem ainda em processamento ou com falha — estados sem dados completos (RAD-79).
+     Guardamos pelo positivo para que TypeScript consiga estreitar o tipo no else abaixo. */
+  if (data.status !== 'concluida' && data.status !== 'incompleta') {
+    const msgs: Record<string, string> = {
+      processando: 'Análise em andamento — aguarde alguns instantes e recarregue a página.',
+      falha_ocr:   'Não foi possível extrair o texto do edital (OCR falhou). Tente novamente mais tarde.',
+      recusada:    'Triagem recusada — edital fora do escopo configurado.',
+    };
+    return (
+      <div style={{ padding: 'var(--radar-space-6)', color: 'var(--radar-color-text-muted)' }}>
+        {msgs[data.status] ?? 'Triagem indisponível.'}
+        {data.status !== 'processando' && (
+          <>
+            {' '}
+            <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--radar-color-action-primary)', fontFamily: 'var(--radar-font-sans)' }}>
+              ← Voltar
+            </button>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  /* A partir daqui data.status é 'concluida' | 'incompleta' — campos completos disponíveis. */
   const aderenciaPct = Math.round(data.aderencia * 100);
   const aderenciaColor = data.aderencia >= 0.8
     ? 'var(--radar-color-status-go)'
@@ -109,7 +135,7 @@ export function TriagemPage({ editalId, onBack }: TriagemPageProps) {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--radar-space-4)' }}>
-            {data.camposAnalise.map((campo) => (
+            {data.camposAnalise.map((campo: CampoAnaliseIA) => (
               <div
                 key={campo.titulo}
                 style={{
@@ -147,7 +173,7 @@ export function TriagemPage({ editalId, onBack }: TriagemPageProps) {
           </div>
 
           <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 var(--radar-space-6)', display: 'flex', flexDirection: 'column', gap: 'var(--radar-space-3)' }}>
-            {data.checklist.map((item, i) => (
+            {data.checklist.map((item: ChecklistItem, i: number) => (
               <li key={i} style={{ display: 'flex', gap: 'var(--radar-space-2)', alignItems: 'flex-start', fontSize: 'var(--radar-font-size-sm)' }}>
                 <span style={{ color: item.ok ? 'var(--radar-color-status-go)' : 'var(--radar-color-status-pendente)', flexShrink: 0 }}>
                   {item.ok ? '✓' : '⚠'}
