@@ -13,13 +13,14 @@
 
 import { Hono } from 'hono';
 import { z } from 'zod';
-import type { GerenciarPerfilHabilitacaoUseCase } from '@radar/identidade';
+import type { ConsultarPerfilHabilitacaoUseCase, GerenciarPerfilHabilitacaoUseCase } from '@radar/identidade';
 import { responderErro } from '../errors.js';
 import { autenticarMiddleware } from '../middleware/tenant.js';
 import type { PerfilAtivoGateway } from '../ports/perfil-ativo-gateway.js';
 
 export interface IdentidadeContainer {
   gerenciarPerfil: GerenciarPerfilHabilitacaoUseCase;
+  consultarPerfil: ConsultarPerfilHabilitacaoUseCase;
   perfilAtivo: PerfilAtivoGateway;
 }
 
@@ -34,6 +35,27 @@ export function criarIdentidadeRouter(container: IdentidadeContainer): Hono {
   const router = new Hono();
 
   router.use('/*', autenticarMiddleware);
+
+  // GET /api/identidade/perfil — leitura do perfil do cliente final autenticado (P-101)
+  router.get('/perfil', async (c) => {
+    const tenantId = c.get('tenantId');
+    const signal = c.req.raw.signal;
+
+    try {
+      const perfil = await container.perfilAtivo.resolverParaTenant(tenantId, signal);
+      if (!perfil) return c.json({}, 404);
+
+      const dto = await container.consultarPerfil.executar(
+        { tenantId, clienteFinalId: perfil.clienteFinalId },
+        signal,
+      );
+
+      if (!dto) return c.json({}, 404);
+      return c.json(dto, 200);
+    } catch (err) {
+      return responderErro(c, err);
+    }
+  });
 
   // PUT /api/identidade/perfil — upsert das dimensões de habilitação (RAD-109)
   router.put('/perfil', async (c) => {

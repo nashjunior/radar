@@ -21,7 +21,7 @@ import {
   DefinirCriterioMonitoramentoUseCase,
   RegistrarFeedbackAlertaUseCase,
 } from '@radar/matching';
-import { GerenciarPerfilHabilitacaoUseCase } from '@radar/identidade';
+import { ConsultarPerfilHabilitacaoUseCase, GerenciarPerfilHabilitacaoUseCase } from '@radar/identidade';
 import { DefinirPreferenciasNotificacaoUseCase } from '@radar/notificacao';
 import { CryptoCriterioIdProvider } from '@radar/matching/infra';
 import { healthRouter } from './routes/health.js';
@@ -59,6 +59,7 @@ export function criarApp(): Hono {
     perfilIdProviderStub,
     eventPublisherStub,
   );
+  const consultarPerfil = new ConsultarPerfilHabilitacaoUseCase(perfilRepositoryStub);
 
   const definirPreferencias = new DefinirPreferenciasNotificacaoUseCase(preferenciaStub);
 
@@ -82,7 +83,7 @@ export function criarApp(): Hono {
   // API principal — tenant obrigatório
   app.route('/api/triagem', criarTriagemRouter({ consultarTriagem, solicitarTriagem, registrarFeedback: registrarFeedbackTriagem, perfilAtivo }));
   app.route('/api/matching', criarMatchingRouter({ definirCriterio, registrarFeedback: registrarFeedbackAlerta, consultarMetricas, perfilAtivo }));
-  app.route('/api/identidade', criarIdentidadeRouter({ gerenciarPerfil, perfilAtivo }));
+  app.route('/api/identidade', criarIdentidadeRouter({ gerenciarPerfil, consultarPerfil, perfilAtivo }));
   app.route('/api/notificacao', criarNotificacaoRouter({ definirPreferencias }));
 
   // Catch-all 404
