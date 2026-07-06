@@ -5,6 +5,7 @@ export {
   AnexoIndisponivelError,
   EditalNaoEncontradoError,
   FonteIndisponivelError,
+  ObjetoNaoEncontradoError,
   SchemaDriftError,
 } from './errors/index.js';
 export { Cnpj } from './value-objects/cnpj.js';

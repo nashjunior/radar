@@ -39,3 +39,11 @@ export class AnexoIndisponivelError extends DomainError {
     super(`anexo '${nome}' indisponível`);
   }
 }
+
+/** Objeto ausente no storage — chave não encontrada. Lançado pelo adapter S3. */
+export class ObjetoNaoEncontradoError extends DomainError {
+  readonly code = 'OBJETO_NAO_ENCONTRADO' as const;
+  constructor(chave: string) {
+    super(`objeto não encontrado no storage: ${chave}`);
+  }
+}

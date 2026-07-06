@@ -4,6 +4,7 @@ import {
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
+import { ObjetoNaoEncontradoError } from '../../domain/errors/index.js';
 import type { ObjectStorage } from '../../application/ports.js';
 
 /**
@@ -48,7 +49,7 @@ export class S3ObjectStorage implements ObjectStorage {
       { abortSignal: signal },
     );
 
-    if (!response.Body) throw new Error(`objeto não encontrado: ${chave}`);
+    if (!response.Body) throw new ObjetoNaoEncontradoError(chave);
     return response.Body.transformToByteArray();
   }
 

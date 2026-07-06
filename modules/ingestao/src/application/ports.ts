@@ -123,7 +123,7 @@ export interface ObjectStorage {
     signal: AbortSignal,
   ): Promise<string>;
 
-  /** Leitura de bytes por chave. Usado pelo read-path da Triagem (RAD-94/P-96). */
+  /** Leitura de bytes por chave. Usado internamente pelo adapter de DocumentosDoEditalPort. */
   obter(chave: string, signal: AbortSignal): Promise<Uint8Array>;
 
   /** Exclusão por chave. Necessário para retenção/expurgo (RAD-101, P-30, LGPD). */
