@@ -3,8 +3,10 @@ export { EditalFaseMudou, EditalIngerido } from './events.js';
 export type { DomainEvent } from './events.js';
 export { editalParaDTO } from './mappers.js';
 export type {
-  ContratacaoData,
+  AnexoEditalRepository,
   ArquivoPncpData,
+  ContratacaoData,
+  DocumentosDoEditalPort,
   EditalRepository,
   EventPublisher,
   IdProvider,

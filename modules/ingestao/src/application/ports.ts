@@ -1,5 +1,6 @@
 import type { EditalId } from '@radar/kernel';
 import type { Edital } from '../domain/entities/edital.js';
+import type { AnexosDTO, ArquivoDTO } from './dtos.js';
 import type { DomainEvent } from './events.js';
 
 // ---------------------------------------------------------------------------
@@ -126,4 +127,23 @@ export interface ObjectStorage {
 /** Gerador de IDs únicos (UUID v4). Injetado na infra para isolabilidade. */
 export interface IdProvider {
   gerar(): EditalId;
+}
+
+/**
+ * Persistência de metadados de anexos materializados (docs/13, §5).
+ * Guarda nome, storage key, MIME e tamanho após o primeiro download.
+ * Upsert idempotente por (edital_id, nome).
+ */
+export interface AnexoEditalRepository {
+  listarPorEdital(editalId: EditalId, signal: AbortSignal): Promise<ArquivoDTO[]>;
+  salvar(editalId: EditalId, arquivos: ArquivoDTO[], signal: AbortSignal): Promise<void>;
+}
+
+/**
+ * Open-Host Service de leitura de documentos da Ingestão (docs/13, §5).
+ * Materializa os anexos na primeira chamada e retorna refs idempotentemente.
+ * Consumidores externos (Triagem) recebem somente AnexosDTO — sem vazar modelo PNCP.
+ */
+export interface DocumentosDoEditalPort {
+  obterDocumentos(editalId: EditalId, signal: AbortSignal): Promise<AnexosDTO>;
 }

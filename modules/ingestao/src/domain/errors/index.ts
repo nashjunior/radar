@@ -24,6 +24,14 @@ export class EditalNaoEncontradoError extends DomainError {
   }
 }
 
+/** Proveniência inválida — fonte ou baseLegal vazias, ou coletadoEm é Invalid Date. */
+export class ProvenienciaInvalidaError extends DomainError {
+  readonly code = 'PROVENIENCIA_INVALIDA' as const;
+  constructor(campo: string) {
+    super(`proveniência inválida: campo '${campo}' requer valor não-vazio ou data válida`);
+  }
+}
+
 /** Arquivo/anexo do edital indisponível para download. */
 export class AnexoIndisponivelError extends DomainError {
   readonly code = 'ANEXO_INDISPONIVEL' as const;

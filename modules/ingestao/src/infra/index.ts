@@ -1,5 +1,7 @@
 export { CryptoIdProvider } from './adapters/crypto-id-provider.js';
+export { DocumentosDoEditalAdapter } from './adapters/documentos-do-edital-adapter.js';
 export { PncpHttpGateway } from './adapters/pncp-http-gateway.js';
+export { PostgresAnexoEditalRepository } from './adapters/postgres-anexo-edital-repository.js';
 export { PostgresEditalRepository } from './adapters/postgres-edital-repository.js';
 export { PostgresProvenienciaRepository } from './adapters/postgres-proveniencia-repository.js';
 export { S3ObjectStorage } from './adapters/s3-object-storage.js';
