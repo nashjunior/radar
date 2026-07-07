@@ -66,7 +66,8 @@ O MVP só vai a usuários externos quando **todos** forem verdade:
 - [ ] Frescor dentro do alvo: p95 do tempo publicação PNCP → alerta ≤ 30 minutos (documentos 08 e 12).
 - [ ] Precisão mínima do matching atingida: ≥ 60% dos alertas avaliados por contas ativas são marcados como relevantes, sem reduzir a postura de recall alto (documentos 08 e 11).
 - [ ] Barra de qualidade da triagem atingida no *gold set* (documento 10): recall de campos críticos — prazo, objeto, habilitação — acima da meta, e **zero alucinação em campos numéricos**.
-- [ ] Base legal registrada e minimização aplicada na ingestão (documentos 02, §4 e 05, §5).
+- [ ] Base legal registrada, LIA aprovado e minimização aplicada na ingestão (documentos 02, §4 e 05, §5).
+- [ ] Encarregado/DPO, canal público, ROPA, Política de Privacidade/Termos de Uso e contratos de tratamento com suboperadores prontos para go-live (documentos 02, §9; 05, §5; P-03/P-57).
 - [ ] Checklist de conformidade por funcionalidade satisfeito (documento 04, §6).
 - [ ] Métricas de ativação e precisão instrumentadas e observáveis (documento 08).
 - [ ] Teste de estresse do core passa: NFRs mantidos sob a carga-alvo e degradação graciosa comprovada, sem violar as regras duras (arquitetura/04).

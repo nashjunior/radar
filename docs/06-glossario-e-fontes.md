@@ -53,6 +53,11 @@ Legislação e órgãos oficiais:
 
 Proteção de dados / LGPD:
 
+- Lei nº 13.709/2018 (LGPD) — texto compilado (Planalto): https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2018/lei/L13709compilado.htm
+- ANPD — Titular de Dados: https://www.gov.br/anpd/pt-br/assuntos/titular-de-dados-1
+- ANPD — Guia orientativo para definições dos agentes de tratamento de dados pessoais e do encarregado: https://www.gov.br/anpd/pt-br/centrais-de-conteudo/materiais-educativos-e-publicacoes/guia-orientativo-para-definicoes-dos-agentes-de-tratamento-de-dados-pessoais-e-do-encarregado
+- ANPD — Regulamentações, incluindo Resolução CD/ANPD nº 18/2024 sobre atuação do encarregado: https://www.gov.br/anpd/pt-br/acesso-a-informacao/institucional/atos-normativos/regulamentacoes_anpd
+- ANPD — Radar Tecnológico nº 3 sobre IA generativa e web scraping: https://www.gov.br/anpd/pt-br/assuntos/noticias/ia-generativa-e-tema-do-3o-volume-da-serie-radar-tecnologico-da-anpd
 - ANPD alerta que web scraping de dados pessoais está sujeito à LGPD (Radar Tecnológico nº 3): https://www.tabnews.com.br/NewsletterOficial/anpd-alerta-que-web-scraping-de-dados-pessoais-viola-lgpd
 - LGPD e contratações públicas — Blog da Zênite: https://zenite.blog.br/lei-geral-de-protecao-de-dados-e-contratacoes-publicas/
 - Web scraping e LGPD: riscos jurídicos do uso de dados públicos: https://assisemendes.com.br/web-scraping-e-lgpd-riscos-juridicos-do-uso-de-dados-publicos/

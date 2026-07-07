@@ -25,6 +25,7 @@ O teste de carga pergunta "aguenta o volume?". Este pergunta "**resiste ao ataca
 | **AB11** | Segredos vazando | credenciais em logs, mensagens de erro, repositório | secret scanning limpo; erros não expõem segredo | P-56, P-61 |
 | **AB12** | Isolamento sob concorrência | provocar vazamento cross-tenant sob carga | isolamento se mantém sob concorrência (liga A05, DB7) | P-62 |
 | **AB13** | Adulteração do audit log | alterar/apagar a trilha para esconder acesso indevido | `AUDIT_LOG` **append-only/imutável**: `UPDATE`/`DELETE` negados e auditados; **fail-closed** se a trilha não grava; integridade verificável | P-61 |
+| **AB14** | **Malware em anexo/PDF do PNCP** | anexo baixado carrega malware que infecta quem baixa/abre, ou é servido ao browser/OCR/triagem sem verificação de confiança | anexo **não escaneado nunca** é servido a browser, OCR/triagem ou download; objeto infectado fica **isolado** (quarentena) e nunca é promovido a limpo; **transição de confiança auditada**; a leitura de consumo recusa pendente/rejeitado e resolve por objeto de domínio (não por `storageKey` arbitrário) | P-104 |
 
 ### 2.1 Matriz AB1 (isolamento por objeto) — a prova, não só o caso feliz
 
@@ -40,12 +41,12 @@ AB1 não se prova só no fluxo de Triagem: **todo** recurso com ID controlável 
 | `SOLICITACAO_TITULAR` | `AtenderSolicitacaoTitularUseCase` (§5) | criar / ler | titular verificado + vínculo | `IdentidadeNaoVerificadaError` / `AcessoNegadoError` |
 | `AUDIT_LOG` | `RegistrarAuditoriaUseCase` (§5) | ler | `tenantId` | `AcessoNegadoError` |
 
-> O **catálogo público** (`EDITAL`, `EXTRACAO_EDITAL`, `MODALIDADE`, `ORGAO`) é global (documento 12, §2) — não carrega escopo e por isso não entra na matriz de leitura cross-tenant; `BaixarAnexosEditalUseCase` (§1), porém, é exercitado em **AB7 (SSRF)** e **AB9 (custo)**, não em AB1.
+> O **catálogo público** (`EDITAL`, `EXTRACAO_EDITAL`, `MODALIDADE`, `ORGAO`) é global (documento 12, §2) — não carrega escopo e por isso não entra na matriz de leitura cross-tenant; `BaixarAnexosEditalUseCase` (§1), porém, é exercitado em **AB7 (SSRF)**, **AB9 (custo)** e **AB14 (malware no binário)**, não em AB1.
 
 ## 3. Método
 
 - **Automatizado no CI:** SAST (ex.: semgrep), DAST (ex.: ZAP/Burp), SCA/SBOM de dependências, *secret scanning*, scan de imagem de container (P-56).
-- **Casos de abuso como teste:** AB1–AB13 viram testes automatizados de autorização/injeção que rodam a cada release — obrigatórios: **isolamento (AB1, pela matriz §2.1)**, **prompt-injection (AB4)** e as camadas de saída da IA (**AB5–AB7, AB9**, A11 §2), **verificação de titular (AB10)** e **integridade de auditoria (AB13)** (P-62).
+- **Casos de abuso como teste:** AB1–AB14 viram testes automatizados de autorização/injeção que rodam a cada release — obrigatórios: **isolamento (AB1, pela matriz §2.1)**, **prompt-injection (AB4)** e as camadas de saída da IA (**AB5–AB7, AB9**, A11 §2), **verificação de titular (AB10)**, **integridade de auditoria (AB13)** e **trust-gating de anexos (AB14)** (P-62).
 - **Manual:** pentest periódico e *red-team* nos fluxos críticos (multi-tenant, IA, titular).
 - **Ambiente isolado** com dados sintéticos; mock do PNCP (A04, §4). Nunca a fonte real.
 
@@ -75,6 +76,7 @@ O MVP só passa no gate de segurança quando:
 - [ ] **Camadas de saída/uso da IA (A11 §2):** **AB5** (exfiltração — classe crítica não vai ao LLM), **AB6** (XSS/saída sanitizada), **AB7** (SSRF em anexo/URL) e **AB9** (cost-DoS: teto de custo/timeout/rate-limit por tenant), com fixture mínima cada.
 - [ ] **AB10 (data subject request):** identidade do titular verificada antes de agir; pedido falso e titular sem vínculo negados e auditados.
 - [ ] **AB13 (integridade do audit log):** trilha append-only/imutável, fail-closed, `UPDATE`/`DELETE` negados (P-61).
+- [ ] **AB14 (trust-gating de anexos):** objeto não escaneado nunca servido a browser/OCR/triagem/download; infectado isolado em quarentena; transição de confiança auditada; consumo recusa não-limpo (P-104).
 - [ ] Segredos: *secret scanning* limpo; nada sensível em logs (AB11).
 - [ ] Dependências sem vulnerabilidade crítica conhecida (SCA).
 
@@ -82,12 +84,13 @@ Compõe o gate junto com A04/A05 (documento 07, §6).
 
 ## 6. Ligação
 
-Cada caso de abuso mapeia um vetor do threat model (documento 05, §2) e uma lacuna de segurança do doc 98 (P-51–P-63). Este documento é o **plano de verificação** dessas lacunas: fechá-las é implementar o controle; AB* é como se prova que fechou. A **defesa detalhada contra injeção na IA** (AB4–AB7, AB9) está em [A11](11-seguranca-da-ia.md).
+Cada caso de abuso mapeia um vetor do threat model (documento 05, §2) e uma lacuna de segurança do doc 98 (P-51–P-63, e **P-104** para o trust-gating de anexos/AB14). Este documento é o **plano de verificação** dessas lacunas: fechá-las é implementar o controle; AB* é como se prova que fechou. A **defesa detalhada contra injeção na IA** (AB4–AB7, AB9) está em [A11](11-seguranca-da-ia.md).
 
 ## 7. Pendências
 
 - Gate de severidade (bloquear release em crítico/alto) e SLA de correção de vulnerabilidade (§4). `[A VALIDAR]` → P-63
 - Ferramentas de SAST/DAST/SCA e cadência de pentest (§3). → P-56
 - Testes de isolamento e prompt-injection no CI (§5). → P-62
+- Trust-gating de anexos na Ingestão (quarentena + scan AV/malware, AB14): landing/quarentena → scan assíncrono por evento → limpo/rejeitado; consumo recusa não-limpo (§§2,5). → P-104
 
 Rastreadas em [../docs/98](../docs/98-decisoes-e-pendencias.md).

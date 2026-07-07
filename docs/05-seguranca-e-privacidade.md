@@ -18,6 +18,8 @@ Os vetores mais relevantes nesta fase de concepção:
 
 **Envenenamento de dados na ingestão.** O produto consome conteúdo de fontes externas (editais, HTML). Conteúdo malicioso pode tentar injeção (SQL, comandos, prompt injection na etapa de análise por IA do módulo 2).
 
+**Malware em anexo binário.** Os anexos/PDFs baixados do PNCP são arquivos binários **não confiáveis**: podem carregar malware que infecta quem baixa/abre, ou ser servidos ao browser/OCR sem verificação. É ameaça **distinta** da injeção acima (o binário não precisa "injetar" nada no parser para ser nocivo) e não é coberta pelo anti-SSRF (§4) — exige verificação de confiança do arquivo antes do consumo.
+
 **Abuso de credenciais de fontes.** Onde houver autenticação com portais, o vazamento dessas credenciais é um risco.
 
 **Bloqueio/quebra de fontes.** Menos "segurança" e mais resiliência, mas relevante: perda de acesso a uma fonte degrada o produto.
@@ -37,7 +39,7 @@ Esta é a **linha de base decidida** (baseline) dos controles de segurança do p
 
 | Camada | Ameaça endereçada | Controles (baseline) | Gate | Prova / Pendência |
 |--------|-------------------|----------------------|------|-------------------|
-| **Ingestão** (Mód. 1) | Envenenamento, extrapolação LGPD | Validação/sanitização de entrada e de schema; queries parametrizadas; preferência por API oficial; minimização antes de persistir; registro de proveniência; rate-limiting educado com as fontes. **Egress allowlist + anti-SSRF** na busca de anexos/URLs | Pré-dev (validação, proveniência, minimização) · Pré-lançamento (SSRF/egress) | AB7, AB8 / P-58 |
+| **Ingestão** (Mód. 1) | Envenenamento (injeção), **malware em anexo binário**, extrapolação LGPD | Validação/sanitização de entrada e de schema; queries parametrizadas; preferência por API oficial; minimização antes de persistir; registro de proveniência; rate-limiting educado com as fontes. **Egress allowlist + anti-SSRF** na busca de anexos/URLs. **Trust-gating de anexos:** landing/quarentena → scan AV/malware assíncrono por evento → limpo/rejeitado; só objeto **limpo** é servido a triagem/OCR/front/download (controle **somado**, não substitui SSRF/P-58 nem prompt-injection/A11) | Pré-dev (validação, proveniência, minimização) · Pré-lançamento (SSRF/egress, trust-gating de anexos) | AB7, AB8, **AB14** / P-58, **P-104** |
 | **Armazenamento** | Exfiltração | Criptografia em repouso; **escopo `tenantId`/`clienteFinalId` em toda entidade desde o dia 1** e segregação lógica por tenant; segredos em cofre (secrets manager), nunca no código; retenção mínima; criptografia de campo para a classe crítica | Pré-dev (escopo por tenant, segredos em cofre, cripto em repouso) · Pré-lançamento (retenção, cripto de campo) · Next (isolamento físico RLS) | AB1, AB12 / P-08, P-59, P-07 |
 | **Trânsito** | Interceptação | TLS em todas as comunicações; sem tráfego de dado sensível em texto claro | Pré-dev | AB11 / — |
 | **Aplicação / API** | Acesso indevido, abuso | **Autorização por objeto** (confirma posse por `tenantId`/`clienteFinalId` a cada acesso, não só filtro de query — anti-IDOR/BOLA); **identidade verificada na borda via IdP (token OIDC) — o `tenantId`/`clienteFinalId` vem de claim verificado do token, nunca de header controlado pelo cliente**; AuthN forte (MFA); RBAC por papel; rate-limit por tenant; WAF/gateway, headers (HSTS/CSP), CORS/CSRF, validação de schema, anti-mass-assignment; validação de saída para não vazar dado de outro tenant | Pré-dev (autorização por objeto + tenant derivado de claim verificado — invariantes nos use cases/borda) · Pré-lançamento (AuthN/MFA, RBAC, WAF/rate-limit/headers) | AB1, AB2, AB3, AB9 / P-51, P-52, P-53, P-55, P-08 |
@@ -47,6 +49,8 @@ Esta é a **linha de base decidida** (baseline) dos controles de segurança do p
 
 **Decisão (regra dura, não afrouxável).** Três invariantes são **Pré-dev** porque não se retrofitam sem reescrever o núcleo, e sustentam os casos de abuso críticos de A07 §5: (1) **autorização por objeto** + `tenantId`/`clienteFinalId` em toda entidade (sustenta **AB1**); (2) **audit log append-only/fail-closed** (sustenta **AB13**); (3) **edital como dado não-confiável** com instrução separada (sustenta **A11**/AB4). A **verificação de identidade do titular** (**AB10**) é obrigatória antes do go-live. O isolamento **físico** por RLS (P-07) é endurecimento **aditivo** no Next — ele **soma-se** à autorização por objeto, **nunca a substitui**: o baseline lógico vale desde o dia 1, mesmo single-tenant. Fechar P-04 **decide esta tabela**; a implementação e o teste de cada controle seguem nas pendências citadas.
 
+**Trust-gating de anexos (controle novo, Pré-lançamento — P-103/RAD-124).** Anexo/PDF do PNCP é binário não confiável (§2): entra em **landing/quarentena**, passa por **scan AV/malware assíncrono dirigido por evento** (padrão worker — **nunca** dentro de `gravar()/armazenar()`) e só então é promovido a **limpo** ou **rejeitado/isolado**. Triagem, OCR, front e download **só consomem objeto limpo** — a leitura de consumo recusa pendente/rejeitado (fail-closed) e resolve por objeto de domínio, nunca por `storageKey` arbitrário do cliente. Cada transição de confiança emite evento auditável (reencosta em AB13/P-61 até o audit log real ficar em pé). É controle **somado e ortogonal**: não substitui o anti-SSRF (P-58) nem a defesa de prompt-injection na IA (A11) — o PDF segue dado não confiável para o LLM mesmo depois de "limpo"; e é independente do eixo **temperatura** (retenção/cost-tiering, P-30). Prova em **AB14** ([A07](../arquitetura/07-teste-de-seguranca.md) §§2,5); implementação na Ingestão em **P-104**.
+
 ## 5. Privacidade por design (LGPD na prática)
 
 Os controles técnicos que materializam as obrigações do documento 02:
@@ -55,7 +59,11 @@ Os controles técnicos que materializam as obrigações do documento 02:
 
 **Base legal e proveniência registradas.** Cada registro sabe de onde veio, quando e sob qual base legal foi tratado. Isso viabiliza auditoria e resposta a titulares.
 
-**Atendimento a direitos do titular.** Existe um processo (e endpoints internos) para localizar, corrigir e eliminar dados pessoais de um titular mediante solicitação — exigência direta da LGPD.
+**Encarregado, ROPA e transparência.** O go-live exige encarregado formalmente designado, canal público do encarregado, ROPA vivo e Política de Privacidade/Termos de Uso publicados (documento 02, §9; P-03). O ROPA registra finalidade, base legal, categorias de dados, operadores/suboperadores, retenção e salvaguardas por operação de tratamento.
+
+**Atendimento a direitos do titular.** Existe um processo interno para localizar, corrigir, anonimizar/bloquear ou eliminar dados pessoais de um titular mediante solicitação — exigência direta da LGPD. O MVP usa canal DPO-mediado, sem portal público de titular (P-100): toda solicitação vira `SolicitaçãoDeTitular`, exige verificação de identidade antes de qualquer revelação/alteração, registra auditoria append-only e responde com escopo, decisão e fundamento. Pedido com identidade insuficiente falha fechado (`IdentidadeNaoVerificadaError`). Quando eliminação conflitar com retenção, auditoria ou defesa de direitos, o atendimento usa bloqueio/anonimização ou negativa fundamentada.
+
+**Operadores e suboperadores.** LLM, e-mail transacional, nuvem e qualquer prestador que trate dado pessoal só entram em produção com contrato de tratamento/DPA, instruções documentadas do controlador, deveres de confidencialidade e segurança, retenção/eliminação, cooperação em direitos do titular e incidente. A classe **Estratégia comercial do cliente** não vai ao LLM nem a logs (documento 05, §9); P-54/P-66/P-80 fecham os detalhes de provedor, residência e DPA específico.
 
 **Política de retenção.** Dados são mantidos apenas pelo tempo necessário à finalidade; há prazos definidos e expurgo automático. `[A VALIDAR — definir prazos]`
 
@@ -67,7 +75,7 @@ Mesmo em concepção, convém deixar o princípio registrado: se houver incident
 
 ## 7. O que fica pendente para as próximas fases
 
-Este documento estabelece princípios e controles em nível de concepção. Antes de desenvolvimento avançado, precisam ser detalhados: a arquitetura concreta de isolamento multi-tenant (P-07), os prazos de retenção por tipo de dado, o LIA (avaliação de legítimo interesse) com o jurídico, e o plano de resposta a incidentes. Cada um desses itens é um `[A VALIDAR]` que deve virar tarefa própria no roadmap.
+Este documento estabelece princípios e controles em nível de concepção. Antes de desenvolvimento avançado, precisam ser detalhados: a arquitetura concreta de isolamento multi-tenant (P-07), os prazos de retenção por tipo de dado, a execução do LIA aprovado para o legítimo interesse (P-01), a designação/publicação do encarregado e dos documentos de transparência (P-03), os contratos de tratamento com suboperadores (P-57/P-54/P-80) e o plano de resposta a incidentes. Cada item segue no roadmap pelo gate indicado no documento 98.
 
 **Já decididos (P-08):** o **cofre de segredos** = **AWS Secrets Manager** (rotação nativa; segredo nunca em código) e o **provedor de identidade** = **Amazon Cognito** (User Pools, OIDC/JWT), com o `tenantId` derivado de **claim verificado do token na borda**, nunca de header do cliente (§4; [../arquitetura/08](../arquitetura/08-infraestrutura-e-implantacao.md) §§3,5,11). A **operação** de identidade — expiração/revogação de sessão, MFA obrigatório, proteção brute-force e recuperação de conta — segue em **P-53** (Pré-lançamento) sobre este mesmo IdP.
 

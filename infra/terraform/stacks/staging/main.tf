@@ -3,7 +3,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = ">= 5.98, < 6.0"
     }
   }
 }
@@ -63,4 +63,14 @@ module "secrets" {
   project     = "radar"
   env         = "staging"
   kms_key_arn = var.kms_key_arn
+}
+
+module "identity" {
+  source                  = "../../modules/identity"
+  project                 = "radar"
+  env                     = "staging"
+  hosted_ui_domain_prefix = var.cognito_domain_prefix
+  callback_urls           = var.cognito_callback_urls
+  logout_urls             = var.cognito_logout_urls
+  advanced_security_mode  = var.cognito_advanced_security_mode
 }
