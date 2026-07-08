@@ -19,6 +19,7 @@
     "dev": "tsc -p tsconfig.json --watch",
     "test": "vitest run",
     "smoke:batch": "tsx scripts/smoke-extracao-batch.ts",
+    "fixtures:gold-set": "tsx scripts/gravar-fixtures-gold-set.ts",
     "lint": "eslint src"
   },
   "dependencies": {
