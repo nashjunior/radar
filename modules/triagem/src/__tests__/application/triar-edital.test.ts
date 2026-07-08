@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { AcessoNegadoError, ClienteFinalId, EditalId, PerfilId, TenantId } from '@radar/kernel';
 import { TriarEditalUseCase } from '../../application/use-cases/triar-edital.js';
 import type { TriarEditalInput } from '../../application/use-cases/triar-edital.js';
+import { LIMIAR_CONFIANCA_PADRAO } from '../../application/politica-confianca.js';
 import type { EntradaExtracaoDTO } from '../../application/dtos.js';
 import { PerfilHabilitacao } from '../../domain/perfil-habilitacao.js';
 import type {
@@ -137,6 +138,31 @@ describe('TriarEditalUseCase', () => {
     expect(salvarTriagem).toHaveBeenCalledOnce();
     expect(salvarTriagem.mock.calls[0]![0].status).toBe('incompleta');
     expect(publicar).not.toHaveBeenCalled();
+  });
+
+  it('P-19: sem limiarConfianca explícito, o gate aplica LIMIAR_CONFIANCA_PADRAO (fonte única)', async () => {
+    // A composição-root pode omitir o limiar; o use case cai no default de lançamento (P-19),
+    // e não num literal mágico. Confiança agregada = MÍN dos críticos (objeto vs. valorEstimado 0.9).
+    const eps = 0.05;
+    const INPUT_SEM_LIMIAR: TriarEditalInput = {
+      editalId: EDITAL,
+      perfilId: PERFIL,
+      clienteFinalId: CLIENTE,
+      tenantId: TENANT,
+      conteudo: CONTEUDO,
+    }; // sem limiarConfianca (agora opcional)
+
+    // logo ABAIXO do default → degrada para leitura assistida (incompleta), não publica
+    const abaixo = deps({ existente: extracao(LIMIAR_CONFIANCA_PADRAO - eps) });
+    await expect(abaixo.uc.executar(INPUT_SEM_LIMIAR, noop)).rejects.toThrow(ConfiancaInsuficienteError);
+    expect(abaixo.salvarTriagem.mock.calls[0]![0].status).toBe('incompleta');
+    expect(abaixo.publicar).not.toHaveBeenCalled();
+
+    // logo ACIMA do default → conclui e publica triagem.concluida
+    const acima = deps({ existente: extracao(LIMIAR_CONFIANCA_PADRAO + eps) });
+    await acima.uc.executar(INPUT_SEM_LIMIAR, noop);
+    expect(acima.publicar).toHaveBeenCalledOnce();
+    expect(acima.publicar.mock.calls[0]![0].type).toBe('triagem.concluida');
   });
 
   it('fila envenenada: perfil de OUTRO cliente NÃO dispara a extração PAGA (authz antes da extração)', async () => {

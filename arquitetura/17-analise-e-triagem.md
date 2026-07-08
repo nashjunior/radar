@@ -784,7 +784,7 @@ Regras que o código impõe:
 2. **A confiança agregada é o mínimo dos críticos** (`ExtracaoEdital.confiancaGlobal`) — um campo crítico fraco derruba a extração e dispara `ConfiancaInsuficienteError` → **leitura assistida** (docs/10 §6): destacar trechos sem decidir.
 3. **Zero alucinação em campo numérico** é gate de release (docs/08 §4 / A16 §2.4), não um limiar ajustável.
 
-Os **valores** de limiar por campo são `[A VALIDAR] → P-19`, calibrados contra o gold set (A16 §2.4). O código já expõe o limiar como parâmetro (`TriarEditalInput.limiarConfianca`) para permitir a calibração sem mudar a estrutura.
+O **valor de lançamento** do limiar é P-19 (docs/10 §4.1): **fonte única `LIMIAR_CONFIANCA_PADRAO = 0,70`** (`@radar/triagem/application`), que a composição-root injeta em `TriarEditalInput.limiarConfianca` (worker/RAD-31) — sem literal mágico; omitir o campo aplica esse default. É um **corte provisório**, não calibração: o **número** segue `[A VALIDAR] → P-18`, recalibrado contra o gold set (A16 §2.4) pelo menor corte que garante recall ≥ 95% nos críticos, com corte possivelmente mais estrito nos críticos numéricos (guardrail de alucinação). O código já expõe o limiar como parâmetro para permitir a calibração sem mudar a estrutura.
 
 ## 7. Barra de qualidade: o seam para o gold set (docs/10 §5 / A16)
 
@@ -828,7 +828,7 @@ Metas numéricas (recall ≥ 95%, precisão ≥ 90%, fidelidade ≥ 98%, custo/e
 | Referência | Pendência |
 |------------|-----------|
 | P-18 | Gold set rotulado + metas finais de qualidade (recall/precisão/fidelidade) — spec em A16 |
-| P-19 | Fixar os limiares de confiança por campo (`limiarConfianca`, `is_critico`), calibrados no gold set |
+| P-19 | Estrutura + default de lançamento fixados (`LIMIAR_CONFIANCA_PADRAO = 0,70`, §6 / docs/10 §4.1); **número** e refinamento por classe seguem `[A VALIDAR]` no gold set (P-18) |
 | P-20 / P-38 | Teto de custo de IA por edital + alarme como guardrail de negócio (alavancas em P-92–P-95, RAD-53) |
 | P-92 | Pré-extração em **lote** (Message Batches) na ingestão — Tier A (preserva inferência), impl RAD-54 |
 | P-93 | Router de modelo por dificuldade (Haiku 4.5 / Sonnet 5 / Opus 4.8) — Tier B, gate no gold set (`escolherModelo`) |

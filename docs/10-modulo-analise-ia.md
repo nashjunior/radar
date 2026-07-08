@@ -37,6 +37,19 @@ flowchart TD
 3. **Human-in-the-loop.** A decisão é do usuário; campos de baixa confiança exigem confirmação antes de contar para a aderência.
 4. **Conteúdo do edital é não confiável.** Trata-se o texto como dado, não instrução — defesa contra prompt injection (documento 05, §4): separar instruções de dados, nunca executar conteúdo extraído.
 
+### 4.1 Limiar de confiança — política e valor de lançamento (P-19)
+
+O princípio 2 acima só vira gate executável quando o **limiar** tem um valor. A **estrutura** da política já está fixada (arquitetura/17, §6): opera **por campo**, com o `is_critico` do esquema de rótulo (§5.2) definindo onde a régua é dura, e a **confiança agregada = o mínimo dos campos críticos** — um único crítico fraco derruba a extração inteira. Abaixo do limiar, o campo é marcado "verificar" e **não pré-preenche** nem alimenta a decisão; se um crítico ficar abaixo, a extração é **incompleta** e cai em leitura assistida (§6).
+
+O **valor de lançamento** é a decisão de P-19, e vale como **corte provisório**, não como calibração:
+
+| Parâmetro | Valor de lançamento | Onde vive | Status |
+|-----------|:-------------------:|-----------|--------|
+| Limiar da confiança agregada (gate de release dos campos críticos) | **0,70** | `LIMIAR_CONFIANCA_PADRAO` em `@radar/triagem` (fonte única; a composição-root injeta em `TriarEditalInput.limiarConfianca`) | `[A VALIDAR]` → P-18 |
+
+- **Por que 0,70 provisório.** É um corte conservador — prefere degradar para leitura assistida a apresentar um fato crítico incerto como certeza — e único ponto de verdade, substituindo os literais dispersos nos testes.
+- **Protocolo de calibração (dono do número: gold set, P-18 / A16 §2.4).** Fixa-se o valor **varrendo o limiar no gold set**, escolhendo o **menor corte que ainda garante recall ≥ 95% nos campos críticos** (§5). Os campos críticos **numéricos** (valor, datas) podem exigir corte **mais estrito**, pelo guardrail "zero alucinação em campo numérico" (§5) — esse refinamento por classe é calibração de gold set, **não** mudança de estrutura (o código mantém o limiar como parâmetro justamente por isso).
+
 ## 5. Barra de qualidade e avaliação (eval)
 
 Sem medição, não há confiança. O módulo é avaliado contra um **gold set**: um conjunto de editais rotulados por especialista, cobrindo modalidades e formatos heterogêneos.

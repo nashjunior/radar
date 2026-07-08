@@ -1,8 +1,10 @@
 import { ConfiancaInvalidaError } from '../errors/index.js';
 
 /**
- * Confiança de extração ∈ [0,1] (A17 §3.1, docs/10 §4). Política de limiar por campo é [A VALIDAR]
- * → P-19, calibrada contra o gold set (A16 §2.4).
+ * Confiança de extração ∈ [0,1] (A17 §3.1, docs/10 §4). O limiar é PARÂMETRO de propósito
+ * (`suficiente`) — a estrutura da política vive em arq/17 §6 e o valor de lançamento em
+ * `application/politica-confianca.ts` (`LIMIAR_CONFIANCA_PADRAO`, P-19). O NÚMERO segue
+ * [A VALIDAR] → P-18, recalibrado contra o gold set (A16 §2.4).
  */
 export class Confianca {
   private constructor(readonly valor: number) {}

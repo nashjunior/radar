@@ -9,6 +9,7 @@ import {
 import { Triagem } from '../../domain/triagem.js';
 import { triagemParaDTO } from '../dtos.js';
 import type { EntradaExtracaoDTO, TriagemDTO } from '../dtos.js';
+import { LIMIAR_CONFIANCA_PADRAO } from '../politica-confianca.js';
 import { TriagemConcluida } from '../events.js';
 import type {
   EventPublisher,
@@ -24,7 +25,7 @@ export interface TriarEditalInput {
   clienteFinalId: ClienteFinalId;
   tenantId: TenantId; // resolvido na borda / payload de `triagem.solicitada` (P-25: `global` no MVP)
   conteudo: EntradaExtracaoDTO; // hidratado pelo worker a partir do Catálogo/ObjectStorage
-  limiarConfianca: number; // política de confiança por campo (docs/10 §4, P-19)
+  limiarConfianca?: number; // política de confiança (docs/10 §4, P-19); default LIMIAR_CONFIANCA_PADRAO
 }
 
 /**
@@ -73,8 +74,10 @@ export class TriarEditalUseCase {
     }
 
     // 3. Gate de confiança (docs/10 §4). Abaixo do limiar → leitura assistida (docs/10 §6):
-    //    nunca apresentar palpite como certeza. Limiar vem da política por campo (P-19).
-    if (!extracao.suficiente(input.limiarConfianca)) {
+    //    nunca apresentar palpite como certeza. Limiar vem da política por campo (P-19); sem
+    //    valor explícito da composição-root, aplica o default de lançamento (fonte única).
+    const limiar = input.limiarConfianca ?? LIMIAR_CONFIANCA_PADRAO;
+    if (!extracao.suficiente(limiar)) {
       await this.triagens.salvar(
         Triagem.incompleta(input.editalId, input.perfilId, input.tenantId, perfil.clienteFinalId),
         signal,

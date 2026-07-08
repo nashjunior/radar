@@ -49,5 +49,6 @@ export type {
 } from './use-cases/extrair-editais-lote.js';
 export { TriarEditalUseCase } from './use-cases/triar-edital.js';
 export type { TriarEditalInput } from './use-cases/triar-edital.js';
+export { LIMIAR_CONFIANCA_PADRAO } from './politica-confianca.js';
 export { RegistrarFeedbackTriagemUseCase, TriagemNaoEncontradaError } from './use-cases/registrar-feedback-triagem.js';
 export type { RegistrarFeedbackTriagemInput } from './use-cases/registrar-feedback-triagem.js';
