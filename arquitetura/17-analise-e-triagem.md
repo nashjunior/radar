@@ -790,7 +790,7 @@ O **valor de lançamento** do limiar é P-19 (docs/10 §4.1): **fonte única `LI
 
 A avaliação não vive aqui — vive em [A16](16-plano-de-verificacao-e-gold-set.md) (Quésia). O que este módulo oferece é o **seam** que torna a triagem avaliável e a regressão barata:
 
-- **`LlmGateway` é a fronteira testável.** O gold set roda o pipeline real trocando o adapter por um `RecordReplayLlmGateway` (grava respostas reais uma vez, reproduz de forma determinística) — o eval mede extração vs. rótulo sem custo nem flakiness de rede.
+- **`LlmClient` é a fronteira testável.** O gold set roda o pipeline real trocando a seam `LlmClient` (não o `AnthropicLlmGateway` inteiro) por um **`RecordReplayLlmClient`** (`infra/adapters`, realizado): grava respostas reais uma vez (modo RECORD, credenciado) e reproduz de forma determinística (modo REPLAY, sem rede) — o eval mede extração vs. rótulo sem custo nem flakiness. É o **substrato framework-agnóstico** do eval: independe da escolha de framework de orquestração/relatório (P-85 — Braintrust/Phoenix/custom).
 - **Saída estruturada e validada** (`SCHEMA_EXTRACAO`) dá ao gold set um alvo comparável campo a campo (A16 §2.3), e rejeita deriva de formato antes de contaminar a métrica.
 - **Editais adversariais** (A16 §2.1 / P-72) exercitam as camadas 1 e 3 do adapter: a asserção é que nenhuma instrução do corpo foi executada e nenhum system prompt vazou (A11 §4).
 - **Regressão como gate** — o gold set roda a cada mudança de `INSTRUCAO_EXTRACAO`, modelo ou schema; nenhuma sobe sem passar (docs/10 §5, A16 §2.4). O `system`/prompt é versionado justamente para isso.

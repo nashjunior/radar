@@ -27,6 +27,12 @@ export type {
   MessagesClient,
   ThinkingConfig,
 } from './adapters/anthropic-sdk-client.js';
+export {
+  RecordReplayLlmClient,
+  FixtureDeGoldSetAusenteError,
+  chavePorConteudo,
+} from './adapters/record-replay-llm-client.js';
+export type { ChaveCaso, RecordReplayLlmClientOpts } from './adapters/record-replay-llm-client.js';
 export { AnthropicBatchLlmGateway } from './adapters/anthropic-batch-llm-gateway.js';
 export type {
   AnthropicBatchLlmGatewayOpts,
