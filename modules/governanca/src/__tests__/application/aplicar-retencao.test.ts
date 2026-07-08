@@ -303,6 +303,43 @@ describe('AplicarRetencaoUseCase — AbortSignal (P-78)', () => {
   });
 });
 
+describe('AplicarRetencaoUseCase — modo simulação (dry-run)', () => {
+  it('não chama expurgo nem auditoria em modoSimulacao', async () => {
+    const candidato: CandidatoExpurgo = { itemId: 'n1', conjunto: 'NOTIFICACAO_LOG' };
+    const { candidatos, expurgo, auditLog, idProvider, clock, eliminar, registrar } = deps({
+      listarElegiveis: vi.fn().mockImplementation((c) =>
+        c === 'NOTIFICACAO_LOG' ? [candidato] : [],
+      ),
+    });
+    const uc = new AplicarRetencaoUseCase(candidatos, expurgo, auditLog, idProvider, clock);
+
+    const dto = await uc.executar({ ...buildInput(), modoSimulacao: true }, NOOP);
+
+    expect(eliminar).not.toHaveBeenCalled();
+    expect(registrar).not.toHaveBeenCalled();
+    expect(dto.aplicados).toBe(1);
+    expect(dto.elegiveis).toBe(1);
+  });
+
+  it('relatório de simulação reflete elegíveis e exceções sem efeito colateral', async () => {
+    const c1: CandidatoExpurgo = { itemId: 'n1', conjunto: 'NOTIFICACAO_LOG' };
+    const c2: CandidatoExpurgo = { itemId: 'n2', conjunto: 'NOTIFICACAO_LOG', excecao: 'LEGAL_HOLD' };
+    const { candidatos, expurgo, auditLog, idProvider, clock, eliminar } = deps({
+      listarElegiveis: vi.fn().mockImplementation((c) =>
+        c === 'NOTIFICACAO_LOG' ? [c1, c2] : [],
+      ),
+    });
+    const uc = new AplicarRetencaoUseCase(candidatos, expurgo, auditLog, idProvider, clock);
+
+    const dto = await uc.executar({ ...buildInput(), modoSimulacao: true }, NOOP);
+
+    expect(eliminar).not.toHaveBeenCalled();
+    expect(dto.elegiveis).toBe(2);
+    expect(dto.aplicados).toBe(1);
+    expect(dto.retidosPorExcecao).toBe(1);
+  });
+});
+
 describe('AplicarRetencaoUseCase — relatório (RetencaoDTO)', () => {
   it('politicaVersao reflete a versão injetada', async () => {
     const politica: PoliticaRetencao = { versao: 'release-2026-07', conjuntos: [] };

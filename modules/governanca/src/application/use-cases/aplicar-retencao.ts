@@ -19,6 +19,11 @@ export interface AplicarRetencaoInput {
   readonly tenantId: TenantId;
   /** Identificador do operador (sistema/job) para trilha de auditoria — sem PII livre. */
   readonly operadorId: string;
+  /**
+   * Modo simulação (dry-run): lista elegíveis e calcula o relatório sem executar
+   * nenhum expurgo nem gravar auditoria. Seguro para inspecionar antes de aplicar.
+   */
+  readonly modoSimulacao?: boolean;
 }
 
 /**
@@ -43,6 +48,7 @@ export class AplicarRetencaoUseCase {
 
   async executar(input: AplicarRetencaoInput, signal: AbortSignal): Promise<RetencaoDTO> {
     const resultados: ResultadoExpurgo[] = [];
+    let totalListados = 0;
 
     for (const config of input.politica.conjuntos) {
       if (signal.aborted) break;
@@ -63,6 +69,7 @@ export class AplicarRetencaoUseCase {
         input.tenantId,
         signal,
       );
+      totalListados += elegiveis.length;
 
       for (const candidato of elegiveis) {
         if (signal.aborted) break;
@@ -77,8 +84,10 @@ export class AplicarRetencaoUseCase {
           continue;
         }
 
-        await this.aplicarAcao(config.acao, candidato, signal);
-        await this.registrarAuditoria(config.acao, candidato, input, signal);
+        if (!input.modoSimulacao) {
+          await this.aplicarAcao(config.acao, candidato, signal);
+          await this.registrarAuditoria(config.acao, candidato, input, signal);
+        }
 
         resultados.push({
           itemId: candidato.itemId,
@@ -93,7 +102,7 @@ export class AplicarRetencaoUseCase {
 
     return {
       politicaVersao: input.politica.versao,
-      elegiveis: resultados.length,
+      elegiveis: totalListados,
       aplicados,
       retidosPorExcecao,
       resultados,
