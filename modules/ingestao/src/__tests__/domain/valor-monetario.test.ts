@@ -28,6 +28,10 @@ describe('ValorMonetario', () => {
     it('aceita string com ponto decimal "0.0015"', () => {
       expect(ValorMonetario.criar('0.0015').representacaoDecimal).toBe('0.0015');
     });
+
+    it('aceita string com espaços ao redor', () => {
+      expect(ValorMonetario.criar('  500  ').valor).toBe(500);
+    });
   });
 
   describe('criar — entradas inválidas', () => {
@@ -55,12 +59,22 @@ describe('ValorMonetario', () => {
       expect(() => ValorMonetario.criar('1.234,56')).toThrow();
     });
 
+    it('rejeita negativo em string', () => {
+      expect(() => ValorMonetario.criar('-5')).toThrow();
+    });
+
     it('erro tem code VALOR_MONETARIO_INVALIDO', () => {
       try {
         ValorMonetario.criar(-1);
       } catch (e: any) {
         expect(e.code).toBe('VALOR_MONETARIO_INVALIDO');
       }
+    });
+  });
+
+  describe('toString()', () => {
+    it('retorna representação decimal exata', () => {
+      expect(ValorMonetario.criar('1234.56').toString()).toBe('1234.56');
     });
   });
 
