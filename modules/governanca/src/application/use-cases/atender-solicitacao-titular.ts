@@ -1,5 +1,4 @@
 import type { ClienteFinalId, TenantId } from '@radar/kernel';
-import { AcessoNegadoError } from '@radar/kernel';
 import { RegistroAuditoria } from '../../domain/entities/registro-auditoria.js';
 import {
   IdentidadeNaoVerificadaError,
@@ -85,7 +84,8 @@ export class AtenderSolicitacaoTitularUseCase {
       await this.persistirComAuditoria(solicitacao, 'RECUSAR_IDENTIDADE', input.operadorId, signal);
 
       solicitacao = solicitacao.encerrar(this.clock.agora());
-      await this.solicitacoes.salvar(solicitacao, signal);
+      // AB13/P-61: encerramento auditado; falha → fail-closed antes de lançar o erro de identidade
+      await this.persistirComAuditoria(solicitacao, 'ENCERRAR', input.operadorId, signal);
 
       throw new IdentidadeNaoVerificadaError();
     }
@@ -98,9 +98,9 @@ export class AtenderSolicitacaoTitularUseCase {
     // Passo 5: processar conforme tipo
     const dto = await this.processarTipo(input, solicitacao, signal);
 
-    // Passo 6: encerrar
+    // Passo 6: atender e encerrar (fusão intencional — sem persistência intermediária de 'atendida')
     solicitacao = solicitacao.atender(this.clock.agora()).encerrar(this.clock.agora());
-    await this.persistirComAuditoria(solicitacao, 'ENCERRAR', input.operadorId, signal);
+    await this.persistirComAuditoria(solicitacao, 'ATENDER_E_ENCERRAR', input.operadorId, signal);
 
     return dto;
   }
@@ -240,4 +240,3 @@ export class AtenderSolicitacaoTitularUseCase {
   }
 }
 
-export { IdentidadeNaoVerificadaError, AcessoNegadoError };

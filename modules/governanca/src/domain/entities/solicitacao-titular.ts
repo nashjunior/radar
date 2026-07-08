@@ -44,7 +44,7 @@ export class IdentidadeNaoVerificadaError extends DomainError {
 }
 
 /**
- * Aggregate de solicitação LGPD do titular (docs/14 §5, P-57, AB10).
+ * Aggregate de solicitação LGPD do titular (docs/13 §3, docs/14 §5, P-57, AB10).
  *
  * Invariante AB10/P-57: nenhum dado é retornado, corrigido ou eliminado
  * antes de identidade_verificada. Qualquer tentativa de avançar para em_analise

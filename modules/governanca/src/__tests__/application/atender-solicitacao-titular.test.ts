@@ -174,6 +174,14 @@ describe('AtenderSolicitacaoTitularUseCase — AB10/P-57 identidade não verific
     });
     expect(estadosSalvos).toContain('recusada');
     expect(estadosSalvos).toContain('encerrada');
+
+    // AB13/P-61: transição encerrada deve estar auditada mesmo no caminho de rejeição
+    const acoesAuditadas = d.registrar.mock.calls.map((c) => {
+      const registro = c[0] as { acao: string };
+      return registro.acao;
+    });
+    expect(acoesAuditadas).toContain('RECUSAR_IDENTIDADE');
+    expect(acoesAuditadas).toContain('ENCERRAR');
   });
 });
 
