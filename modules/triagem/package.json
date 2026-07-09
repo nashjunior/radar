@@ -20,6 +20,8 @@
     "test": "vitest run",
     "smoke:batch": "tsx scripts/smoke-extracao-batch.ts",
     "fixtures:gold-set": "tsx scripts/gravar-fixtures-gold-set.ts",
+    "calibrar:limiar": "tsx scripts/calibrar-limiar-gold-set.ts",
+    "fixtures:gold-set:cli": "tsx scripts/gravar-fixtures-gold-set-via-cli.ts",
     "lint": "eslint src"
   },
   "dependencies": {

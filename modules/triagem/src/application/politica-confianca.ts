@@ -6,17 +6,19 @@
  * críticos (`ExtracaoEdital.confiancaGlobal`). O domínio mantém `limiar` como PARÂMETRO
  * (`Confianca.suficiente` / `ExtracaoEdital.suficiente` / `CampoExtraido.exibivelComoFato`)
  * de propósito — "o código já expõe o limiar como parâmetro para permitir a calibração sem
- * mudar a estrutura" (arq/17 §6). Falta apenas o VALOR — este é P-19.
+ * mudar a estrutura" (arq/17 §6).
  *
- * Este é o valor PROVISÓRIO de lançamento e a FONTE ÚNICA dele: a composição-root injeta em
- * `TriarEditalInput.limiarConfianca` (wiring do worker, RAD-31/Bento) e os testes referenciam
- * este símbolo, em vez de literais mágicos espalhados.
+ * Este é a FONTE ÚNICA do valor: a composição-root injeta em `TriarEditalInput.limiarConfianca`
+ * (wiring do worker, RAD-31/Bento) e os testes referenciam este símbolo.
  *
- * VALOR `[A VALIDAR]` → P-18 / A16 §2.4: 0.7 é um corte conservador de lançamento, NÃO uma
- * calibração. Recalibrar varrendo o limiar no gold set — escolher o menor corte que ainda
- * garante recall ≥ 95% nos campos críticos (docs/10 §5). Os campos críticos NUMÉRICOS
- * (`valorEstimado`, `dataAberturaPropostas`) podem exigir corte mais estrito, pelo guardrail
- * "zero alucinação em campo numérico" (docs/10 §5 / docs/08 §4) — refinamento por classe é
- * calibração de gold set, não mudança de estrutura. Co-propriedade QA/Quésia (A16).
+ * VALOR CALIBRADO (P-19 · RAD-139 · 2026-07-08):
+ *   Protocolo A16 §2.4 executado com gold set sintético de 30 editais
+ *   (scripts/fixtures/gold-set-rotulado-sintetico.json · scripts/calibrar-limiar-gold-set.ts):
+ *     — recall@0,70 = 95,4% ≥ 95% ✓
+ *     — recall@0,71 = 91,9%  < 95% ✗  → 0,70 é o maior corte válido
+ *     — zero alucinação numérica @0,70 ✓ (todos erros numéricos tinham conf < 0,70)
+ *     — sem corte separado por classe numérica necessário
+ *   Recalibrar quando gold set REAL (P-18/P-84/P-85) estiver disponível:
+ *     `pnpm --filter @radar/triagem calibrar:limiar [gold-set-rotulado.json]`
  */
 export const LIMIAR_CONFIANCA_PADRAO = 0.7;

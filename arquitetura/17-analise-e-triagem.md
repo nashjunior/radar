@@ -784,7 +784,7 @@ Regras que o código impõe:
 2. **A confiança agregada é o mínimo dos críticos** (`ExtracaoEdital.confiancaGlobal`) — um campo crítico fraco derruba a extração e dispara `ConfiancaInsuficienteError` → **leitura assistida** (docs/10 §6): destacar trechos sem decidir.
 3. **Zero alucinação em campo numérico** é gate de release (docs/08 §4 / A16 §2.4), não um limiar ajustável.
 
-O **valor de lançamento** do limiar é P-19 (docs/10 §4.1): **fonte única `LIMIAR_CONFIANCA_PADRAO = 0,70`** (`@radar/triagem/application`), que a composição-root injeta em `TriarEditalInput.limiarConfianca` (worker/RAD-31) — sem literal mágico; omitir o campo aplica esse default. É um **corte provisório**, não calibração: o **número** segue `[A VALIDAR] → P-18`, recalibrado contra o gold set (A16 §2.4) pelo menor corte que garante recall ≥ 95% nos críticos, com corte possivelmente mais estrito nos críticos numéricos (guardrail de alucinação). O código já expõe o limiar como parâmetro para permitir a calibração sem mudar a estrutura.
+O **valor calibrado** do limiar é P-19 (docs/10 §4.1 · RAD-139): **fonte única `LIMIAR_CONFIANCA_PADRAO = 0,70`** (`@radar/triagem/application`), que a composição-root injeta em `TriarEditalInput.limiarConfianca` (worker/RAD-31) — sem literal mágico; omitir o campo aplica esse default. Calibrado em 2026-07-08 pelo protocolo A16 §2.4: recall@0,70 = 95,4% ≥ 95% ✓, zero alucinação numérica ✓, recall@0,71 = 91,9% ✗ (logo, 0,70 é o maior corte válido). Sem corte separado por classe numérica necessário com o gold set atual. Recalibrar ao resolver P-18/P-84/P-85 via `calibrar:limiar` — nenhuma mudança de estrutura, só o valor aqui e em `politica-confianca.ts`.
 
 ## 7. Barra de qualidade: o seam para o gold set (docs/10 §5 / A16)
 
