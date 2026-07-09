@@ -16,6 +16,7 @@
 import type {
   AlertaRepository,
   CriterioRepository,
+  EditalCatalogoPort,
   EventPublisher,
   FaixaValorReferencia,
   MetricaMatchingRepository,
@@ -65,6 +66,13 @@ export const eventPublisherStub: EventPublisher = {
 };
 
 export const systemClock = { agora: () => new Date() };
+
+/** Stub do Catálogo cross-contexto — retorna null até adapter Postgres (RAD-76). */
+export const editalCatalogoStub: EditalCatalogoPort = {
+  async porId(_id, _signal: AbortSignal) {
+    return null;
+  },
+};
 
 export const metricaStub: MetricaMatchingRepository = {
   async precisao(_tenantId, _signal) {

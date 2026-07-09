@@ -38,6 +38,7 @@ import { preferenciaStub } from './infra/notificacao-stub.js';
 import {
   criterioStub,
   alertaStub,
+  editalCatalogoStub,
   faixaValorStub,
   eventPublisherStub,
   metricaStub,
@@ -73,7 +74,7 @@ export function criarApp(): Hono {
     systemClock,
   );
   const registrarFeedbackAlerta = new RegistrarFeedbackAlertaUseCase(alertaStub, eventPublisherStub);
-  const consultarAlertas = new ConsultarAlertasTenantUseCase(alertaStub);
+  const consultarAlertas = new ConsultarAlertasTenantUseCase(alertaStub, editalCatalogoStub);
   const consultarMetricas = new ConsultarMetricasMatchingUseCase(metricaStub);
 
   const app = new Hono();

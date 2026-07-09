@@ -46,6 +46,23 @@ export interface AlertaDTO {
   relevante: boolean | null;
   /** Proveniência do edital — presente quando disponível no evento de ingestão (RAD-115). */
   proveniencia?: { fonte: string; baseLegal: string; dataColeta: string };
+  /** Campos enriquecidos do Catálogo (RAD-148). Ausentes quando o edital não for encontrado. */
+  modalidade?: string;
+  titulo?: string;
+  orgao?: string;
+  valorEstimado?: number | null;
+  /** ISO string — mapeado de prazoProposta do edital (data-limite para propostas). */
+  dataAbertura?: string;
+}
+
+/** Resumo de edital vindo do Catálogo para enriquecer alertas (RAD-148). */
+export interface EditalResumoParaMatchingDTO {
+  modalidade: string;
+  titulo: string;
+  orgao: string;
+  valorEstimado: number | null;
+  /** ISO string — de prazoProposta. */
+  dataAbertura: string;
 }
 
 export interface FaixaValorDTO {

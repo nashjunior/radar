@@ -1,9 +1,10 @@
-import type { AlertaId, CriterioId, TenantId } from '@radar/kernel';
+import type { AlertaId, CriterioId, EditalId, TenantId } from '@radar/kernel';
 import type { Alerta } from '../domain/entities/alerta.js';
 import type { CriterioDeMonitoramento } from '../domain/entities/criterio-de-monitoramento.js';
 import type {
   CriterioComScore,
   EditalParaMatchingDTO,
+  EditalResumoParaMatchingDTO,
   FaixaValorDTO,
 } from './dtos.js';
 import type { DomainEvent } from './events.js';
@@ -60,6 +61,15 @@ export interface CriterioIdProvider {
 /** Gera AlertaIds únicos. Injetado na infra — construtores de ID ficam fora da application. */
 export interface AlertaIdProvider {
   gerar(): AlertaId;
+}
+
+/**
+ * Gateway cross-contexto para o Catálogo (Ingestão) — lê resumo de edital por ID.
+ * Implementado na infra por adapter Postgres ou HTTP; stub retorna null no MVP.
+ * P-40: MVP aceita N+1 lookups; no Next substituir por view SQL alerta_com_edital.
+ */
+export interface EditalCatalogoPort {
+  porId(id: EditalId, signal: AbortSignal): Promise<EditalResumoParaMatchingDTO | null>;
 }
 
 /** Provedor da data/hora atual. Injetado na infra para testabilidade. */
