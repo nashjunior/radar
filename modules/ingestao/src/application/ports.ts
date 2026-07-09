@@ -1,5 +1,6 @@
 import type { EditalId } from '@radar/kernel';
 import type { Edital } from '../domain/entities/edital.js';
+import type { EstadoConfiancaAnexo } from '../domain/value-objects/estado-confianca-anexo.js';
 import type { AnexosDTO, ArquivoDTO } from './dtos.js';
 import type { DomainEvent } from './events.js';
 
@@ -136,13 +137,39 @@ export interface IdProvider {
 }
 
 /**
+ * Metadados internos de um anexo — inclui estado de confiança (P-104, AB14).
+ * Não vaza para consumidores; estes recebem apenas `ArquivoDTO` (sempre limpos).
+ */
+export interface AnexoMetadados extends ArquivoDTO {
+  estadoConfianca: EstadoConfiancaAnexo;
+}
+
+/**
+ * Scanner AV/malware assíncrono de anexos (P-104, AB14).
+ * Implementação real usa ClamAV/Lambda ou serviço equivalente;
+ * o stub de MVP aprova todos para não bloquear o fluxo de dev.
+ */
+export interface AnexoScanner {
+  escanear(storageKey: string, signal: AbortSignal): Promise<'limpo' | 'rejeitado'>;
+}
+
+/**
  * Persistência de metadados de anexos materializados (docs/13, §5).
- * Guarda nome, storage key, MIME e tamanho após o primeiro download.
+ * Inclui estado de confiança para o trust-gating (P-104, AB14).
  * Upsert idempotente por (edital_id, nome).
  */
 export interface AnexoEditalRepository {
-  listarPorEdital(editalId: EditalId, signal: AbortSignal): Promise<ArquivoDTO[]>;
-  salvar(editalId: EditalId, arquivos: ArquivoDTO[], signal: AbortSignal): Promise<void>;
+  /** Retorna todos os anexos com seu estado de confiança (uso interno). */
+  listarPorEdital(editalId: EditalId, signal: AbortSignal): Promise<AnexoMetadados[]>;
+  /** Upsert de metadados — salva com estadoConfianca incluso. */
+  salvar(editalId: EditalId, arquivos: AnexoMetadados[], signal: AbortSignal): Promise<void>;
+  /** Transiciona o estado de confiança de um anexo (pendente → limpo | rejeitado). */
+  atualizarEstado(
+    editalId: EditalId,
+    nome: string,
+    estado: EstadoConfiancaAnexo,
+    signal: AbortSignal,
+  ): Promise<void>;
 }
 
 /**

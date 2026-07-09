@@ -37,6 +37,55 @@ export class EditalIngerido implements DomainEvent {
   }
 }
 
+/**
+ * Publicado quando um anexo é armazenado e entra em quarentena.
+ * Dispara o worker de scan AV/malware (P-104, AB14).
+ */
+export class AnexoQuarentenado implements DomainEvent {
+  readonly type = 'anexo.quarentenado' as const;
+  readonly occurredAt: Date;
+
+  constructor(
+    readonly payload: {
+      readonly editalId: EditalId;
+      readonly nomeAnexo: string;
+      readonly storageKey: string;
+    },
+  ) {
+    this.occurredAt = new Date();
+  }
+}
+
+/** Publicado quando o scan AV aprova o anexo como limpo (P-104, AB14). */
+export class AnexoAprovado implements DomainEvent {
+  readonly type = 'anexo.aprovado' as const;
+  readonly occurredAt: Date;
+
+  constructor(
+    readonly payload: {
+      readonly editalId: EditalId;
+      readonly nomeAnexo: string;
+    },
+  ) {
+    this.occurredAt = new Date();
+  }
+}
+
+/** Publicado quando o scan AV detecta ameaça e isola o anexo (P-104, AB14). */
+export class AnexoRejeitado implements DomainEvent {
+  readonly type = 'anexo.rejeitado' as const;
+  readonly occurredAt: Date;
+
+  constructor(
+    readonly payload: {
+      readonly editalId: EditalId;
+      readonly nomeAnexo: string;
+    },
+  ) {
+    this.occurredAt = new Date();
+  }
+}
+
 /** Publicado quando a fase de um edital muda na reconciliação ou atualização. */
 export class EditalFaseMudou implements DomainEvent {
   readonly type = 'edital.fase-mudou' as const;

@@ -47,3 +47,14 @@ export class ObjetoNaoEncontradoError extends DomainError {
     super(`objeto não encontrado no storage: ${chave}`);
   }
 }
+
+/**
+ * Tentativa de consumir anexo não-limpo (pendente ou rejeitado).
+ * Fail-closed: consumidores só recebem objetos limpos (P-104, AB14).
+ */
+export class AnexoNaoLimpoError extends DomainError {
+  readonly code = 'ANEXO_NAO_LIMPO' as const;
+  constructor(nome: string, estado: string) {
+    super(`anexo '${nome}' não está limpo (estado: ${estado})`);
+  }
+}

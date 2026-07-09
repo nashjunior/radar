@@ -3,9 +3,11 @@ import {
   AnexoIndisponivelError,
   EditalNaoEncontradoError,
 } from '../../domain/errors/index.js';
-import type { AnexosDTO } from '../dtos.js';
+import { AnexoQuarentenado } from '../events.js';
 import type {
+  AnexoEditalRepository,
   EditalRepository,
+  EventPublisher,
   ObjectStorage,
   PncpGateway,
 } from '../ports.js';
@@ -15,23 +17,26 @@ export interface BaixarAnexosEditalInput {
 }
 
 /**
- * Baixa os arquivos/anexos de um edital sob demanda e os armazena.
+ * Baixa os arquivos/anexos de um edital sob demanda e os coloca em quarentena.
  * Trigger: antes da triagem (A02, §6).
  *
- * PDFs são persistidos no object storage com referência à chave de acesso.
- * Retenção dos anexos segue a política definida em docs/05, §5. [A VALIDAR — prazo]
+ * Trust-gating (P-104, AB14): cada anexo é salvo com estado `pendente` e
+ * um evento `AnexoQuarentenado` é publicado para o worker de scan assíncrono.
+ * Triagem/front/download só recebem objetos aprovados como `limpo`.
  */
 export class BaixarAnexosEditalUseCase {
   constructor(
     private readonly pncpGateway: PncpGateway,
     private readonly editais: EditalRepository,
     private readonly objectStorage: ObjectStorage,
+    private readonly anexoRepo: AnexoEditalRepository,
+    private readonly eventPublisher: EventPublisher,
   ) {}
 
   async executar(
     input: BaixarAnexosEditalInput,
     signal: AbortSignal,
-  ): Promise<AnexosDTO> {
+  ): Promise<void> {
     const edital = await this.editais.porId(input.editalId, signal);
     if (edital === null) {
       throw new EditalNaoEncontradoError(input.editalId);
@@ -41,8 +46,6 @@ export class BaixarAnexosEditalUseCase {
       edital.numeroControlePncp.valor,
       signal,
     );
-
-    const downloadados = [];
 
     for (const arquivo of arquivos) {
       try {
@@ -60,18 +63,32 @@ export class BaixarAnexosEditalUseCase {
           signal,
         );
 
-        downloadados.push({
-          nome: arquivo.nome,
-          storageKey,
-          tamanhoBytes: arquivo.tamanhoBytes,
-          tipoMime: arquivo.tipoMime,
-        });
+        await this.anexoRepo.salvar(
+          input.editalId,
+          [
+            {
+              nome: arquivo.nome,
+              storageKey,
+              tamanhoBytes: arquivo.tamanhoBytes,
+              tipoMime: arquivo.tipoMime,
+              estadoConfianca: 'pendente',
+            },
+          ],
+          signal,
+        );
+
+        await this.eventPublisher.publicar(
+          new AnexoQuarentenado({
+            editalId: input.editalId,
+            nomeAnexo: arquivo.nome,
+            storageKey,
+          }),
+          signal,
+        );
       } catch (err) {
         if (err instanceof AnexoIndisponivelError) throw err;
         throw new AnexoIndisponivelError(arquivo.nome);
       }
     }
-
-    return { editalId: input.editalId, arquivos: downloadados };
   }
 }

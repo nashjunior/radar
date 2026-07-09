@@ -2,10 +2,14 @@ import { describe, expect, it, vi } from 'vitest';
 import { EditalId } from '@radar/kernel';
 import { BaixarAnexosEditalUseCase } from '../../application/use-cases/baixar-anexos-edital.js';
 import { AnexoIndisponivelError, EditalNaoEncontradoError } from '../../domain/errors/index.js';
+import { AnexoQuarentenado } from '../../application/events.js';
 import { Edital } from '../../domain/entities/edital.js';
 import type {
+  AnexoEditalRepository,
+  AnexoMetadados,
   ArquivoPncpData,
   EditalRepository,
+  EventPublisher,
   ObjectStorage,
   PncpGateway,
 } from '../../application/ports.js';
@@ -39,6 +43,18 @@ const arquivoBase: ArquivoPncpData = {
   tipoMime: 'application/pdf',
 };
 
+function criarAnexoRepo(): AnexoEditalRepository {
+  return {
+    listarPorEdital: vi.fn().mockResolvedValue([] as AnexoMetadados[]),
+    salvar: vi.fn(),
+    atualizarEstado: vi.fn(),
+  };
+}
+
+function criarPublisher(): EventPublisher {
+  return { publicar: vi.fn() };
+}
+
 describe('BaixarAnexosEditalUseCase', () => {
   describe('edital não encontrado', () => {
     it('lança EditalNaoEncontradoError', async () => {
@@ -52,6 +68,8 @@ describe('BaixarAnexosEditalUseCase', () => {
         {} as PncpGateway,
         editais,
         {} as ObjectStorage,
+        criarAnexoRepo(),
+        criarPublisher(),
       );
 
       await expect(uc.executar({ editalId: EDITAL_ID }, noop)).rejects.toThrow(EditalNaoEncontradoError);
@@ -59,7 +77,7 @@ describe('BaixarAnexosEditalUseCase', () => {
   });
 
   describe('nenhum arquivo disponível', () => {
-    it('retorna lista vazia de arquivos', async () => {
+    it('não salva nada nem emite eventos', async () => {
       const editais: EditalRepository = {
         porId: vi.fn().mockResolvedValue(criarEdital()),
         porNumeroControle: vi.fn(),
@@ -73,15 +91,19 @@ describe('BaixarAnexosEditalUseCase', () => {
         buscarContratacoesPorAtualizacao: vi.fn(),
         buscarContratacaoPorNumero: vi.fn(),
       };
-      const uc = new BaixarAnexosEditalUseCase(gateway, editais, {} as ObjectStorage);
+      const anexoRepo = criarAnexoRepo();
+      const publisher = criarPublisher();
+      const uc = new BaixarAnexosEditalUseCase(gateway, editais, {} as ObjectStorage, anexoRepo, publisher);
 
-      const dto = await uc.executar({ editalId: EDITAL_ID }, noop);
-      expect(dto.arquivos).toHaveLength(0);
+      await uc.executar({ editalId: EDITAL_ID }, noop);
+
+      expect(anexoRepo.salvar).not.toHaveBeenCalled();
+      expect(publisher.publicar).not.toHaveBeenCalled();
     });
   });
 
   describe('download bem-sucedido', () => {
-    it('armazena arquivo e retorna metadados', async () => {
+    it('salva como pendente e emite AnexoQuarentenado (trust-gating AB14)', async () => {
       const editais: EditalRepository = {
         porId: vi.fn().mockResolvedValue(criarEdital()),
         porNumeroControle: vi.fn(),
@@ -100,15 +122,23 @@ describe('BaixarAnexosEditalUseCase', () => {
         obter: vi.fn(),
         deletar: vi.fn(),
       };
-      const uc = new BaixarAnexosEditalUseCase(gateway, editais, storage);
+      const anexoRepo = criarAnexoRepo();
+      const publisher = criarPublisher();
+      const uc = new BaixarAnexosEditalUseCase(gateway, editais, storage, anexoRepo, publisher);
 
-      const dto = await uc.executar({ editalId: EDITAL_ID }, noop);
+      await uc.executar({ editalId: EDITAL_ID }, noop);
 
-      expect(dto.editalId).toBe(EDITAL_ID);
-      expect(dto.arquivos).toHaveLength(1);
-      expect(dto.arquivos[0]!.nome).toBe('edital.pdf');
-      expect(dto.arquivos[0]!.storageKey).toBe('editais/edital-001/anexos/edital.pdf');
-      expect(storage.armazenar).toHaveBeenCalledOnce();
+      const salvarCall = (anexoRepo.salvar as ReturnType<typeof vi.fn>).mock.calls[0] as unknown[];
+      const [savedId, savedArquivos] = salvarCall as [string, Array<{ estadoConfianca: string; nome: string }>];
+      expect(savedId).toBe(EDITAL_ID);
+      expect(savedArquivos[0]!.estadoConfianca).toBe('pendente');
+      expect(savedArquivos[0]!.nome).toBe('edital.pdf');
+
+      const publicarCall = (publisher.publicar as ReturnType<typeof vi.fn>).mock.calls[0] as unknown[];
+      const [evento] = publicarCall as [AnexoQuarentenado];
+      expect(evento).toBeInstanceOf(AnexoQuarentenado);
+      expect(evento.payload.editalId).toBe(EDITAL_ID);
+      expect(evento.payload.nomeAnexo).toBe('edital.pdf');
     });
   });
 
@@ -127,7 +157,13 @@ describe('BaixarAnexosEditalUseCase', () => {
         buscarContratacoesPorAtualizacao: vi.fn(),
         buscarContratacaoPorNumero: vi.fn(),
       };
-      const uc = new BaixarAnexosEditalUseCase(gateway, editais, {} as ObjectStorage);
+      const uc = new BaixarAnexosEditalUseCase(
+        gateway,
+        editais,
+        {} as ObjectStorage,
+        criarAnexoRepo(),
+        criarPublisher(),
+      );
 
       await expect(uc.executar({ editalId: EDITAL_ID }, noop)).rejects.toThrow(AnexoIndisponivelError);
     });

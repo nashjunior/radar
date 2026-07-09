@@ -1,9 +1,11 @@
 export type { AnexosDTO, EditalDTO, IngestaoResumoDTO, ReconciliacaoDTO } from './dtos.js';
-export { EditalFaseMudou, EditalIngerido } from './events.js';
+export { AnexoAprovado, AnexoQuarentenado, AnexoRejeitado, EditalFaseMudou, EditalIngerido } from './events.js';
 export type { DomainEvent } from './events.js';
 export { editalParaDTO } from './mappers.js';
 export type {
   AnexoEditalRepository,
+  AnexoMetadados,
+  AnexoScanner,
   ArquivoPncpData,
   ContratacaoData,
   DocumentosDoEditalPort,
@@ -22,6 +24,10 @@ export {
   BaixarAnexosEditalUseCase,
 } from './use-cases/baixar-anexos-edital.js';
 export type { BaixarAnexosEditalInput } from './use-cases/baixar-anexos-edital.js';
+export {
+  EscanearAnexoUseCase,
+} from './use-cases/escanear-anexo.js';
+export type { EscanearAnexoInput } from './use-cases/escanear-anexo.js';
 export {
   IngerirEditaisUseCase,
 } from './use-cases/ingerir-editais.js';

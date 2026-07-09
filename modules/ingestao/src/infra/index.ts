@@ -6,5 +6,6 @@ export { PostgresEditalRepository } from './adapters/postgres-edital-repository.
 export { PostgresProvenienciaRepository } from './adapters/postgres-proveniencia-repository.js';
 export { S3ObjectStorage } from './adapters/s3-object-storage.js';
 export { SqsEventPublisher } from './adapters/sqs-event-publisher.js';
+export { StubAnexoScanner } from './adapters/stub-anexo-scanner.js';
 export { PncpPollingScheduler } from './schedulers/pncp-polling-scheduler.js';
 export type { PncpPollingSchedulerConfig } from './schedulers/pncp-polling-scheduler.js';
