@@ -53,6 +53,15 @@ export class PostgresAlertaRepository implements AlertaRepository {
       { signal },
     );
   }
+
+  async listarPorTenant(tenantId: TenantId, signal: AbortSignal): Promise<Alerta[]> {
+    const { rows } = await this.db.query<Row>(
+      `SELECT * FROM alerta WHERE tenant_id = $1 ORDER BY criado_em DESC`,
+      [tenantId],
+      { signal },
+    );
+    return rows.map(rowToAlerta);
+  }
 }
 
 interface Row {

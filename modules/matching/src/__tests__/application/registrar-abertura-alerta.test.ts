@@ -27,6 +27,7 @@ describe('RegistrarAberturaAlertaUseCase', () => {
         salvar: vi.fn(),
         porId: vi.fn().mockResolvedValue(alerta),
         atualizarFeedback: vi.fn(),
+        listarPorTenant: vi.fn(),
       };
       const eventos: EventPublisher = { publicar: vi.fn() };
       const uc = new RegistrarAberturaAlertaUseCase(alertas, eventos);
@@ -46,6 +47,7 @@ describe('RegistrarAberturaAlertaUseCase', () => {
         salvar: vi.fn(),
         porId: vi.fn().mockResolvedValue(alerta),
         atualizarFeedback: vi.fn(),
+        listarPorTenant: vi.fn(),
       };
       const eventos: EventPublisher = { publicar };
       const uc = new RegistrarAberturaAlertaUseCase(alertas, eventos);
@@ -69,6 +71,7 @@ describe('RegistrarAberturaAlertaUseCase', () => {
         salvar: vi.fn(),
         porId: vi.fn().mockResolvedValue(alerta),
         atualizarFeedback: vi.fn(),
+        listarPorTenant: vi.fn(),
       };
       const eventos: EventPublisher = { publicar };
       const uc = new RegistrarAberturaAlertaUseCase(alertas, eventos);
@@ -91,6 +94,7 @@ describe('RegistrarAberturaAlertaUseCase', () => {
         salvar: vi.fn(),
         porId: vi.fn().mockResolvedValue(null),
         atualizarFeedback: vi.fn(),
+        listarPorTenant: vi.fn(),
       };
       const eventos: EventPublisher = { publicar: vi.fn() };
       const uc = new RegistrarAberturaAlertaUseCase(alertas, eventos);

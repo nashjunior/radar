@@ -31,6 +31,7 @@ describe('RegistrarFeedbackAlertaUseCase', () => {
         salvar: vi.fn(),
         porId: vi.fn().mockResolvedValue(alerta),
         atualizarFeedback: vi.fn(),
+        listarPorTenant: vi.fn(),
       };
       const eventos: EventPublisher = { publicar: vi.fn() };
 
@@ -50,6 +51,7 @@ describe('RegistrarFeedbackAlertaUseCase', () => {
         salvar: vi.fn(),
         porId: vi.fn().mockResolvedValue(alerta),
         atualizarFeedback: vi.fn(),
+        listarPorTenant: vi.fn(),
       };
       const eventos: EventPublisher = { publicar: vi.fn() };
       const uc = new RegistrarFeedbackAlertaUseCase(alertas, eventos);
@@ -68,6 +70,7 @@ describe('RegistrarFeedbackAlertaUseCase', () => {
         salvar: vi.fn(),
         porId: vi.fn().mockResolvedValue(alerta),
         atualizarFeedback,
+        listarPorTenant: vi.fn(),
       };
       const eventos: EventPublisher = { publicar: vi.fn() };
       const uc = new RegistrarFeedbackAlertaUseCase(alertas, eventos);
@@ -84,6 +87,7 @@ describe('RegistrarFeedbackAlertaUseCase', () => {
         salvar: vi.fn(),
         porId: vi.fn().mockResolvedValue(alerta),
         atualizarFeedback: vi.fn(),
+        listarPorTenant: vi.fn(),
       };
       const eventos: EventPublisher = { publicar };
       const uc = new RegistrarFeedbackAlertaUseCase(alertas, eventos);
@@ -103,6 +107,7 @@ describe('RegistrarFeedbackAlertaUseCase', () => {
         salvar: vi.fn(),
         porId: vi.fn().mockResolvedValue(alerta),
         atualizarFeedback,
+        listarPorTenant: vi.fn(),
       };
       const eventos: EventPublisher = { publicar };
       const uc = new RegistrarFeedbackAlertaUseCase(alertas, eventos);
@@ -118,6 +123,7 @@ describe('RegistrarFeedbackAlertaUseCase', () => {
         salvar: vi.fn(),
         porId: vi.fn().mockResolvedValue(null),
         atualizarFeedback: vi.fn(),
+        listarPorTenant: vi.fn(),
       };
       const eventos: EventPublisher = { publicar: vi.fn() };
       const uc = new RegistrarFeedbackAlertaUseCase(alertas, eventos);

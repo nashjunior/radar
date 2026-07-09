@@ -47,7 +47,7 @@ describe('CasarEditalComCriteriosUseCase', () => {
       listarAtivos: vi.fn(),
       casarComEdital: vi.fn().mockResolvedValue([{ criterio, score: 0.1 }]),
     };
-    const alertas: AlertaRepository = { salvar: vi.fn(), porId: vi.fn(), atualizarFeedback: vi.fn() };
+    const alertas: AlertaRepository = { salvar: vi.fn(), porId: vi.fn(), atualizarFeedback: vi.fn(), listarPorTenant: vi.fn() };
     const eventos: EventPublisher = { publicar: vi.fn() };
     const ids: AlertaIdProvider = { gerar: vi.fn().mockReturnValue(AlertaId('uuid-1')) };
 
@@ -69,7 +69,7 @@ describe('CasarEditalComCriteriosUseCase', () => {
       listarAtivos: vi.fn(),
       casarComEdital: vi.fn().mockResolvedValue([{ criterio, score: 0.75 }]),
     };
-    const alertas: AlertaRepository = { salvar: salvarAlerta, porId: vi.fn(), atualizarFeedback: vi.fn() };
+    const alertas: AlertaRepository = { salvar: salvarAlerta, porId: vi.fn(), atualizarFeedback: vi.fn(), listarPorTenant: vi.fn() };
     const eventos: EventPublisher = { publicar };
     const ids: AlertaIdProvider = { gerar: vi.fn().mockReturnValue(AlertaId('uuid-alerta')) };
 
@@ -90,7 +90,7 @@ describe('CasarEditalComCriteriosUseCase', () => {
       listarAtivos: vi.fn(),
       casarComEdital: vi.fn().mockResolvedValue([{ criterio, score: 0.8 }]),
     };
-    const alertas: AlertaRepository = { salvar: vi.fn().mockResolvedValue(undefined), porId: vi.fn(), atualizarFeedback: vi.fn() };
+    const alertas: AlertaRepository = { salvar: vi.fn().mockResolvedValue(undefined), porId: vi.fn(), atualizarFeedback: vi.fn(), listarPorTenant: vi.fn() };
     const eventos: EventPublisher = { publicar: vi.fn().mockResolvedValue(undefined) };
     const ids: AlertaIdProvider = { gerar: vi.fn().mockReturnValue(AlertaId('uuid-prov')) };
 
@@ -121,7 +121,7 @@ describe('CasarEditalComCriteriosUseCase', () => {
         { criterio: criterioB, score: 0.6 },
       ]),
     };
-    const alertas: AlertaRepository = { salvar: vi.fn().mockResolvedValue(undefined), porId: vi.fn(), atualizarFeedback: vi.fn() };
+    const alertas: AlertaRepository = { salvar: vi.fn().mockResolvedValue(undefined), porId: vi.fn(), atualizarFeedback: vi.fn(), listarPorTenant: vi.fn() };
     const eventos: EventPublisher = { publicar: vi.fn().mockResolvedValue(undefined) };
     let idCounter = 0;
     const ids: AlertaIdProvider = { gerar: vi.fn().mockImplementation(() => AlertaId(`uuid-${++idCounter}`)) };
