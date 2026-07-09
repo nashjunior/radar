@@ -2,7 +2,8 @@ import type { EditalId } from '@radar/kernel';
 import {
   AnexoIndisponivelError,
   EditalNaoEncontradoError,
-} from '../../domain/errors/index.js';
+  ESTADO_INICIAL_ANEXO,
+} from '../../domain/index.js';
 import { AnexoQuarentenado } from '../events.js';
 import type {
   AnexoEditalRepository,
@@ -71,7 +72,7 @@ export class BaixarAnexosEditalUseCase {
               storageKey,
               tamanhoBytes: arquivo.tamanhoBytes,
               tipoMime: arquivo.tipoMime,
-              estadoConfianca: 'pendente',
+              estadoConfianca: ESTADO_INICIAL_ANEXO,
             },
           ],
           signal,

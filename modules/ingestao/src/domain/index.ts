@@ -11,6 +11,7 @@ export {
 } from './errors/index.js';
 export { Cnpj } from './value-objects/cnpj.js';
 export type { EstadoConfiancaAnexo } from './value-objects/estado-confianca-anexo.js';
+export { ESTADO_INICIAL_ANEXO } from './value-objects/estado-confianca-anexo.js';
 export { Modalidade } from './value-objects/modalidade.js';
 export { NumeroControlePncp } from './value-objects/numero-controle-pncp.js';
 export { Proveniencia } from './value-objects/proveniencia.js';

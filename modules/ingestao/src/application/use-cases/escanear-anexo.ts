@@ -37,7 +37,7 @@ export class EscanearAnexoUseCase {
     if (!anexo) return;
     if (anexo.estadoConfianca !== 'pendente') return;
 
-    const resultado = await this.scanner.escanear(input.storageKey, signal);
+    const resultado = await this.scanner.escanear(anexo.storageKey, signal);
 
     await this.anexoRepo.atualizarEstado(
       input.editalId,
