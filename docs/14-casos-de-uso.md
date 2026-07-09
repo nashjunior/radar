@@ -64,7 +64,7 @@
 | **`AtenderSolicitacaoTitularUseCase`** | Titular (LGPD) | `{titular, tipo: acesso\|correcao\|eliminacao}` → `SolicitacaoDTO` | `SolicitacaoTitularRepository`, `EditalRepository`, `IdentidadeGateway` | `IdentidadeNaoVerificadaError`, `AcessoNegadoError` | `titular.solicitacao-atendida` |
 | **`AplicarRetencaoUseCase`** | Scheduler | `{politica}` → `RetencaoDTO` | vários `Repository`, `ObjectStorage` | — | `retencao.aplicada` |
 
-**Invariantes:** **verificar a identidade do titular** antes de atender (defesa contra pedido falso, arquitetura/07 AB10, P-57) — AB10 é **teste obrigatório do gate** de release (arquitetura/07, §5); auditoria é **append-only e imutável** — tentativa de `UPDATE`/`DELETE` é negada e ela mesma auditada (arquitetura/07 AB13) — e **fail-closed** (se a trilha não grava, a operação que a exigia falha), registrando **quem, quando, o quê, base legal e escopo** (`tenantId`/`clienteFinalId`) — documento 05, §3 (princípio 4); P-61; retenção conforme política (documento 05, §5, P-05).
+**Invariantes:** **verificar a identidade do titular** antes de atender (defesa contra pedido falso, arquitetura/07 AB10, P-57) — AB10 é **teste obrigatório do gate** de release (arquitetura/07, §5); auditoria é **append-only e imutável** — tentativa de `UPDATE`/`DELETE` é negada e ela mesma auditada (arquitetura/07 AB13) — e **fail-closed** (se a trilha não grava, a operação que a exigia falha), registrando **quem, quando, o quê, base legal e escopo** (`tenantId`/`clienteFinalId`) — documento 05, §3 (princípio 4); P-61; retenção conforme matriz versionada (documento 05, §5, P-05/P-44).
 
 ## 6. Identidade & Organização
 

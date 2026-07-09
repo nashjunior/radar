@@ -57,8 +57,15 @@ export function AuthProvider({ authGateway, children }: AuthProviderProps) {
 
   const valor: AuthContextValor = {
     estado,
-    login: () => authGateway.iniciarLogin(),
-    logout: () => authGateway.encerrarSessao(),
+    login: async () => {
+      await authGateway.iniciarLogin();
+      const token = await authGateway.obterToken();
+      if (token) setEstado({ status: 'autenticado', token });
+    },
+    logout: async () => {
+      await authGateway.encerrarSessao();
+      setEstado({ status: 'nao_autenticado' });
+    },
     obterToken: () => authGateway.obterToken(),
   };
 

@@ -148,7 +148,7 @@ A triagem (docs/10) precisa do **edital e anexos** (PDFs), não só dos metadado
 - Metadados vêm no fluxo principal (§4). Os **arquivos** são buscados via endpoint de arquivos (`.../arquivos`) **sob demanda** — quando um edital é enviado à triagem — e guardados em **object storage** com referência no registro.
 - Baixar tudo sempre desperdiça storage e banda; baixar sob demanda casa com o custo de IA ser assíncrono e cacheado (docs/08, §4).
 - PDF-imagem exige OCR na triagem (docs/10, §6); a ingestão só garante o arquivo disponível e íntegro.
-- Retenção dos anexos segue a política de retenção (docs/05, §5). `[A VALIDAR — prazo]`
+- Retenção dos anexos segue a política de retenção (docs/05, §5): ativo até encerramento + 24 meses e arquivo frio/expurgo até 5 anos, com minimização de PII na ingestão.
 
 ## 7. Conformidade da ingestão (checklist)
 
@@ -166,6 +166,6 @@ Espelha o checklist de docs/04, §6 aplicado à fonte PNCP:
 - ~~Confirmar no **Swagger** os endpoints, parâmetros e `tamanhoPagina` (§2).~~ **Resolvido — P-26 (2026-07-05)**: contratos confirmados; ver §2 e §3.
 - ~~Mapear os **códigos de modalidade** do PNCP (§3).~~ **Resolvido — P-26 (2026-07-05)**: tabela completa em §3.
 - Fixar a **cadência de polling** que atinge o frescor de 30 min (§3). `[A VALIDAR]` → P-29
-- Definir **retenção de anexos** em object storage (§6). `[A VALIDAR]` → P-30
+- Implementar **lifecycle/tiering e expurgo de anexos** em object storage conforme docs/05, §5 (§6) → P-30
 
 Rastreadas em [docs/98](../docs/98-decisoes-e-pendencias.md) (P-26, P-29, P-30).

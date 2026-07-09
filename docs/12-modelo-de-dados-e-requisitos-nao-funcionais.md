@@ -135,7 +135,7 @@ Cada NFR deriva de uma métrica (documento 08) ou de um controle (documento 05).
 | **Disponibilidade** | uptime do caminho crítico ingestão→alerta | ≥ 99,5%/mês; triagem IA pode degradar (arquitetura/04, §6); RTO/RPO → P-60 | operação |
 | **Isolamento multi-tenant** | vazamentos cross-tenant | **0** (regra dura) | 05 §2 |
 | **Auditabilidade** | acessos a dado pessoal logados (append-only, com base legal e escopo; fail-closed) | 100% | 05 §3 |
-| **Retenção** | expurgo conforme política por tipo de dado | conforme 05 §5 `[A VALIDAR]` → P-05 / P-44 | 05 §5 |
+| **Retenção** | expurgo conforme política por tipo de dado | conforme matriz de 05 §5 (P-05/P-44 resolvidas) | 05 §5 |
 | **Custo de IA/edital** | custo por triagem abaixo do preço médio | teto `[A VALIDAR]` → P-20 | 08 §4 / 09 §6 |
 | **Rate-limit com fontes** | coleta educada, sem sobrecarregar portais | conforme fonte | 03 §7 |
 | **Escalabilidade** | volume/dia suportado; nº de clientes-finais | ~6k editais + ~15k atualizações/dia útil (P-31); single-tenant no MVP, multi-cliente-final no Next | 09 / P-31 |
@@ -147,7 +147,7 @@ Este modelo é o substrato comum: os **fluxos** (documento 03) movem estas entid
 ## 5. Pendências
 
 - Lista de entidades e cardinalidades validada (Eng) — `NOTIFICACAO`/`PREFERENCIA_NOTIFICACAO` incorporadas ao modelo; núcleo já fechado por P-45–P-50. `Resolvido (P-24, 2026-07-05)`
-- NFRs de arquitetura fixados (§3): latência de triagem p95 ≤ 3 min, disponibilidade ≥ 99,5% no caminho crítico, escalabilidade dimensionada por P-31. Retenção (P-05/P-44) e custo de IA (P-20) seguem com seus donos. `Resolvido (P-24, 2026-07-05)`
+- NFRs de arquitetura fixados (§3): latência de triagem p95 ≤ 3 min, disponibilidade ≥ 99,5% no caminho crítico, escalabilidade dimensionada por P-31; retenção agora aponta para a matriz de 05 §5 (P-05/P-44 resolvidas). Custo de IA (P-20) segue com seu dono. `Resolvido (P-24, 2026-07-05)`
 - Definir o esquema de eventos de instrumentação (documento 08, §6) sobre estas entidades. `[A VALIDAR]`
 
 Rastreadas no documento **98 · Decisões e pendências**.

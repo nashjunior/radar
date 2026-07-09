@@ -45,7 +45,7 @@ Observação: no MVP monólito modular (A01, §2), API e workers podem coabitar 
 
 **Tiering:** nativo via S3, sem código de aplicação. Bucket de anexos (`radar-editais-{env}`) configurado com **S3 Intelligent-Tiering** ou duas lifecycle rules:
 
-1. `Standard → Glacier Instant Retrieval` após X dias de não-acesso (X = prazo a definir, P-30; Glacier Instant = latência ms, sem restore assíncrono, adequado para triagem sob demanda).
+1. `Standard → Glacier Instant Retrieval` após janela parametrizada de não-acesso, derivada da matriz de retenção (docs/05, §5; P-05/P-44 resolvidas) e ajustada por configuração de lifecycle.
 2. `Glacier Instant → Deep Archive` para editais terminais que nunca mais serão lidos.
 
 **Decisão de design (RAD-121):** sem SDK customizado de zip+manifesto — o overhead por objeto só vira custo relevante em dezenas de milhões de objetos com perfil arquivar-e-quase-nunca-restaurar. Para o volume do MVP, Intelligent-Tiering cobre sem complexidade de restore assíncrono ou expurgo-sobre-zip (crítico para P-30/LGPD).

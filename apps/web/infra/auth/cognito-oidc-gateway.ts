@@ -15,17 +15,21 @@ export interface CognitoOidcConfig {
   authority: string;
   clientId: string;
   redirectUri: string;
+  postLogoutRedirectUri: string;
   scope?: string;
 }
 
 export class CognitoOidcGateway implements AuthPort {
   private readonly manager: UserManager;
+  private readonly postLogoutRedirectUri: string;
 
   constructor(config: CognitoOidcConfig) {
+    this.postLogoutRedirectUri = config.postLogoutRedirectUri;
     const settings: UserManagerSettings = {
       authority: config.authority,
       client_id: config.clientId,
       redirect_uri: config.redirectUri,
+      post_logout_redirect_uri: config.postLogoutRedirectUri,
       scope: config.scope ?? 'openid profile email',
       response_type: 'code',
       automaticSilentRenew: true,
@@ -45,7 +49,12 @@ export class CognitoOidcGateway implements AuthPort {
   }
 
   async encerrarSessao(): Promise<void> {
-    await this.manager.signoutRedirect();
+    const user = await this.manager.getUser();
+    await this.manager.removeUser();
+    await this.manager.signoutRedirect({
+      ...(user?.id_token ? { id_token_hint: user.id_token } : {}),
+      post_logout_redirect_uri: this.postLogoutRedirectUri,
+    });
   }
 
   async processarCallback(): Promise<void> {
