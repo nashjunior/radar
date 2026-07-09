@@ -13,6 +13,8 @@ interface EditalIngeridoMsg {
   valorEstimado: number | null;
   dataPublicacao: string;
   modalidadeCodigo: number;
+  /** Proveniência do edital — incluso desde RAD-115 (opcional para retro-compat). */
+  proveniencia?: { fonte: string; baseLegal: string; dataColeta: string };
 }
 
 interface DlqClient {
@@ -40,6 +42,7 @@ export class MatchingWorker {
       cnae: null,
       valorEstimado: msg.valorEstimado,
       dataPublicacao: new Date(msg.dataPublicacao),
+      ...(msg.proveniencia !== undefined ? { proveniencia: msg.proveniencia } : {}),
     };
 
     try {

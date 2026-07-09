@@ -80,6 +80,11 @@ export class ReconciliarCatalogoUseCase {
               orgaoUf: editalAtualizado.orgao.uf,
               valorEstimado: editalAtualizado.valorEstimado?.valor ?? null,
               dataPublicacao: editalAtualizado.dataPublicacao,
+              proveniencia: {
+                fonte: editalAtualizado.proveniencia.fonte,
+                baseLegal: editalAtualizado.proveniencia.baseLegal,
+                dataColeta: editalAtualizado.proveniencia.coletadoEm.toISOString(),
+              },
             }),
             signal,
           );

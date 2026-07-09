@@ -31,6 +31,13 @@ export class EditalIngerido implements DomainEvent {
       readonly valorEstimado: number | null;
       /** Data de publicação original no PNCP. */
       readonly dataPublicacao: Date;
+      /** Proveniência do edital: origem, base legal e data de coleta (RAD-115). */
+      readonly proveniencia?: {
+        readonly fonte: string;
+        readonly baseLegal: string;
+        /** ISO-8601 — data em que o edital foi coletado do PNCP. */
+        readonly dataColeta: string;
+      };
     },
   ) {
     this.occurredAt = new Date();

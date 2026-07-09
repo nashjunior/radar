@@ -13,6 +13,8 @@ export interface EditalParaMatchingDTO {
   cnae: string | null;
   valorEstimado: number | null;
   dataPublicacao: Date;
+  /** Proveniência do edital, disponível quando presente no evento edital.ingerido (RAD-115). */
+  proveniencia?: { fonte: string; baseLegal: string; dataColeta: string };
 }
 
 /** Critério com score calculado pelo adapter. */
@@ -42,6 +44,8 @@ export interface AlertaDTO {
   editalId: string;
   aderencia: number;
   relevante: boolean | null;
+  /** Proveniência do edital — presente quando disponível no evento de ingestão (RAD-115). */
+  proveniencia?: { fonte: string; baseLegal: string; dataColeta: string };
 }
 
 export interface FaixaValorDTO {
@@ -80,7 +84,10 @@ export interface MetricasMatchingDTO {
   janelaEmDias: number;
 }
 
-export function alertaParaDTO(a: Alerta): AlertaDTO {
+export function alertaParaDTO(
+  a: Alerta,
+  proveniencia?: { fonte: string; baseLegal: string; dataColeta: string },
+): AlertaDTO {
   return {
     id: a.id,
     tenantId: a.tenantId,
@@ -89,5 +96,6 @@ export function alertaParaDTO(a: Alerta): AlertaDTO {
     editalId: a.editalId,
     aderencia: a.aderencia.valor,
     relevante: a.relevante,
+    ...(proveniencia !== undefined ? { proveniencia } : {}),
   };
 }

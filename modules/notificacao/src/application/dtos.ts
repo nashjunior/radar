@@ -19,6 +19,8 @@ export interface AlertaResumoDTO {
   aderencia: number;
   /** dias corridos até o prazo da proposta — para cálculo de criticidade. */
   diasAtePrazo: number;
+  /** Proveniência do edital — disponível quando a view SQL inclui a join com proveniencias (RAD-115). */
+  proveniencia?: { fonte: string; baseLegal: string; dataColeta: string };
 }
 
 export interface PreferenciaDTO {

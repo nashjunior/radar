@@ -24,6 +24,11 @@ const editalFixture: EditalParaMatchingDTO = {
   dataPublicacao: new Date('2026-07-01'),
 };
 
+const editalComProveniencia: EditalParaMatchingDTO = {
+  ...editalFixture,
+  proveniencia: { fonte: 'PNCP', baseLegal: 'Lei 14.133/2021, art. 174', dataColeta: '2026-07-09T00:00:00.000Z' },
+};
+
 function criarCriterio(clienteFinalId: string): CriterioDeMonitoramento {
   return CriterioDeMonitoramento.criar({
     id: CriterioId('crit-001'),
@@ -75,6 +80,27 @@ describe('CasarEditalComCriteriosUseCase', () => {
     expect(result[0]?.aderencia).toBe(0.75);
     expect(salvarAlerta).toHaveBeenCalledOnce();
     expect(publicar).toHaveBeenCalledOnce();
+  });
+
+  it('projeta proveniencia no AlertaDTO quando edital a contém (RAD-115)', async () => {
+    const criterio = criarCriterio('cliente-A');
+    const criterios: CriterioRepository = {
+      salvar: vi.fn(),
+      porId: vi.fn(),
+      listarAtivos: vi.fn(),
+      casarComEdital: vi.fn().mockResolvedValue([{ criterio, score: 0.8 }]),
+    };
+    const alertas: AlertaRepository = { salvar: vi.fn().mockResolvedValue(undefined), porId: vi.fn(), atualizarFeedback: vi.fn() };
+    const eventos: EventPublisher = { publicar: vi.fn().mockResolvedValue(undefined) };
+    const ids: AlertaIdProvider = { gerar: vi.fn().mockReturnValue(AlertaId('uuid-prov')) };
+
+    const uc = new CasarEditalComCriteriosUseCase(criterios, alertas, eventos, ids);
+
+    const comProv = await uc.executar({ edital: editalComProveniencia }, noop);
+    expect(comProv[0]?.proveniencia).toEqual({ fonte: 'PNCP', baseLegal: 'Lei 14.133/2021, art. 174', dataColeta: '2026-07-09T00:00:00.000Z' });
+
+    const semProv = await uc.executar({ edital: editalFixture }, noop);
+    expect(semProv[0]?.proveniencia).toBeUndefined();
   });
 
   it('gera alertas separados para critérios de clientes distintos — sem cross-tenant', async () => {

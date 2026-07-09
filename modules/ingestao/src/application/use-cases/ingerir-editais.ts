@@ -95,6 +95,11 @@ export class IngerirEditaisUseCase {
               orgaoUf: edital.orgao.uf,
               valorEstimado: edital.valorEstimado?.valor ?? null,
               dataPublicacao: edital.dataPublicacao,
+              proveniencia: {
+                fonte: edital.proveniencia.fonte,
+                baseLegal: edital.proveniencia.baseLegal,
+                dataColeta: edital.proveniencia.coletadoEm.toISOString(),
+              },
             }),
             signal,
           );

@@ -67,7 +67,7 @@ export class CasarEditalComCriteriosUseCase {
         signal,
       );
 
-      alertasGerados.push(alertaParaDTO(alerta));
+      alertasGerados.push(alertaParaDTO(alerta, edital.proveniencia));
     }
 
     return alertasGerados;
