@@ -47,6 +47,9 @@ export const alertaStub: AlertaRepository = {
   async atualizarFeedback(_id: AlertaId, _relevante: boolean, _signal: AbortSignal) {
     /* sem persistência no stub */
   },
+  async listarPorTenant(_tenantId, _signal: AbortSignal) {
+    return [];
+  },
 };
 
 export const faixaValorStub: FaixaValorReferencia = {

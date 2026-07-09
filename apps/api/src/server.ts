@@ -17,6 +17,7 @@ import {
   SolicitarTriagemUseCase,
 } from '@radar/triagem';
 import {
+  ConsultarAlertasTenantUseCase,
   ConsultarMetricasMatchingUseCase,
   DefinirCriterioMonitoramentoUseCase,
   RegistrarFeedbackAlertaUseCase,
@@ -25,6 +26,7 @@ import { ConsultarPerfilHabilitacaoUseCase, GerenciarPerfilHabilitacaoUseCase } 
 import { DefinirPreferenciasNotificacaoUseCase } from '@radar/notificacao';
 import { CryptoCriterioIdProvider } from '@radar/matching/infra';
 import { healthRouter } from './routes/health.js';
+import { criarAlertasRouter } from './routes/alertas.js';
 import { criarTriagemRouter } from './routes/triagem.js';
 import { criarMatchingRouter } from './routes/matching.js';
 import { criarIdentidadeRouter } from './routes/identidade.js';
@@ -71,6 +73,7 @@ export function criarApp(): Hono {
     systemClock,
   );
   const registrarFeedbackAlerta = new RegistrarFeedbackAlertaUseCase(alertaStub, eventPublisherStub);
+  const consultarAlertas = new ConsultarAlertasTenantUseCase(alertaStub);
   const consultarMetricas = new ConsultarMetricasMatchingUseCase(metricaStub);
 
   const app = new Hono();
@@ -81,6 +84,7 @@ export function criarApp(): Hono {
   app.route('/health', healthRouter);
 
   // API principal — tenant obrigatório
+  app.route('/api/alertas', criarAlertasRouter({ consultarAlertas }));
   app.route('/api/triagem', criarTriagemRouter({ consultarTriagem, solicitarTriagem, registrarFeedback: registrarFeedbackTriagem, perfilAtivo }));
   app.route('/api/matching', criarMatchingRouter({ definirCriterio, registrarFeedback: registrarFeedbackAlerta, consultarMetricas, perfilAtivo }));
   app.route('/api/identidade', criarIdentidadeRouter({ gerenciarPerfil, consultarPerfil, perfilAtivo }));

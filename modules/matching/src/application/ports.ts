@@ -36,6 +36,7 @@ export interface AlertaRepository {
     relevante: boolean,
     signal: AbortSignal,
   ): Promise<void>;
+  listarPorTenant(tenantId: TenantId, signal: AbortSignal): Promise<Alerta[]>;
 }
 
 /**
