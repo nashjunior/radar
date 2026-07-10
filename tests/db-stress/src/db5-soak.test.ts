@@ -8,15 +8,20 @@
  *   - Vazamento de conexões (pool.totalCount / pool.idleCount ao final)
  *   - Degradação de latência ao longo do tempo (p95 início vs. fim)
  *
+ * P-39 (RAD-165, 2026-07-10): editais é tabela particionada; ON CONFLICT usa
+ *   (numero_controle_pncp, data_publicacao).
+ * P-41 (RAD-165, 2026-07-10): idle_in_transaction_session_timeout=30s aplicado via
+ *   startDb() — assegura que conexões presas não vazam (DB5b).
+ *
  * Cenários cobertos:
  *   DB5a — Carga mista: 300 rounds de upsert + lookup sem erro ao longo do tempo
  *   DB5b — Sem vazamento de conexão: pool.idleCount == pool.totalCount ao final
+ *           (validado pelo GUC idle_in_transaction_session_timeout=30s — P-41)
  *   DB5c — Dead tuples rastreados: n_dead_tup / n_live_tup ao final (informativo)
  *   DB5d — Sem degradação severa: p95 dos últimos 50 rounds ≤ 3× p95 dos primeiros 50
  *
  * CAVEAT: requer Docker (Testcontainers). Um soak completo (horas) depende de
- * ambiente de CI dedicado — RAD-130. Esta suíte valida que nenhum padrão de
- * degradação emerge mesmo em escala curta. Alvos de autovacuum — P-41.
+ * ambiente de CI dedicado — RAD-130.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -28,6 +33,7 @@ import {
 // Queries (upsert + lookup cobrem editais, extracao_edital e triagem)
 // ---------------------------------------------------------------------------
 
+// P-39: ON CONFLICT usa (numero_controle_pncp, data_publicacao) — PK do schema particionado
 const EDITAL_UPSERT = `
   INSERT INTO editais
     (id, numero_controle_pncp, modalidade_codigo, modalidade_nome,
@@ -36,7 +42,7 @@ const EDITAL_UPSERT = `
      orgao_cnpj, orgao_nome, orgao_uf, orgao_municipio,
      prov_fonte, prov_base_legal, prov_coletado_em, itens)
   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18::jsonb)
-  ON CONFLICT (numero_controle_pncp) DO UPDATE SET
+  ON CONFLICT (numero_controle_pncp, data_publicacao) DO UPDATE SET
     fase_atual       = EXCLUDED.fase_atual,
     objeto           = EXCLUDED.objeto,
     valor_estimado   = EXCLUDED.valor_estimado,
@@ -121,7 +127,8 @@ function triagemParams(i: number): unknown[] {
 let fx: DbFixture;
 
 beforeAll(async () => {
-  fx = await startDb(15); // pool moderado para detectar starvation
+  // Pool misto soak: max=15 detecta starvation; idle_in_transaction_session_timeout=30s (P-41).
+  fx = await startDb(15);
 }, 120_000);
 
 afterAll(async () => {
@@ -187,16 +194,33 @@ describe('DB5 — Soak: 300 rounds de carga mista (upsert + lookup)', () => {
       expect(erros, `${erros} rounds falharam — instabilidade sob carga contínua`).toBe(0);
 
       // ---------------------------------------------------------------------------
-      // DB5b — Sem vazamento de conexão
+      // DB5b — Sem vazamento de conexão (gate P-41: idle_in_transaction_session_timeout=30s)
+      // Verifica que o GUC está ativo na sessão E que nenhuma conexão ficou presa.
       // ---------------------------------------------------------------------------
-      // Aguarda um tick para que conexões pendentes retornem ao pool
       await new Promise(r => setTimeout(r, 50));
       const poolTotal = fx.pool.totalCount;
       const poolIdle = fx.pool.idleCount;
-      console.info(`[DB5b] pool ao final: total=${poolTotal} idle=${poolIdle}`);
+
+      // Confirma o GUC idle_in_transaction_session_timeout está configurado no pool
+      const { rows: gucRows } = await fx.pool.query<{ setting: string }>(
+        `SHOW idle_in_transaction_session_timeout`,
+        [],
+      );
+      const gucValue = gucRows[0]?.setting ?? '0';
+      console.info(
+        `[DB5b] pool ao final: total=${poolTotal} idle=${poolIdle}; ` +
+        `idle_in_transaction_session_timeout=${gucValue}`,
+      );
+
+      // GUC deve estar ativo — Postgres normaliza para '30s'; '0' ou '0ms' = desativado
+      expect(
+        gucValue,
+        `idle_in_transaction_session_timeout não configurado (P-41): valor=${gucValue}`,
+      ).not.toMatch(/^0(ms|s)?$/);
+
       expect(
         poolIdle,
-        `conexões vazando: idle=${poolIdle} < total=${poolTotal} — pool starved`,
+        `conexões vazando: idle=${poolIdle} < total=${poolTotal} — pool starved ou idle_in_transaction não funcionou`,
       ).toBe(poolTotal);
 
       // ---------------------------------------------------------------------------

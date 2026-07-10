@@ -5,19 +5,22 @@
  * triagem (escopada por tenant × perfil). Concorrência real: 1 worker de
  * triagem por edital, mas múltiplos editais em paralelo (docs/12 §2).
  *
+ * P-41 (RAD-165, 2026-07-10): pool de triagem/API max=10, statement_timeout=5s,
+ * lock_timeout=3s, idle_in_transaction_session_timeout=30s.
+ *
  * Cenários cobertos:
  *   DB3a — Cache hit: 200 lookups sequenciais em extracao_edital → p95 < 10 ms
- *   DB3b — Upserts concorrentes de triagem: 50 concurrent → sem pool exhaustion,
- *           p95 wall-clock < 500 ms para o lote
+ *   DB3b — 50 triagens paralelas via pool max=10: zero erros de conexão; enfileiram
+ *           corretamente; wall-clock total ≤ 2 s (sem saturação de pool)
  *   DB3c — Isolamento de tenant: query com tenant errado → zero linhas (anti-IDOR)
  *   DB3d — Idempotência: re-triagem do mesmo (tenant, edital, perfil) → count não muda
  *
  * Gargalo documentado (A05/A06): pool de conexões; lock no upsert; volume crescente.
- * CAVEAT: requer Docker (Testcontainers). Pool sizing depende de P-41.
+ * CAVEAT: requer Docker (Testcontainers).
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { startDb, teardownDb, p, medirLatencias, type DbFixture } from './helpers/db.js';
+import { startDbTriagem, teardownDb, p, medirLatencias, type DbFixture } from './helpers/db.js';
 
 // ---------------------------------------------------------------------------
 // Queries idênticas às dos adapters Postgres (modules/triagem/src/infra)
@@ -100,7 +103,9 @@ function gerarTriagem(
 let fx: DbFixture;
 
 beforeAll(async () => {
-  fx = await startDb(20); // pool de 20 conexões para testar pressão
+  // P-41: pool de triagem/API — max=10, statement_timeout=5s, lock_timeout=3s.
+  // DB3b valida que 50 transações concorrentes multiplexam corretamente por 10 backends.
+  fx = await startDbTriagem();
 }, 120_000);
 
 afterAll(async () => {
@@ -141,11 +146,13 @@ describe('DB3a — cache hit em extracao_edital (lookup por edital_id)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// DB3b — Upserts concorrentes: 50 triagens paralelas, p95 wall-clock < 500 ms
+// DB3b — 50 triagens paralelas via pool max=10: zero erros, enfileiramento correto
+// Gate P-41: pool de triagem/API max=10 — 50 transações multiplexam por 10 backends.
+// Asserta: zero erros de conexão (pool enfileira, não rejeita); wall-clock ≤ 2 s.
 // ---------------------------------------------------------------------------
 
-describe('DB3b — 50 upserts concorrentes de triagem sem pool exhaustion', () => {
-  it('50 triagens paralelas completam; pool retorna ao idle; wall-clock < 500 ms', async () => {
+describe('DB3b — 50 upserts concorrentes via pool max=10 (gate P-41)', () => {
+  it('50 triagens paralelas: zero erros de conexão; pool.totalCount ≤ 10; wall-clock ≤ 2 s', async () => {
     await fx.pool.query('TRUNCATE extracao_edital, triagem');
 
     // Seed: 50 extrações base
@@ -153,38 +160,58 @@ describe('DB3b — 50 upserts concorrentes de triagem sem pool exhaustion', () =
       await fx.pool.query(EXTRACAO_UPSERT, gerarExtracao(`edital-conc-${i}`));
     }
 
+    const erros: string[] = [];
     const t0 = performance.now();
 
+    // 50 queries concorrentes via pool com max=10 — pg.Pool enfileira os 40 excedentes
     await Promise.all(
       Array.from({ length: 50 }, (_, i) =>
-        fx.pool.query(TRIAGEM_UPSERT, gerarTriagem(
-          'tenant-stress',
-          `cliente-${i % 5}`,
-          `edital-conc-${i}`,
-          `perfil-${i % 3}`,
-        )),
+        fx.pool
+          .query(TRIAGEM_UPSERT, gerarTriagem(
+            'tenant-stress',
+            `cliente-${i % 5}`,
+            `edital-conc-${i}`,
+            `perfil-${i % 3}`,
+          ))
+          .catch((err: unknown) => {
+            erros.push(String(err));
+          }),
       ),
     );
 
     const wallMs = performance.now() - t0;
 
-    console.info(`[DB3b] 50 triagens paralelas em ${wallMs.toFixed(1)}ms`);
+    // Aguarda 50 ms para que conexões retornem ao idle (pg.Pool devolve async)
+    await new Promise(r => setTimeout(r, 50));
+
+    const poolTotal = fx.pool.totalCount;
+    const poolIdle = fx.pool.idleCount;
 
     const { rows } = await fx.pool.query<{ count: string }>(
       `SELECT count(*)::text AS count FROM triagem`,
       [],
     );
 
-    // Verifica que o pool não saturou: totalCount deve ser ≤ max
-    const poolTotal = fx.pool.totalCount;
-    const poolMax = 20;
-
     console.info(
-      `[DB3b] pool.totalCount=${poolTotal} (max=${poolMax}); triagens=${rows[0]!.count}`,
+      `[DB3b] wall-clock=${wallMs.toFixed(1)}ms; erros=${erros.length}; ` +
+      `pool.total=${poolTotal} pool.idle=${poolIdle} (max=10); triagens=${rows[0]!.count}`,
     );
 
-    expect(wallMs, `wall-clock 50 triagens paralelas > 500 ms`).toBeLessThan(500);
-    expect(poolTotal).toBeLessThanOrEqual(poolMax);
+    // Gate principal: zero erros de conexão — pool enfileira, não rejeita
+    expect(
+      erros,
+      `${erros.length} erro(s) de conexão: pool saturou ou statement_timeout muito curto:\n${erros.join('\n')}`,
+    ).toHaveLength(0);
+
+    // Pool não pode ter excedido o max=10 definido por P-41
+    expect(
+      poolTotal,
+      `pool.totalCount=${poolTotal} excede max=10 (P-41)`,
+    ).toBeLessThanOrEqual(10);
+
+    // Wall-clock: 50 queries por 10 backends = 5 rounds; cada upsert simples < 400 ms → ≤ 2 s
+    expect(wallMs, `wall-clock ${wallMs.toFixed(1)}ms > 2000 ms — pool saturado ou starvation`).toBeLessThan(2_000);
+
     // UNIQUE (tenant_id, edital_id, perfil_id): pode haver menos que 50 se perfil colidiu
     expect(Number(rows[0]!.count)).toBeGreaterThan(0);
   });

@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS criterio_monitoramento (
   regiao_uf        TEXT,
   faixa_valor_min  NUMERIC,
   faixa_valor_max  NUMERIC,
+  faixa_valor_min_cripto TEXT,
+  faixa_valor_max_cripto TEXT,
   palavras_chave   TEXT[]  NOT NULL DEFAULT '{}',
   ativo            BOOLEAN NOT NULL DEFAULT true
 );

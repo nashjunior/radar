@@ -46,6 +46,16 @@ resource "aws_secretsmanager_secret" "pncp_api_key" {
   tags = local.tags
 }
 
+resource "aws_secretsmanager_secret" "field_crypto_key" {
+  name        = "/${var.project}/${var.env}/field-crypto-key"
+  description = "Chave AES-256-GCM em base64 para FIELD_CRYPTO_KEY (${var.project}-${var.env})"
+  kms_key_id  = var.kms_key_arn
+
+  recovery_window_in_days = var.env == "prod" ? 30 : 7
+
+  tags = local.tags
+}
+
 locals {
   tags = {
     project     = var.project

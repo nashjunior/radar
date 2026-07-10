@@ -6,17 +6,21 @@
  *   Burst hipotético: ~600 editais em 5 min = 2/s.
  * Gate: o upsert NÃO pode ser o gargalo do frescor ≤ 30 min (docs/07 §6).
  *
+ * P-39 (RAD-165, 2026-07-10): editais é tabela particionada por RANGE(data_publicacao).
+ * PK = (id, data_publicacao); UNIQUE = (numero_controle_pncp, data_publicacao).
+ * ON CONFLICT usa (numero_controle_pncp, data_publicacao) — partição-local.
+ * P-41 (RAD-165, 2026-07-10): pool de ingestão max=15, statement_timeout=30s.
+ *
  * Cenários cobertos:
  *   DB1a — Throughput: 500 upserts em < 30 s (= 16,7/s; 8× acima do burst-alvo)
  *   DB1b — Idempotência: ON CONFLICT não altera count; campo atualizado conforme
  *   DB1c — Concorrência: 20 writers paralelos (10 editais cada) sem deadlock
  *
- * CAVEAT: requer Docker (Testcontainers). Execution pendente enquanto Docker
- * não estiver disponível — RAD-130. Alvos numéricos finos dependem de P-39/P-41.
+ * CAVEAT: requer Docker (Testcontainers).
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { startDb, teardownDb, type DbFixture } from './helpers/db.js';
+import { startDbIngestao, teardownDb, type DbFixture } from './helpers/db.js';
 
 // ---------------------------------------------------------------------------
 // Geração de dados sintéticos — nunca toca PNCP real (A04 §4)
@@ -53,7 +57,9 @@ function gerarEdital(i: number) {
   };
 }
 
-// Query de upsert idêntica à do PostgresEditalRepository (modules/ingestao)
+// Query de upsert idêntica à do PostgresEditalRepository (modules/ingestao).
+// ON CONFLICT usa (numero_controle_pncp, data_publicacao): restrição de
+// particionamento declarativo Postgres (P-39 — PK deve incluir a chave de partição).
 const UPSERT_SQL = `
   INSERT INTO editais
     (id, numero_controle_pncp, modalidade_codigo, modalidade_nome,
@@ -62,7 +68,7 @@ const UPSERT_SQL = `
      orgao_cnpj, orgao_nome, orgao_uf, orgao_municipio,
      prov_fonte, prov_base_legal, prov_coletado_em, itens)
   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18::jsonb)
-  ON CONFLICT (numero_controle_pncp) DO UPDATE SET
+  ON CONFLICT (numero_controle_pncp, data_publicacao) DO UPDATE SET
     fase_atual       = EXCLUDED.fase_atual,
     objeto           = EXCLUDED.objeto,
     valor_estimado   = EXCLUDED.valor_estimado,
@@ -89,7 +95,7 @@ function upsertParams(e: ReturnType<typeof gerarEdital>): unknown[] {
 let fx: DbFixture;
 
 beforeAll(async () => {
-  fx = await startDb();
+  fx = await startDbIngestao(); // P-41: max=15, statement_timeout=30s, lock_timeout=3s
 }, 120_000);
 
 afterAll(async () => {

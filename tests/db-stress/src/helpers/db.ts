@@ -32,11 +32,71 @@ export interface DbFixture {
   container: StartedPostgreSqlContainer;
 }
 
-/**
- * Inicia container Postgres efêmero (postgres:16-alpine), aplica schema.sql.
- * maxConnections: dimensiona o pool para simular pressão de conexões (DB3/DB5).
- */
-export async function startDb(maxConnections = 20): Promise<DbFixture> {
+// ---------------------------------------------------------------------------
+// GUCs por workload (P-41, arq/05 §6, RAD-165, 2026-07-10)
+// Espelhados do pooler em modo transação de produção — SET por conexão.
+// ---------------------------------------------------------------------------
+
+type WorkloadGUCs = {
+  statement_timeout: string;
+  lock_timeout?: string;
+  idle_in_transaction_session_timeout?: string;
+  work_mem?: string;
+};
+
+const GUCS: Record<string, WorkloadGUCs> = {
+  ingestao: {
+    statement_timeout: '30000',           // 30 s — rajada S1; lotes sob lock
+    lock_timeout: '3000',                 // 3 s — falha rápido, re-tenta idempotente
+    idle_in_transaction_session_timeout: '30000',  // 30 s — mata transação vazada
+    work_mem: '16MB',
+  },
+  matching: {
+    statement_timeout: '10000',           // 10 s — corta seq scan runaway (DB2)
+    work_mem: '16MB',
+  },
+  triagem: {
+    statement_timeout: '5000',            // 5 s — sub-segundo em prod, folga p/ testes
+    lock_timeout: '3000',
+    idle_in_transaction_session_timeout: '30000',
+    work_mem: '16MB',
+  },
+  analitico: {
+    statement_timeout: '60000',           // 60 s — range scans DB4
+    work_mem: '128MB',                    // SET LOCAL work_mem='128MB' p/ analítico
+  },
+  jobs: {
+    statement_timeout: '300000',          // 300 s — DETACH/index build
+    work_mem: '16MB',
+  },
+};
+
+/** Aplica os GUCs do workload em cada conexão nova do pool. */
+function applyGucs(pool: pg.Pool, gucs: WorkloadGUCs): void {
+  pool.on('connect', (client: pg.PoolClient) => {
+    const sets = [
+      `SET statement_timeout = '${gucs.statement_timeout}'`,
+      gucs.lock_timeout ? `SET lock_timeout = '${gucs.lock_timeout}'` : null,
+      gucs.idle_in_transaction_session_timeout
+        ? `SET idle_in_transaction_session_timeout = '${gucs.idle_in_transaction_session_timeout}'`
+        : null,
+      gucs.work_mem ? `SET work_mem = '${gucs.work_mem}'` : null,
+    ]
+      .filter(Boolean)
+      .join('; ');
+
+    client.query(sets).catch(() => {
+      // GUC failure is non-fatal for the pool but should not go silent in tests
+      console.warn(`[db.ts] Falha ao aplicar GUCs (${sets})`);
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Fábrica interna — cria container + pool + schema
+// ---------------------------------------------------------------------------
+
+async function criarFixture(max: number, gucs?: WorkloadGUCs): Promise<DbFixture> {
   const container = await new PostgreSqlContainer('postgres:16-alpine').start();
 
   const pool = new Pool({
@@ -45,14 +105,58 @@ export async function startDb(maxConnections = 20): Promise<DbFixture> {
     database: container.getDatabase(),
     user: container.getUsername(),
     password: container.getPassword(),
-    max: maxConnections,
+    max,
     idleTimeoutMillis: 5_000,
     connectionTimeoutMillis: 10_000,
   });
 
+  if (gucs) applyGucs(pool, gucs);
+
   await pool.query(SCHEMA_SQL);
 
   return { db: new PgDbClient(pool), pool, container };
+}
+
+// ---------------------------------------------------------------------------
+// API pública — uma função por bulkhead (P-41)
+// ---------------------------------------------------------------------------
+
+/** Pool de ingestão: max 15, statement_timeout 30 s, lock_timeout 3 s. */
+export async function startDbIngestao(): Promise<DbFixture> {
+  return criarFixture(15, GUCS.ingestao);
+}
+
+/** Pool de matching: max 10, statement_timeout 10 s. */
+export async function startDbMatching(): Promise<DbFixture> {
+  return criarFixture(10, GUCS.matching);
+}
+
+/** Pool de triagem/API: max 10, statement_timeout 5 s, lock_timeout 3 s. */
+export async function startDbTriagem(): Promise<DbFixture> {
+  return criarFixture(10, GUCS.triagem);
+}
+
+/** Pool analítico/reconciliação: max 5, statement_timeout 60 s, work_mem 128 MB. */
+export async function startDbAnalitico(): Promise<DbFixture> {
+  return criarFixture(5, GUCS.analitico);
+}
+
+/** Pool de jobs/retenção/partição: max 5, statement_timeout 300 s. */
+export async function startDbJobs(): Promise<DbFixture> {
+  return criarFixture(5, GUCS.jobs);
+}
+
+/**
+ * Pool genérico sem GUCs de workload — mantido para cenários que não pertencem
+ * a um único bulkhead (ex.: DB5 soak misto) ou testes de infra isolados.
+ * Aplica idle_in_transaction_session_timeout=30s como GUC de segurança mínima.
+ */
+export async function startDb(maxConnections = 20): Promise<DbFixture> {
+  return criarFixture(maxConnections, {
+    statement_timeout: '60000',
+    idle_in_transaction_session_timeout: '30000',
+    work_mem: '16MB',
+  });
 }
 
 export async function teardownDb(fixture: DbFixture): Promise<void> {

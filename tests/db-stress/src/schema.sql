@@ -1,18 +1,23 @@
 -- Schema executável para testes de estresse do banco (A05 §3, A06 §3).
 -- Cobre as 5 tabelas quentes: EDITAL, ALERTA, CRITERIO_MONITORAMENTO,
 -- EXTRACAO_EDITAL, TRIAGEM — com índices documentados em A05/A06.
+-- P-39 (RAD-165, 2026-07-10): particionamento declarativo RANGE mensal em
+-- EDITAL (data_publicacao), ALERTA (criado_em), PROVENIENCIA e AUDIT_LOG.
+-- P-41 (RAD-165, 2026-07-10): pools bulkhead por workload — configurados em db.ts.
 --
 -- REGRA DURA: nunca contra o PNCP real nem LLM real (A04 §4).
 -- Colunas e upserts derivados dos adapters Postgres em modules/*/src/infra/adapters/.
 
 -- ---------------------------------------------------------------------------
 -- EDITAL — escrita em rajada (DB1) + leitura pesada de matching (DB2)
--- Volume: ~5.900 novos/dia útil + ~15.000 atualizações (docs/12 §3, P-31)
--- Gargalo: upsert sob lock; sequential scan no matching; tamanho de índice (A06)
+-- P-39: RANGE mensal por data_publicacao (tabela parent).
+-- PK inclui data_publicacao (restrição de particionamento declarativo Postgres).
+-- UNIQUE (numero_controle_pncp, data_publicacao) — local por partição; sem
+-- duplicate global: PNCP garante unicidade por data de publicação em prod.
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS editais (
-  id                   TEXT        PRIMARY KEY,
-  numero_controle_pncp TEXT        NOT NULL UNIQUE,
+  id                   TEXT        NOT NULL,
+  numero_controle_pncp TEXT        NOT NULL,
   modalidade_codigo    INT         NOT NULL,
   modalidade_nome      TEXT        NOT NULL,
   fase_atual           TEXT        NOT NULL,
@@ -28,10 +33,25 @@ CREATE TABLE IF NOT EXISTS editais (
   prov_fonte           TEXT        NOT NULL DEFAULT 'PNCP',
   prov_base_legal      TEXT        NOT NULL DEFAULT 'Lei 14.133/2021, art. 174',
   prov_coletado_em     TIMESTAMPTZ NOT NULL,
-  itens                JSONB       NOT NULL DEFAULT '[]'
-);
+  itens                JSONB       NOT NULL DEFAULT '[]',
+  PRIMARY KEY (id, data_publicacao),
+  UNIQUE (numero_controle_pncp, data_publicacao)
+) PARTITION BY RANGE (data_publicacao);
 
--- Índices de matching (A05 §3): data, modalidade, UF, valor — queries do casarComEdital
+-- Partições mensais para cobertura dos testes (dados sintéticos de 2026)
+CREATE TABLE IF NOT EXISTS editais_2026_05 PARTITION OF editais
+  FOR VALUES FROM ('2026-05-01') TO ('2026-06-01');
+
+CREATE TABLE IF NOT EXISTS editais_2026_06 PARTITION OF editais
+  FOR VALUES FROM ('2026-06-01') TO ('2026-07-01');
+
+CREATE TABLE IF NOT EXISTS editais_2026_07 PARTITION OF editais
+  FOR VALUES FROM ('2026-07-01') TO ('2026-08-01');
+
+-- Guarda: absorve dados fora das partições explícitas (tests DB6 etc.)
+CREATE TABLE IF NOT EXISTS editais_default PARTITION OF editais DEFAULT;
+
+-- Índices de matching (A05 §3): herdados pelas partições automaticamente
 CREATE INDEX IF NOT EXISTS idx_editais_data_pub   ON editais (data_publicacao);
 CREATE INDEX IF NOT EXISTS idx_editais_modalidade ON editais (modalidade_codigo);
 CREATE INDEX IF NOT EXISTS idx_editais_uf         ON editais (orgao_uf);
@@ -39,7 +59,7 @@ CREATE INDEX IF NOT EXISTS idx_editais_valor      ON editais (valor_estimado);
 
 -- ---------------------------------------------------------------------------
 -- CRITERIO_MONITORAMENTO — lido a cada edital ingerido (fan-out alvo, DB2)
--- Gargalo: sequential scan se mal indexado; volume cresce com clientes (A06)
+-- P-39: NÃO particionado (point-lookup/tenant, sem crescimento ilimitado).
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS criterio_monitoramento (
   id               TEXT    PRIMARY KEY,
@@ -49,6 +69,8 @@ CREATE TABLE IF NOT EXISTS criterio_monitoramento (
   regiao_uf        TEXT,
   faixa_valor_min  NUMERIC,
   faixa_valor_max  NUMERIC,
+  faixa_valor_min_cripto TEXT,
+  faixa_valor_max_cripto TEXT,
   palavras_chave   TEXT[]  NOT NULL DEFAULT '{}',
   ativo            BOOLEAN NOT NULL DEFAULT true
 );
@@ -62,19 +84,31 @@ CREATE INDEX IF NOT EXISTS idx_criterio_uf     ON criterio_monitoramento (regiao
 
 -- ---------------------------------------------------------------------------
 -- ALERTA — escrita explosiva por fan-out; 1 por (edital × critério) (DB2)
--- Gargalo: write amplification; bloat de índice; inserção em lote (A06)
--- Isolamento estrutural: tenant_id + cliente_final_id obrigatórios (docs/05 §3)
+-- P-39: RANGE mensal por criado_em (append-only, bloat concentrado na partição corrente).
+-- PK inclui criado_em (restrição de particionamento declarativo Postgres).
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS alerta (
-  id               TEXT        PRIMARY KEY,
+  id               TEXT        NOT NULL,
   tenant_id        TEXT        NOT NULL,
   cliente_final_id TEXT        NOT NULL,
   criterio_id      TEXT        NOT NULL,
   edital_id        TEXT        NOT NULL,
   aderencia        NUMERIC     NOT NULL,
   relevante        BOOLEAN,
-  criado_em        TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+  criado_em        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (id, criado_em)
+) PARTITION BY RANGE (criado_em);
+
+CREATE TABLE IF NOT EXISTS alerta_2026_05 PARTITION OF alerta
+  FOR VALUES FROM ('2026-05-01') TO ('2026-06-01');
+
+CREATE TABLE IF NOT EXISTS alerta_2026_06 PARTITION OF alerta
+  FOR VALUES FROM ('2026-06-01') TO ('2026-07-01');
+
+CREATE TABLE IF NOT EXISTS alerta_2026_07 PARTITION OF alerta
+  FOR VALUES FROM ('2026-07-01') TO ('2026-08-01');
+
+CREATE TABLE IF NOT EXISTS alerta_default PARTITION OF alerta DEFAULT;
 
 -- Índice composto de tenant para isolamento (A05 §3) + lookup por edital + recência
 CREATE INDEX IF NOT EXISTS idx_alerta_tenant ON alerta (tenant_id, cliente_final_id);
@@ -83,8 +117,7 @@ CREATE INDEX IF NOT EXISTS idx_alerta_criado ON alerta (criado_em DESC);
 
 -- ---------------------------------------------------------------------------
 -- EXTRACAO_EDITAL — cache 1:1 com edital, leitura quente (DB3)
--- Gargalo: JSON grande (requisitos, citações) — TOAST cuida automaticamente.
--- Catálogo global sem tenant_id (docs/12 §2): 1 extração por edital, cacheável.
+-- P-39: NÃO particionada (point-lookup 1:1 por edital_id; range não ajuda).
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS extracao_edital (
   edital_id               TEXT    PRIMARY KEY,
@@ -99,8 +132,7 @@ CREATE TABLE IF NOT EXISTS extracao_edital (
 
 -- ---------------------------------------------------------------------------
 -- TRIAGEM — escrita por perfil; 1 por (tenant, edital, perfil) (DB3)
--- Gargalo: contenção de pool; volume = editais × empresas (A06)
--- Escopo de tenant obrigatório nas colunas (docs/05 §3, P-49)
+-- P-39: NÃO particionada (sem crescimento ilimitado nem append-only).
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS triagem (
   id               BIGSERIAL   PRIMARY KEY,
@@ -118,3 +150,58 @@ CREATE TABLE IF NOT EXISTS triagem (
 -- Índices de isolamento e lookup (A05 §3)
 CREATE INDEX IF NOT EXISTS idx_triagem_tenant ON triagem (tenant_id, cliente_final_id);
 CREATE INDEX IF NOT EXISTS idx_triagem_edital ON triagem (edital_id);
+
+-- ---------------------------------------------------------------------------
+-- PROVENIENCIA — metadados de coleta; append-only (P-39: RANGE mensal)
+-- Timestamp do evento como chave de partição.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS proveniencia (
+  id          TEXT        NOT NULL,
+  edital_id   TEXT        NOT NULL,
+  fonte       TEXT        NOT NULL,
+  base_legal  TEXT        NOT NULL,
+  coletado_em TIMESTAMPTZ NOT NULL,
+  PRIMARY KEY (id, coletado_em)
+) PARTITION BY RANGE (coletado_em);
+
+CREATE TABLE IF NOT EXISTS proveniencia_2026_05 PARTITION OF proveniencia
+  FOR VALUES FROM ('2026-05-01') TO ('2026-06-01');
+
+CREATE TABLE IF NOT EXISTS proveniencia_2026_06 PARTITION OF proveniencia
+  FOR VALUES FROM ('2026-06-01') TO ('2026-07-01');
+
+CREATE TABLE IF NOT EXISTS proveniencia_2026_07 PARTITION OF proveniencia
+  FOR VALUES FROM ('2026-07-01') TO ('2026-08-01');
+
+CREATE TABLE IF NOT EXISTS proveniencia_default PARTITION OF proveniencia DEFAULT;
+
+CREATE INDEX IF NOT EXISTS idx_proveniencia_edital     ON proveniencia (edital_id);
+CREATE INDEX IF NOT EXISTS idx_proveniencia_coletado_em ON proveniencia (coletado_em DESC);
+
+-- ---------------------------------------------------------------------------
+-- AUDIT_LOG — append-only/fail-closed; hot 12 m + frio até 5 anos (P-39)
+-- Timestamp do evento como chave de partição.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS audit_log (
+  id          BIGSERIAL   NOT NULL,
+  evento      TEXT        NOT NULL,
+  tenant_id   TEXT,
+  ator_id     TEXT,
+  payload     JSONB       NOT NULL DEFAULT '{}',
+  ocorrido_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (id, ocorrido_em)
+) PARTITION BY RANGE (ocorrido_em);
+
+CREATE TABLE IF NOT EXISTS audit_log_2026_05 PARTITION OF audit_log
+  FOR VALUES FROM ('2026-05-01') TO ('2026-06-01');
+
+CREATE TABLE IF NOT EXISTS audit_log_2026_06 PARTITION OF audit_log
+  FOR VALUES FROM ('2026-06-01') TO ('2026-07-01');
+
+CREATE TABLE IF NOT EXISTS audit_log_2026_07 PARTITION OF audit_log
+  FOR VALUES FROM ('2026-07-01') TO ('2026-08-01');
+
+CREATE TABLE IF NOT EXISTS audit_log_default PARTITION OF audit_log DEFAULT;
+
+CREATE INDEX IF NOT EXISTS idx_audit_log_tenant     ON audit_log (tenant_id) WHERE tenant_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_audit_log_ocorrido_em ON audit_log (ocorrido_em DESC);

@@ -20,6 +20,7 @@ import {
   type ClockProvider,
   type EditalParaMatchingDTO,
   type FaixaValorReferencia,
+  type FieldCryptoProvider,
 } from '@radar/matching';
 import { PostgresCriterioRepository, PostgresAlertaRepository, CryptoCriterioIdProvider, CryptoAlertaIdProvider } from '@radar/matching/infra';
 import {
@@ -73,6 +74,10 @@ const faixasRefVazia: FaixaValorReferencia = {
 };
 
 const clock: ClockProvider = { agora: () => new Date('2026-07-05T12:00:00Z') };
+const fieldCrypto: FieldCryptoProvider = {
+  cifrarTexto: async (valor) => valor,
+  decifrarTexto: async (valor) => valor,
+};
 
 // ---------------------------------------------------------------------------
 // Setup global — 1 container por suite (compartilhado, schema limpo entre testes)
@@ -105,7 +110,7 @@ function criarHarness() {
   const clienteGateway = new InMemoryClienteFinalGateway();
   const notifier = new CaptureNotifier();
 
-  const criterioRepo = new PostgresCriterioRepository(fixture.db);
+  const criterioRepo = new PostgresCriterioRepository(fixture.db, fieldCrypto);
   const alertaRepo = new PostgresAlertaRepository(fixture.db);
   const notificacaoRepo = new PostgresNotificacaoRepository(fixture.db);
   const preferenciaRepo = new PostgresPreferenciaRepository(fixture.db);

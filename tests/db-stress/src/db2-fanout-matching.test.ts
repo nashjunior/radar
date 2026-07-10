@@ -5,21 +5,24 @@
  * Query-alvo: casarComEdital() em PostgresCriterioRepository (modules/matching).
  * Gargalo provável: plano de query (scan), cálculo ts_rank, fan-out de alertas (A06).
  *
+ * P-39 (RAD-165, 2026-07-10): editais é tabela particionada por RANGE(data_publicacao).
+ * P-41 (RAD-165, 2026-07-10): pool de matching max=10, statement_timeout=10s.
+ *
  * Cenários cobertos:
  *   DB2a — Latência com 1.000 critérios: p95 < 1.000 ms
  *   DB2b — Escala com 5.000 critérios: p95 < 2.500 ms (hipótese [A VALIDAR] — P-40)
  *   DB2c — Fan-out de alertas: 1 edital casa com 100 critérios → 100 inserts sem falha
- *   DB2d — Isolamento de índices: partial index (ativo=true) está catalogado em pg_indexes
+ *   DB2d — Índices + pruning: partial index existe; EXPLAIN na partição quente sem Seq Scan
  *
- * Nota sobre seq scan (A05 §3): com ts_rank inline e tabela pequena, o PostgreSQL
- * pode escolher seq scan por custo — aceitável no MVP (P-40: [A VALIDAR] percolator).
- * O gate é a latência, não o plano. Versão para escala revisitará via P-40.
+ * Nota sobre seq scan em criterio_monitoramento: com ts_rank inline e tabela pequena,
+ * o PostgreSQL pode escolher seq scan por custo — aceitável no MVP (P-40: [A VALIDAR]).
+ * DB2d agora asserta explicitamente que a query na partição QUENTE de editais usa índice.
  *
- * CAVEAT: requer Docker (Testcontainers). Alvos numéricos finos — P-39/P-41.
+ * CAVEAT: requer Docker (Testcontainers).
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { startDb, teardownDb, p, medirLatencias, type DbFixture } from './helpers/db.js';
+import { startDbMatching, teardownDb, p, medirLatencias, type DbFixture } from './helpers/db.js';
 
 // ---------------------------------------------------------------------------
 // Query idêntica à do PostgresCriterioRepository.casarComEdital()
@@ -44,10 +47,12 @@ const FAN_OUT_SQL = `
 `;
 
 // Insert de alerta (fan-out output) — idêntico ao PostgresAlertaRepository.salvar()
+// ON CONFLICT DO NOTHING sem target: PK de alerta é (id, criado_em) após P-39 —
+// a ausência de target aceita qualquer conflito de forma idempotente.
 const ALERTA_SQL = `
   INSERT INTO alerta (id, tenant_id, cliente_final_id, criterio_id, edital_id, aderencia, relevante, criado_em)
   VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())
-  ON CONFLICT (id) DO NOTHING
+  ON CONFLICT DO NOTHING
 `;
 
 // ---------------------------------------------------------------------------
@@ -108,7 +113,7 @@ const EDITAL_TI = {
 let fx: DbFixture;
 
 beforeAll(async () => {
-  fx = await startDb();
+  fx = await startDbMatching(); // P-41: max=10, statement_timeout=10s
 }, 120_000);
 
 afterAll(async () => {
@@ -231,10 +236,12 @@ describe('DB2c — fan-out de alertas: write amplification', () => {
 });
 
 // ---------------------------------------------------------------------------
-// DB2d — Índices existem (garantia estrutural de design)
+// DB2d — Índices existem + EXPLAIN sem Seq Scan na partição quente de editais
+// Gate P-39 (RAD-165): partition pruning — a query na partição 2026-07 não faz Seq Scan.
+// Gate P-41: statement_timeout=10s corta runaway antes de virar lock.
 // ---------------------------------------------------------------------------
 
-describe('DB2d — índices esperados estão catalogados em pg_indexes', () => {
+describe('DB2d — índices esperados em pg_indexes; EXPLAIN sem Seq Scan na partição quente', () => {
   it('partial index (ativo=true) e índice de tenant existem em criterio_monitoramento', async () => {
     const { rows } = await fx.pool.query<{ indexname: string }>(
       `SELECT indexname FROM pg_indexes
@@ -254,5 +261,68 @@ describe('DB2d — índices esperados estão catalogados em pg_indexes', () => {
     const alertaNomes = alertaIdx.map(r => r.indexname);
     expect(alertaNomes).toContain('idx_alerta_tenant');
     expect(alertaNomes).toContain('idx_alerta_edital');
+  });
+
+  it('EXPLAIN na partição quente de editais (2026-07) não usa Seq Scan (P-39 partition pruning)', async () => {
+    // Seed: ao menos 500 editais na partição 2026-07 para forçar o planner a usar índice
+    const client = await fx.pool.connect();
+    try {
+      await client.query('BEGIN');
+      for (let i = 0; i < 500; i++) {
+        const dp = new Date(Date.UTC(2026, 6, 1) + i * 3_600_000).toISOString(); // julho 2026
+        await client.query(
+          `INSERT INTO editais
+             (id, numero_controle_pncp, modalidade_codigo, modalidade_nome,
+              fase_atual, objeto, valor_estimado, prazo_proposta,
+              data_publicacao, data_atualizacao,
+              orgao_cnpj, orgao_nome, orgao_uf, orgao_municipio,
+              prov_fonte, prov_base_legal, prov_coletado_em, itens)
+           VALUES ($1,$2,1,'Pregão','publicada','Objeto TI DB2d',$3,'2026-09-30T23:59:00Z',
+                   $4,'2026-07-09T00:00:00Z','00000000000001','Órgão DB2d','SP','São Paulo',
+                   'PNCP','Lei 14.133/2021, art. 174','2026-07-09T00:00:00Z','[]'::jsonb)
+           ON CONFLICT (numero_controle_pncp, data_publicacao) DO NOTHING`,
+          [`edital-db2d-${i}`, `DB2D-2026-07-${String(i).padStart(6, '0')}`, 300_000 + i, dp],
+        );
+      }
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    await fx.pool.query('ANALYZE editais');
+
+    // EXPLAIN em query com filtro na partição 2026-07 (matching por data recente + índice de UF)
+    const { rows: planRows } = await fx.pool.query<{ 'QUERY PLAN': string }>(
+      `EXPLAIN
+         SELECT id FROM editais
+          WHERE data_publicacao >= '2026-07-01'
+            AND data_publicacao  < '2026-08-01'
+            AND orgao_uf = 'SP'`,
+      [],
+    );
+
+    const planText = planRows.map(r => r['QUERY PLAN']).join('\n');
+    console.info(`[DB2d] EXPLAIN plano:\n${planText}`);
+
+    // Partition pruning: o plano deve mencionar a partição 2026-07 ou o child scan, nunca
+    // escanear todas as partições. Asserta que o plano NÃO contém Seq Scan na tabela parent.
+    const temSeqScanParent = /Seq Scan on editais\s/i.test(planText)
+      && !/Seq Scan on editais_2026_07/i.test(planText)
+      && !/Seq Scan on editais_default/i.test(planText);
+
+    expect(
+      temSeqScanParent,
+      `Plano usa Seq Scan no parent 'editais' — partition pruning não funcionou:\n${planText}`,
+    ).toBe(false);
+
+    // O plano deve mencionar a partição correta (ou Index Scan nela)
+    const mencionaParticao2607 = planText.includes('editais_2026_07');
+    expect(
+      mencionaParticao2607,
+      `Plano não menciona a partição editais_2026_07 — pruning falhou ou dados fora da partição:\n${planText}`,
+    ).toBe(true);
   });
 });

@@ -15,6 +15,7 @@ import type {
   AlertaRepository,
   CriterioRepository,
   EventPublisher,
+  FieldCryptoProvider,
   DomainEvent,
 } from '@radar/matching';
 import { getFixture } from '../support/hooks.js';
@@ -46,6 +47,11 @@ const ctx: Ctx = {
   edital: editalPadrao,
   eventosPublicados: [],
   alertasRetornados: [],
+};
+
+const fieldCrypto: FieldCryptoProvider = {
+  cifrarTexto: async (valor) => valor,
+  decifrarTexto: async (valor) => valor,
 };
 
 Before(function () {
@@ -117,7 +123,7 @@ async function buildUseCase(): Promise<CasarEditalComCriteriosUseCase> {
   const { db } = getFixture();
   const signal = new AbortController().signal;
 
-  const realCriterioRepo = new PostgresCriterioRepository(db);
+  const realCriterioRepo = new PostgresCriterioRepository(db, fieldCrypto);
   const criterioRepo = new BddCriterioRepository(realCriterioRepo);
 
   // Persiste critérios do cenário no banco real

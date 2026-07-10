@@ -27,3 +27,8 @@ output "cognito_tenant_claim" {
   description = "COGNITO_TENANT_CLAIM esperado pela BFF"
   value       = module.identity.tenant_claim
 }
+
+output "field_crypto_key_secret_arn" {
+  description = "Secret do FIELD_CRYPTO_KEY isolado do ambiente dev"
+  value       = module.secrets.field_crypto_key_secret_arn
+}

@@ -21,3 +21,8 @@ variable "database_url_secret_arn" {
   description = "ARN do secret no Secrets Manager com DATABASE_URL"
   type        = string
 }
+
+variable "field_crypto_key_secret_arn" {
+  description = "ARN do secret no Secrets Manager com FIELD_CRYPTO_KEY por ambiente"
+  type        = string
+}
