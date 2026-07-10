@@ -58,3 +58,15 @@ export class AnexoNaoLimpoError extends DomainError {
     super(`anexo '${nome}' não está limpo (estado: ${estado})`);
   }
 }
+
+/**
+ * URL bloqueada pelo guarda SSRF antes de fazer fetch (P-58, AB7/AB8).
+ * Motivo: scheme inválido, host fora da allowlist, IP privado/loopback/
+ * link-local/metadata ou redirect para destino interno.
+ */
+export class UrlBloqueadaPorSsrfError extends DomainError {
+  readonly code = 'URL_BLOQUEADA_SSRF' as const;
+  constructor(url: string, motivo: string) {
+    super(`URL bloqueada pelo guarda SSRF ('${url}'): ${motivo}`);
+  }
+}
