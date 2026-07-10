@@ -90,7 +90,7 @@ describe('NotificacaoWorker', () => {
 
     await worker.processar(MSG, ac.signal);
 
-    const [, signal] = uc.executar.mock.calls[0]!;
+    const [, signal] = (uc.executar as ReturnType<typeof vi.fn>).mock.calls[0]!;
     expect(signal).toBe(ac.signal);
   });
 });

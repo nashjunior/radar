@@ -27,10 +27,9 @@ export class PncpHttpGateway implements PncpGateway {
   private readonly ssrfGuard: SsrfGuard;
 
   constructor(ssrfConfig?: Partial<SsrfGuardConfig>) {
-    this.ssrfGuard = new SsrfGuard({
-      allowedHosts: ssrfConfig?.allowedHosts ?? DEFAULT_ALLOWED_HOSTS,
-      maxRedirects: ssrfConfig?.maxRedirects,
-    });
+    const base: SsrfGuardConfig = { allowedHosts: ssrfConfig?.allowedHosts ?? DEFAULT_ALLOWED_HOSTS };
+    if (ssrfConfig?.maxRedirects !== undefined) base.maxRedirects = ssrfConfig.maxRedirects;
+    this.ssrfGuard = new SsrfGuard(base);
   }
   async *buscarContratacoesPorPublicacao(
     modalidade: number,

@@ -124,10 +124,10 @@ describe('EnviarDigestUseCase', () => {
       expect(dto).toEqual({ enviados: 1, agrupados: 1 });
       expect(deps.notifier.enviar).toHaveBeenCalledOnce();
       expect(deps.notificacoes.salvar).toHaveBeenCalledOnce();
-      const [notif] = deps.notificacoes.salvar.mock.calls[0]! as [Notificacao];
+      const [notif] = (deps.notificacoes.salvar as ReturnType<typeof vi.fn>).mock.calls[0]! as [Notificacao];
       expect(notif.status).toBe('ENVIADA');
       expect(deps.eventos.publicar).toHaveBeenCalledOnce();
-      const [evento] = deps.eventos.publicar.mock.calls[0]! as [NotificacaoEnviada];
+      const [evento] = (deps.eventos.publicar as ReturnType<typeof vi.fn>).mock.calls[0]! as [NotificacaoEnviada];
       expect(evento).toBeInstanceOf(NotificacaoEnviada);
       expect(evento.payload.tenantId).toBe(TENANT);
     });
@@ -152,11 +152,12 @@ describe('EnviarDigestUseCase', () => {
       const deps = makeDeps({ pendentes });
       await makeUC(deps).executar(INPUT, noop);
 
-      const [, , , opts] = deps.notifier.enviar.mock.calls[0]! as [
+      const mockEnviar = deps.notifier.enviar as ReturnType<typeof vi.fn>;
+      const [, , , opts] = mockEnviar.mock.calls[0]! as [
         unknown, unknown, unknown, { corpo: string },
       ];
       // Os alertas de índice 24..5 têm maior aderência; o de menor (i=0) não deve aparecer
-      expect(opts?.corpo ?? (deps.notifier.enviar.mock.calls[0] as {corpo: string}[])[0]?.corpo ?? '').not.toContain('a-0');
+      expect(opts?.corpo ?? (mockEnviar.mock.calls[0] as {corpo: string}[])[0]?.corpo ?? '').not.toContain('a-0');
     });
 
     it('ordena digest por aderência decrescente (o de maior aderência aparece primeiro)', async () => {
@@ -168,7 +169,7 @@ describe('EnviarDigestUseCase', () => {
       const deps = makeDeps({ pendentes });
       await makeUC(deps).executar(INPUT, noop);
 
-      const callArgs = deps.notifier.enviar.mock.calls[0]![0] as {corpo?: string} | {canal: unknown; destinatario: unknown; assunto: unknown; corpo: string; signal: AbortSignal};
+      const callArgs = (deps.notifier.enviar as ReturnType<typeof vi.fn>).mock.calls[0]![0] as {corpo?: string} | {canal: unknown; destinatario: unknown; assunto: unknown; corpo: string; signal: AbortSignal};
       const corpo = 'corpo' in callArgs ? callArgs.corpo : '';
       // corpo é uma string com linhas — "alto" deve vir antes de "medio" e "baixo"
       const posAlto = corpo.indexOf('alto');
@@ -186,7 +187,7 @@ describe('EnviarDigestUseCase', () => {
       await expect(makeUC(deps).executar(INPUT, noop)).rejects.toThrow(CanalIndisponivelError);
 
       expect(deps.notificacoes.salvar).toHaveBeenCalledOnce();
-      const [notif] = deps.notificacoes.salvar.mock.calls[0]! as [Notificacao];
+      const [notif] = (deps.notificacoes.salvar as ReturnType<typeof vi.fn>).mock.calls[0]! as [Notificacao];
       expect(notif.status).toBe('FALHOU');
       expect(deps.eventos.publicar).not.toHaveBeenCalled();
     });
