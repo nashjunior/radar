@@ -67,6 +67,6 @@ Todo "alto/moderado" aqui é **qualitativo** — não há volumetria real. O que
 ## 7. Pendências
 
 - Retenção/arquivamento das tabelas append-only e de alto crescimento (`EDITAL`, `ALERTA`, `PROVENIENCIA`, `AUDIT_LOG`) segue a matriz de docs/05, §5: `EDITAL` ativo até encerramento + 24 meses e frio até 5 anos; `ALERTA` conta ativa + 24 meses; `PROVENIENCIA` *tombstone* mínimo por 5 anos; `AUDIT_LOG` hot 12 meses e frio até 5 anos. `Resolvido — P-44 (2026-07-07)`
-- Volumetria real por tabela quente para fixar alvos e partição (depende de P-31 e P-39).
+- Estratégia de partição das tabelas quentes fechada em [A05 §3](05-stress-test-banco.md) (`Resolvido — P-39`, RANGE de data mensal em `EDITAL`/`ALERTA`/`PROVENIENCIA`/`AUDIT_LOG`). Remanescente: **volumetria real** por tabela quente para *tuning* fino dos alvos sob carga (P-31 medido; confirmação depende de execução com Docker — RAD-130/RAD-162).
 
 Rastreadas em [../docs/98](../docs/98-decisoes-e-pendencias.md).
