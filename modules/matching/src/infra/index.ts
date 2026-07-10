@@ -1,11 +1,13 @@
 export { AesGcmFieldCryptoProvider } from './adapters/aes-gcm-field-crypto-provider.js';
 export { CryptoCriterioIdProvider, CryptoAlertaIdProvider } from './adapters/crypto-id-provider.js';
 export { paraHttpStatus } from './adapters/error-mapping.js';
+export { FilaAlertaMemoria } from './adapters/fila-alerta-memoria.js';
 export { PostgresAlertaRepository } from './adapters/postgres-alerta-repository.js';
 export { PostgresCriterioRepository } from './adapters/postgres-criterio-repository.js';
 export { PostgresFaixaValorReferencia } from './adapters/postgres-faixa-valor-referencia.js';
 export { PostgresMetricaMatchingRepository } from './adapters/postgres-metrica-matching-repository.js';
 export { SqsEventPublisher } from './adapters/sqs-event-publisher.js';
+export { ConsumidorAlertaBatch } from './queue/consumidor-alerta-batch.js';
 export { MatchingWorker } from './queue/matching-worker.js';
 export { criarMatchingComposicao } from './composicao.js';
 export type { MatchingComposicao, MatchingComposicaoConfig } from './composicao.js';

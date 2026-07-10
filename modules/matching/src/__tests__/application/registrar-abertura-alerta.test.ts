@@ -25,6 +25,7 @@ describe('RegistrarAberturaAlertaUseCase', () => {
       const alerta = criarAlerta('cliente-A');
       const alertas: AlertaRepository = {
         salvar: vi.fn(),
+        salvarEmLote: vi.fn(),
         porId: vi.fn().mockResolvedValue(alerta),
         atualizarFeedback: vi.fn(),
         listarPorTenant: vi.fn(),
@@ -45,6 +46,7 @@ describe('RegistrarAberturaAlertaUseCase', () => {
       const publicar = vi.fn();
       const alertas: AlertaRepository = {
         salvar: vi.fn(),
+        salvarEmLote: vi.fn(),
         porId: vi.fn().mockResolvedValue(alerta),
         atualizarFeedback: vi.fn(),
         listarPorTenant: vi.fn(),
@@ -69,6 +71,7 @@ describe('RegistrarAberturaAlertaUseCase', () => {
       const publicar = vi.fn().mockResolvedValue(undefined);
       const alertas: AlertaRepository = {
         salvar: vi.fn(),
+        salvarEmLote: vi.fn(),
         porId: vi.fn().mockResolvedValue(alerta),
         atualizarFeedback: vi.fn(),
         listarPorTenant: vi.fn(),
@@ -92,6 +95,7 @@ describe('RegistrarAberturaAlertaUseCase', () => {
     it('lança AlertaNaoEncontradoError quando alerta não existe', async () => {
       const alertas: AlertaRepository = {
         salvar: vi.fn(),
+        salvarEmLote: vi.fn(),
         porId: vi.fn().mockResolvedValue(null),
         atualizarFeedback: vi.fn(),
         listarPorTenant: vi.fn(),

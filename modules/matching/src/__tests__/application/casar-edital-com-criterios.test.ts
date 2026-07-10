@@ -5,9 +5,8 @@ import { PalavrasChave } from '../../domain/value-objects/palavras-chave.js';
 import { CasarEditalComCriteriosUseCase } from '../../application/use-cases/casar-edital-com-criterios.js';
 import type {
   AlertaIdProvider,
-  AlertaRepository,
   CriterioRepository,
-  EventPublisher,
+  FilaAlertaPort,
 } from '../../application/ports.js';
 import type { EditalParaMatchingDTO } from '../../application/dtos.js';
 
@@ -47,9 +46,15 @@ function mockCriterioRepo(criterios: CriterioDeMonitoramento[]): CriterioReposit
   };
 }
 
+function mockFilaAlerta(): FilaAlertaPort {
+  return {
+    enfileirar: vi.fn().mockResolvedValue(undefined),
+    drenar: vi.fn().mockResolvedValue([]),
+  };
+}
+
 describe('CasarEditalComCriteriosUseCase', () => {
   it('retorna lista vazia quando nenhum critério supera o limiar de aderência (< 0.3)', async () => {
-    // Palavras-chave que não aparecem no objeto do edital → score binário = 0 < 0.3
     const criterioSemMatch = CriterioDeMonitoramento.criar({
       id: CriterioId('crit-001'),
       tenantId: TenantId('tenant-a'),
@@ -57,45 +62,43 @@ describe('CasarEditalComCriteriosUseCase', () => {
       palavrasChave: PalavrasChave.criar(['cloud', 'erp']),
     });
     const criterios = mockCriterioRepo([criterioSemMatch]);
-    const alertas: AlertaRepository = { salvar: vi.fn(), porId: vi.fn(), atualizarFeedback: vi.fn(), listarPorTenant: vi.fn() };
-    const eventos: EventPublisher = { publicar: vi.fn() };
+    const fila = mockFilaAlerta();
     const ids: AlertaIdProvider = { gerar: vi.fn().mockReturnValue(AlertaId('uuid-1')) };
 
-    const uc = new CasarEditalComCriteriosUseCase(criterios, alertas, eventos, ids);
+    const uc = new CasarEditalComCriteriosUseCase(criterios, fila, ids);
     const result = await uc.executar({ edital: editalFixture }, noop);
 
     expect(result).toHaveLength(0);
-    expect(alertas.salvar).not.toHaveBeenCalled();
+    expect(fila.enfileirar).not.toHaveBeenCalled();
   });
 
-  it('gera alerta quando aderência supera limiar (≥ 0.3) e persiste + publica evento', async () => {
+  it('enfileira alerta quando aderência supera limiar (≥ 0.3) — P-41/RAD-179', async () => {
     const criterio = criarCriterio('cliente-A');
-    const salvarAlerta = vi.fn().mockResolvedValue(undefined);
-    const publicar = vi.fn().mockResolvedValue(undefined);
-
+    const fila = mockFilaAlerta();
     const criterios = mockCriterioRepo([criterio]);
-    const alertas: AlertaRepository = { salvar: salvarAlerta, porId: vi.fn(), atualizarFeedback: vi.fn(), listarPorTenant: vi.fn() };
-    const eventos: EventPublisher = { publicar };
     const ids: AlertaIdProvider = { gerar: vi.fn().mockReturnValue(AlertaId('uuid-alerta')) };
 
-    const uc = new CasarEditalComCriteriosUseCase(criterios, alertas, eventos, ids);
+    const uc = new CasarEditalComCriteriosUseCase(criterios, fila, ids);
     const result = await uc.executar({ edital: editalFixture }, noop);
 
-    // Criterio com ['ti'] casa com 'serviços de TI' → score binário = 1
     expect(result).toHaveLength(1);
     expect(result[0]?.aderencia).toBe(1);
-    expect(salvarAlerta).toHaveBeenCalledOnce();
-    expect(publicar).toHaveBeenCalledOnce();
+    expect(fila.enfileirar).toHaveBeenCalledOnce();
+    const [payload] = (fila.enfileirar as ReturnType<typeof vi.fn>).mock.calls[0] as [unknown];
+    expect(payload).toMatchObject({
+      alertaId: 'uuid-alerta',
+      tenantId: 'tenant-a',
+      clienteFinalId: 'cliente-A',
+    });
   });
 
   it('projeta proveniencia no AlertaDTO quando edital a contém (RAD-115)', async () => {
     const criterio = criarCriterio('cliente-A');
     const criterios = mockCriterioRepo([criterio]);
-    const alertas: AlertaRepository = { salvar: vi.fn().mockResolvedValue(undefined), porId: vi.fn(), atualizarFeedback: vi.fn(), listarPorTenant: vi.fn() };
-    const eventos: EventPublisher = { publicar: vi.fn().mockResolvedValue(undefined) };
+    const fila = mockFilaAlerta();
     const ids: AlertaIdProvider = { gerar: vi.fn().mockReturnValue(AlertaId('uuid-prov')) };
 
-    const uc = new CasarEditalComCriteriosUseCase(criterios, alertas, eventos, ids);
+    const uc = new CasarEditalComCriteriosUseCase(criterios, fila, ids);
 
     const comProv = await uc.executar({ edital: editalComProveniencia }, noop);
     expect(comProv[0]?.proveniencia).toEqual({ fonte: 'PNCP', baseLegal: 'Lei 14.133/2021, art. 174', dataColeta: '2026-07-09T00:00:00.000Z' });
@@ -104,7 +107,7 @@ describe('CasarEditalComCriteriosUseCase', () => {
     expect(semProv[0]?.proveniencia).toBeUndefined();
   });
 
-  it('gera alertas separados para critérios de clientes distintos — sem cross-tenant', async () => {
+  it('enfileira alertas separados para critérios de clientes distintos — sem cross-tenant', async () => {
     const criterioA = criarCriterio('cliente-A');
     const criterioB = CriterioDeMonitoramento.criar({
       id: CriterioId('crit-002'),
@@ -114,17 +117,31 @@ describe('CasarEditalComCriteriosUseCase', () => {
     });
 
     const criterios = mockCriterioRepo([criterioA, criterioB]);
-    const alertas: AlertaRepository = { salvar: vi.fn().mockResolvedValue(undefined), porId: vi.fn(), atualizarFeedback: vi.fn(), listarPorTenant: vi.fn() };
-    const eventos: EventPublisher = { publicar: vi.fn().mockResolvedValue(undefined) };
+    const fila = mockFilaAlerta();
     let idCounter = 0;
     const ids: AlertaIdProvider = { gerar: vi.fn().mockImplementation(() => AlertaId(`uuid-${++idCounter}`)) };
 
-    const uc = new CasarEditalComCriteriosUseCase(criterios, alertas, eventos, ids);
+    const uc = new CasarEditalComCriteriosUseCase(criterios, fila, ids);
     const result = await uc.executar({ edital: editalFixture }, noop);
 
     expect(result).toHaveLength(2);
     const clienteFinals = result.map(a => a.clienteFinalId);
     expect(clienteFinals).toContain('cliente-A');
     expect(clienteFinals).toContain('cliente-B');
+    expect(fila.enfileirar).toHaveBeenCalledTimes(2);
+  });
+
+  it('propaga AbortSignal ao enfileirar (P-78)', async () => {
+    const ac = new AbortController();
+    const criterio = criarCriterio('cliente-A');
+    const criterios = mockCriterioRepo([criterio]);
+    const fila = mockFilaAlerta();
+    const ids: AlertaIdProvider = { gerar: vi.fn().mockReturnValue(AlertaId('uuid-1')) };
+
+    const uc = new CasarEditalComCriteriosUseCase(criterios, fila, ids);
+    await uc.executar({ edital: editalFixture }, ac.signal);
+
+    const [, signal] = (fila.enfileirar as ReturnType<typeof vi.fn>).mock.calls[0] as [unknown, AbortSignal];
+    expect(signal).toBe(ac.signal);
   });
 });

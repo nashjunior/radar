@@ -25,6 +25,7 @@ function makeRepo(alertas: Alerta[]): AlertaRepository {
     listarPorTenant: vi.fn().mockResolvedValue(alertas),
     porId: vi.fn().mockResolvedValue(null),
     salvar: vi.fn(),
+    salvarEmLote: vi.fn(),
     atualizarFeedback: vi.fn(),
   };
 }

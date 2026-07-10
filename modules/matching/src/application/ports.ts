@@ -8,6 +8,20 @@ import type {
 import type { DomainEvent } from './events.js';
 
 // ---------------------------------------------------------------------------
+// Payload da fila interna de alertas (P-41/RAD-179)
+// ---------------------------------------------------------------------------
+
+/** Snapshot do alerta gerado — enfileirado para batch INSERT pelo ConsumidorAlertaBatch. */
+export interface AlertaParaGravarPayload {
+  readonly alertaId: AlertaId;
+  readonly tenantId: TenantId;
+  readonly clienteFinalId: ClienteFinalId;
+  readonly criterioId: CriterioId;
+  readonly editalId: EditalId;
+  readonly aderencia: number;
+}
+
+// ---------------------------------------------------------------------------
 // Ports de saída — nomenclatura por papel, adapter por tecnologia (A10 §8)
 // ---------------------------------------------------------------------------
 
@@ -33,6 +47,8 @@ export interface FieldCryptoProvider {
 /** Repositório do agregado Alerta. */
 export interface AlertaRepository {
   salvar(alerta: Alerta, signal: AbortSignal): Promise<void>;
+  /** Insere N alertas em uma única query (batch INSERT). ON CONFLICT DO NOTHING — idempotente. */
+  salvarEmLote(alertas: Alerta[], signal: AbortSignal): Promise<void>;
   porId(id: AlertaId, signal: AbortSignal): Promise<Alerta | null>;
   atualizarFeedback(
     id: AlertaId,
@@ -53,6 +69,16 @@ export interface FaixaValorReferencia {
 /** Publicação de eventos de domínio na fila (Published Language — A03 §3). */
 export interface EventPublisher {
   publicar(evento: DomainEvent, signal: AbortSignal): Promise<void>;
+}
+
+/**
+ * Fila interna de alertas a gravar — buffer para batch INSERT (P-41/RAD-179).
+ * Adapter SQS na produção; FilaAlertaMemoria nos testes.
+ * `drenar` retorna até `limite` itens; array vazio indica fila vazia.
+ */
+export interface FilaAlertaPort {
+  enfileirar(alerta: AlertaParaGravarPayload, signal: AbortSignal): Promise<void>;
+  drenar(limite: number, signal: AbortSignal): Promise<AlertaParaGravarPayload[]>;
 }
 
 /** Gera CriterioIds únicos. Injetado na infra — construtores de ID ficam fora da application. */

@@ -33,6 +33,36 @@ export class PostgresAlertaRepository implements AlertaRepository {
     );
   }
 
+  async salvarEmLote(alertas: Alerta[], signal: AbortSignal): Promise<void> {
+    if (alertas.length === 0) return;
+    // Constrói uma única INSERT multi-row: ON CONFLICT (id) DO NOTHING — idempotente (P-41).
+    // 7 colunas por linha → parâmetros $1..$7, $8..$14, etc.
+    const COLUNAS = 7;
+    const values: unknown[] = [];
+    const placeholders = alertas.map((a, i) => {
+      const base = i * COLUNAS;
+      values.push(
+        a.id,
+        a.tenantId,
+        a.clienteFinalId,
+        a.criterioId,
+        a.editalId,
+        a.aderencia.valor,
+        a.relevante,
+      );
+      return `($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7},NOW())`;
+    });
+
+    await this.db.query(
+      `INSERT INTO alerta
+         (id, tenant_id, cliente_final_id, criterio_id, edital_id, aderencia, relevante, criado_em)
+       VALUES ${placeholders.join(',')}
+       ON CONFLICT (id) DO NOTHING`,
+      values,
+      { signal },
+    );
+  }
+
   async porId(id: AlertaId, signal: AbortSignal): Promise<Alerta | null> {
     const { rows } = await this.db.query<Row>(
       `SELECT * FROM alerta WHERE id = $1`,
