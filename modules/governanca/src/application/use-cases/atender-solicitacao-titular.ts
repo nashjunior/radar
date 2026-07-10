@@ -1,3 +1,4 @@
+import { AcessoNegadoError } from '@radar/kernel';
 import type { ClienteFinalId, TenantId } from '@radar/kernel';
 import { RegistroAuditoria } from '../../domain/entities/registro-auditoria.js';
 import {
@@ -62,7 +63,7 @@ export class AtenderSolicitacaoTitularUseCase {
       id: this.solicitacaoIdProvider.gerar(),
       tipo: input.tipo,
       tenantId: input.tenantId,
-      clienteFinalId: input.clienteFinalId,
+      ...(input.clienteFinalId !== undefined ? { clienteFinalId: input.clienteFinalId } : {}),
       titularRef: TitularRef.criar(input.titularRef),
       criadaEm: agora,
     });
@@ -76,6 +77,7 @@ export class AtenderSolicitacaoTitularUseCase {
     const resultadoVerificacao = await this.identidadeGateway.verificarTitular(
       input.titularRef,
       input.tenantId,
+      input.clienteFinalId,
       signal,
     );
 
@@ -89,6 +91,15 @@ export class AtenderSolicitacaoTitularUseCase {
       await this.persistirComAuditoria(solicitacao, 'ENCERRAR', input.operadorId, signal);
 
       throw new IdentidadeNaoVerificadaError();
+    }
+    if (resultadoVerificacao.vinculadoAoEscopo === false) {
+      solicitacao = solicitacao.recusar('TITULAR_FORA_DO_ESCOPO', this.clock.agora());
+      await this.persistirComAuditoria(solicitacao, 'RECUSAR_ESCOPO', input.operadorId, signal);
+
+      solicitacao = solicitacao.encerrar(this.clock.agora());
+      await this.persistirComAuditoria(solicitacao, 'ENCERRAR', input.operadorId, signal);
+
+      throw new AcessoNegadoError();
     }
 
     // Passo 4: identidade confirmada — avançar para análise
@@ -240,4 +251,3 @@ export class AtenderSolicitacaoTitularUseCase {
     }
   }
 }
-

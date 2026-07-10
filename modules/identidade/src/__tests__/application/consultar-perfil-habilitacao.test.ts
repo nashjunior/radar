@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ClienteFinalId, PerfilId, TenantId } from '@radar/kernel';
+import { AcessoNegadoError, ClienteFinalId, PerfilId, TenantId } from '@radar/kernel';
 import { ConsultarPerfilHabilitacaoUseCase } from '../../application/use-cases/consultar-perfil-habilitacao.js';
 import type { PerfilRepository } from '../../application/ports.js';
 import { PerfilHabilitacao } from '../../domain/perfil-habilitacao.js';
@@ -44,6 +44,23 @@ describe('ConsultarPerfilHabilitacaoUseCase', () => {
     const uc = new ConsultarPerfilHabilitacaoUseCase(repo(criarPerfil()));
     const dto = await uc.executar({ tenantId: TENANT, clienteFinalId: CLIENTE }, noop);
     expect(dto).not.toHaveProperty('tenantId');
+  });
+
+  it('lança AcessoNegadoError quando o repositório retorna perfil de outro escopo', async () => {
+    const perfilOutroEscopo = PerfilHabilitacao.criar({
+      id: PerfilId('perfil-outro'),
+      tenantId: TenantId('tenant-outro'),
+      clienteFinalId: ClienteFinalId('cliente-outro'),
+      habJuridica: [],
+      habFiscal: [],
+      habTecnica: [],
+      habEconomica: [],
+    });
+    const uc = new ConsultarPerfilHabilitacaoUseCase(repo(perfilOutroEscopo));
+
+    await expect(uc.executar({ tenantId: TENANT, clienteFinalId: CLIENTE }, noop)).rejects.toThrow(
+      AcessoNegadoError,
+    );
   });
 
   it('propaga AbortSignal ao repositório (P-78)', async () => {

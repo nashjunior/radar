@@ -5,7 +5,7 @@
  * fail-closed de auditoria, AbortSignal propagado, auditoria de cada transição.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { TenantId } from '@radar/kernel';
+import { AcessoNegadoError, ClienteFinalId, TenantId } from '@radar/kernel';
 import { AtenderSolicitacaoTitularUseCase } from '../../application/use-cases/atender-solicitacao-titular.js';
 import { IdentidadeNaoVerificadaError } from '../../domain/entities/solicitacao-titular.js';
 import { AuditoriaIndisponivelError } from '../../domain/errors/index.js';
@@ -23,6 +23,7 @@ import { SolicitacaoId } from '../../domain/entities/solicitacao-titular.js';
 const NOOP = new AbortController().signal;
 const AGORA = new Date('2026-07-08T12:00:00Z');
 const TENANT = TenantId('tenant-lgpd');
+const CLIENTE = ClienteFinalId('cliente-lgpd');
 
 let solSeq = 0;
 let auditSeq = 0;
@@ -59,6 +60,7 @@ function buildInput(tipo: AtenderSolicitacaoTitularInput['tipo'] = 'acesso'): At
   return {
     tipo,
     tenantId: TENANT,
+    clienteFinalId: CLIENTE,
     titularRef: 'titular-hash-abc',
     operadorId: 'dpo-operador',
   };
@@ -120,7 +122,22 @@ describe('AtenderSolicitacaoTitularUseCase — happy path', () => {
     const d = deps();
     await buildUC(d).executar(buildInput(), NOOP);
 
-    expect(d.verificarTitular).toHaveBeenCalledWith('titular-hash-abc', TENANT, NOOP);
+    expect(d.verificarTitular).toHaveBeenCalledWith('titular-hash-abc', TENANT, CLIENTE, NOOP);
+  });
+
+  it('nega quando titular verificado não tem vínculo com clienteFinal do escopo (AB10/IDOR)', async () => {
+    const d = deps({
+      verificarTitular: vi.fn().mockResolvedValue({ verificada: true, vinculadoAoEscopo: false }),
+    });
+
+    await expect(buildUC(d).executar(buildInput(), NOOP)).rejects.toThrow(AcessoNegadoError);
+
+    const acoes = d.registrar.mock.calls.map((c) => {
+      const registro = c[0] as { acao: string };
+      return registro.acao;
+    });
+    expect(acoes).toContain('RECUSAR_ESCOPO');
+    expect(acoes).not.toContain('CONSULTAR');
   });
 });
 
@@ -226,6 +243,7 @@ describe('AtenderSolicitacaoTitularUseCase — AbortSignal (P-78)', () => {
     expect(d.verificarTitular).toHaveBeenCalledWith(
       expect.any(String),
       TENANT,
+      CLIENTE,
       controller.signal,
     );
   });

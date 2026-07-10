@@ -25,7 +25,11 @@ export type EstadoSolicitacao =
   | 'encerrada';
 
 /** Razão de recusa que pode ser registrada sem confirmar existência de dados ao titular. */
-export type MotivoRecusa = 'IDENTIDADE_NAO_VERIFICADA' | 'SEM_DADOS_NO_ESCOPO' | 'OBRIGACAO_LEGAL';
+export type MotivoRecusa =
+  | 'IDENTIDADE_NAO_VERIFICADA'
+  | 'TITULAR_FORA_DO_ESCOPO'
+  | 'SEM_DADOS_NO_ESCOPO'
+  | 'OBRIGACAO_LEGAL';
 
 export interface CriarSolicitacaoProps {
   readonly id: SolicitacaoId;

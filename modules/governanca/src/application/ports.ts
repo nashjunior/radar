@@ -1,4 +1,4 @@
-import type { TenantId } from '@radar/kernel';
+import type { ClienteFinalId, TenantId } from '@radar/kernel';
 import type { AuditLogId, RegistroAuditoria } from '../domain/entities/registro-auditoria.js';
 import type { SolicitacaoId, SolicitacaoTitular } from '../domain/entities/solicitacao-titular.js';
 
@@ -126,6 +126,8 @@ export interface SolicitacaoIdProvider {
 /** Resultado da verificação de identidade do titular pelo gateway de identidade/DPO. */
 export interface ResultadoVerificacaoIdentidade {
   readonly verificada: boolean;
+  /** `false` quando o titular foi identificado, mas não pertence ao escopo solicitado (AB10/IDOR). */
+  readonly vinculadoAoEscopo?: boolean;
   /** Referência opaca à evidência de verificação — sem PII no domínio. */
   readonly evidenciaRef?: string;
 }
@@ -139,6 +141,7 @@ export interface IdentidadeGateway {
   verificarTitular(
     titularRef: string,
     tenantId: TenantId,
+    clienteFinalId: ClienteFinalId | undefined,
     signal: AbortSignal,
   ): Promise<ResultadoVerificacaoIdentidade>;
 }
