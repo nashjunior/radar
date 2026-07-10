@@ -24,7 +24,7 @@ export interface NotificacaoContainer {
 const PreferenciasBodySchema = z.object({
   canais: z.array(z.string()).min(1),
   frequencia: z.string(),
-});
+}).strict();
 
 export function criarNotificacaoRouter(container: NotificacaoContainer): Hono {
   const router = new Hono();

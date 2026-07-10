@@ -8,7 +8,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { Hono } from 'hono';
 import { SignJWT, generateKeyPair, exportJWK, createLocalJWKSet } from 'jose';
-import type { KeyLike } from 'jose';
+import type { GenerateKeyPairResult } from 'jose';
 import { criarAutenticarMiddleware } from '../middleware/tenant.js';
 
 const ISSUER = 'https://cognito-idp.sa-east-1.amazonaws.com/sa-east-1_TEST';
@@ -17,7 +17,7 @@ const TENANT_CLAIM = 'custom:tenantId';
 const TENANT_ID = 'tenant-abc';
 const KID = 'test-key-1';
 
-let privateKey: KeyLike;
+let privateKey: GenerateKeyPairResult['privateKey'];
 let jwks: ReturnType<typeof createLocalJWKSet>;
 
 beforeAll(async () => {
@@ -207,7 +207,7 @@ describe('autenticarMiddleware — dev mode', () => {
   }
 
   it('200 com HS256 dev token válido', async () => {
-    const { SignJWT: SignJWTLocal, createSecretKey } = await import('jose');
+    const { SignJWT: SignJWTLocal } = await import('jose');
     const { createSecretKey: nodeCreateSecretKey } = await import('node:crypto');
     const key = nodeCreateSecretKey(Buffer.from(DEV_SECRET, 'utf-8'));
     const token = await new SignJWTLocal({ [TENANT_CLAIM]: 'tenant-dev' })

@@ -44,11 +44,11 @@ const DefinirCriterioBodySchema = z.object({
   regiaoUf: z.string().optional(),
   faixaValorCodigo: z.string().optional(),
   palavrasChave: z.array(z.string()).optional(),
-});
+}).strict();
 
 const FeedbackBodySchema = z.object({
   relevante: z.boolean(),
-});
+}).strict();
 
 export function criarMatchingRouter(container: MatchingContainer): Hono {
   const router = new Hono();
@@ -60,7 +60,7 @@ export function criarMatchingRouter(container: MatchingContainer): Hono {
     const tenantId = c.get('tenantId');
     const signal = c.req.raw.signal;
 
-    const parsed = DefinirCriterioBodySchema.safeParse(await c.req.json().catch(() => ({})));
+    const parsed = DefinirCriterioBodySchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
       return c.json({ code: 'BODY_INVALIDO', mensagem: 'Corpo da requisição inválido.' }, 400);
     }

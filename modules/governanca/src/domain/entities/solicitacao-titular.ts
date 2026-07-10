@@ -1,5 +1,6 @@
 import type { ClienteFinalId, TenantId } from '@radar/kernel';
 import { DomainError } from '@radar/kernel';
+import { TitularRef } from '../value-objects/titular-ref.js';
 
 declare const __brand: unique symbol;
 export type SolicitacaoId = string & { readonly [__brand]: 'SolicitacaoId' };
@@ -31,8 +32,8 @@ export interface CriarSolicitacaoProps {
   readonly tipo: TipoSolicitacao;
   readonly tenantId: TenantId;
   readonly clienteFinalId?: ClienteFinalId;
-  /** Referência opaca ao titular declarado — nunca armazenar documento bruto aqui. */
-  readonly titularRef: string;
+  /** Referência opaca ao titular declarado — CPF/e-mail bruto rejeitados pelo VO (P-105). */
+  readonly titularRef: TitularRef;
   readonly criadaEm: Date;
 }
 
@@ -58,7 +59,7 @@ export class SolicitacaoTitular {
     readonly tipo: TipoSolicitacao,
     readonly tenantId: TenantId,
     readonly clienteFinalId: ClienteFinalId | undefined,
-    readonly titularRef: string,
+    readonly titularRef: TitularRef,
     readonly estado: EstadoSolicitacao,
     readonly motivoRecusa: MotivoRecusa | undefined,
     readonly criadaEm: Date,

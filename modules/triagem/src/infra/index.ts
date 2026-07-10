@@ -53,3 +53,19 @@ export type {
   EditalIngeridoMsg as TriagemEditalIngeridoMsg,
   TriagemBatchWorkerOpts,
 } from './queue/triagem-batch-worker.js';
+// Red-team de injeção de prompt (P-72 / A11 §4). Corpus + harness reusados pelo runner de eval
+// `tests/eval` (@radar/eval, P-85/RAD-157) — mesmo caminho boundary-clean do RecordReplayLlmClient.
+export {
+  CORPUS_ADVERSARIAL,
+  CANARIO_CLASSE_CRITICA,
+  INVARIANTES_RED_TEAM,
+  avaliarCasoAdversarial,
+  avaliarCorpus,
+} from './red-team/corpus-injecao.js';
+export type {
+  CampoCritico,
+  CasoAdversarial,
+  CategoriaInjecao,
+  DefesaEsperada,
+  VeredictoRedTeam,
+} from './red-team/corpus-injecao.js';

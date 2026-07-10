@@ -62,6 +62,14 @@ const TriagemResponseSchema = z.discriminatedUnion('status', [
   TriagemDadosSchema.extend({ status: z.literal('incompleta') }),
 ]);
 
+const ContestacaoBodySchema = z.object({
+  motivo: z.string().nullable().optional(),
+}).strict();
+
+const DecisaoBodySchema = z.object({
+  go: z.boolean(),
+}).strict();
+
 export type TriagemResponse = z.infer<typeof TriagemResponseSchema>;
 
 export function criarTriagemRouter(container: TriagemContainer): Hono {
@@ -182,14 +190,18 @@ export function criarTriagemRouter(container: TriagemContainer): Hono {
       const perfil = await container.perfilAtivo.resolverParaTenant(tenantId, signal);
       if (!perfil) return c.json({}, 404);
 
-      const body = await c.req.json().catch(() => ({})) as { motivo?: string };
+      const parsed = ContestacaoBodySchema.safeParse(await c.req.json().catch(() => ({})));
+      if (!parsed.success) {
+        return c.json({ code: 'CORPO_INVALIDO', mensagem: 'Campo "motivo" deve ser string ou null quando informado.' }, 400);
+      }
+
       await container.registrarFeedback.executar(
         {
           tipo: 'contestada',
           tenantId, editalId,
           perfilId: perfil.perfilId,
           clienteFinalId: perfil.clienteFinalId,
-          motivo: typeof body.motivo === 'string' ? body.motivo : null,
+          motivo: parsed.data.motivo ?? null,
         },
         signal,
       );
@@ -213,8 +225,8 @@ export function criarTriagemRouter(container: TriagemContainer): Hono {
       const perfil = await container.perfilAtivo.resolverParaTenant(tenantId, signal);
       if (!perfil) return c.json({}, 404);
 
-      const body = await c.req.json().catch(() => null) as { go?: boolean } | null;
-      if (typeof body?.go !== 'boolean') {
+      const parsed = DecisaoBodySchema.safeParse(await c.req.json().catch(() => null));
+      if (!parsed.success) {
         return c.json({ code: 'CORPO_INVALIDO', mensagem: 'Campo "go" (boolean) obrigatório.' }, 400);
       }
 
@@ -224,7 +236,7 @@ export function criarTriagemRouter(container: TriagemContainer): Hono {
           tenantId, editalId,
           perfilId: perfil.perfilId,
           clienteFinalId: perfil.clienteFinalId,
-          go: body.go,
+          go: parsed.data.go,
         },
         signal,
       );

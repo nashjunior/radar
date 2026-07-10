@@ -64,8 +64,8 @@ Aprofunda documento 05, §4 (princípio) e §9 (classe crítica); é testada em 
 
 ## 7. Pendências
 
-- Conjunto de editais adversariais + red-team de prompt injection no CI (§4). `[A VALIDAR]` → P-72
-- Schema de validação da saída do LLM + política de sanitização de saída (§2, camadas 3–4). `[A VALIDAR]` → P-73
+- Conjunto de editais adversariais + red-team de prompt injection no CI (§4). **Resolvido** → P-72 (RAD-155): `CORPUS_ADVERSARIAL` + harness `avaliarCasoAdversarial` em `modules/triagem/src/infra/red-team/` (injeção direta e indireta; AB4–AB6/AB8 + forçar decisão), rodando contra a defesa real (camadas 1–6 + `Triagem.avaliar`) e reprovando o build se subverter (INV: decisão go/no-go do domínio; citação obrigatória; classe crítica não vaza). Gate no CI (Gate 4, `__tests__/infra/red-team-injecao.test.ts`); corpus/harness exportados pelo barril `infra` para o runner de eval da P-85 (Quésia) reusar sem duplicação.
+- Schema de validação da saída do LLM + política de sanitização de saída (§2, camadas 3–4). **Resolvido** → P-73 (RAD-154): camadas 3–4 no `AnthropicLlmGateway` (`interpretarSaidaExtracao`), schema estrito hand-rolled + `sanitizar`, cobertos por fixtures de saída adversária via `RecordReplayLlmClient` (`insecure-output-handling.test.ts`), sem LLM real.
 - Minimização do input (pré-filtro de seções candidatas) preservando as camadas 2 e 6 (§2). `[A VALIDAR]` → P-94
 
 Rastreadas em [../docs/98](../docs/98-decisoes-e-pendencias.md).

@@ -5,6 +5,7 @@ import {
   SolicitacaoTitular,
 } from '../../domain/entities/solicitacao-titular.js';
 import { AuditoriaIndisponivelError } from '../../domain/errors/index.js';
+import { TitularRef } from '../../domain/value-objects/titular-ref.js';
 import type {
   AuditLogIdProvider,
   AuditLogRepository,
@@ -62,7 +63,7 @@ export class AtenderSolicitacaoTitularUseCase {
       tipo: input.tipo,
       tenantId: input.tenantId,
       clienteFinalId: input.clienteFinalId,
-      titularRef: input.titularRef,
+      titularRef: TitularRef.criar(input.titularRef),
       criadaEm: agora,
     });
     await this.persistirComAuditoria(solicitacao, 'CRIAR', input.operadorId, signal);

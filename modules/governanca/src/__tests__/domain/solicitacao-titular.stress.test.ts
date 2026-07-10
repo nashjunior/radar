@@ -15,6 +15,7 @@ import {
   IdentidadeNaoVerificadaError,
 } from '../../domain/entities/solicitacao-titular.js';
 import type { MotivoRecusa, TipoSolicitacao } from '../../domain/entities/solicitacao-titular.js';
+import { TitularRef } from '../../domain/value-objects/titular-ref.js';
 
 const TENANT = TenantId('tenant-stress');
 const CLIENTE = ClienteFinalId('cliente-stress');
@@ -31,7 +32,7 @@ function novaRecebida(tipo: TipoSolicitacao = 'acesso', id = 'sol-001'): Solicit
     tipo,
     tenantId: TENANT,
     clienteFinalId: CLIENTE,
-    titularRef: 'titular-hash-xyz',
+    titularRef: TitularRef.criar('titular-hash-xyz'),
     criadaEm: T0,
   });
 }
@@ -46,7 +47,7 @@ describe('SolicitacaoTitular — criação', () => {
       id: SolicitacaoId('sol-x'),
       tipo: 'acesso',
       tenantId: TENANT,
-      titularRef: 'hash',
+      titularRef: TitularRef.criar('hash'),
       criadaEm: T0,
     });
     expect(s.clienteFinalId).toBeUndefined();
@@ -223,14 +224,14 @@ describe('SolicitacaoTitular — isolamento de tenant (P-51)', () => {
       id: SolicitacaoId('s1'),
       tipo: 'acesso',
       tenantId: t1,
-      titularRef: 'hash-1',
+      titularRef: TitularRef.criar('hash-1'),
       criadaEm: T0,
     });
     const s2 = SolicitacaoTitular.criar({
       id: SolicitacaoId('s2'),
       tipo: 'eliminacao',
       tenantId: t2,
-      titularRef: 'hash-2',
+      titularRef: TitularRef.criar('hash-2'),
       criadaEm: T0,
     });
 
@@ -248,7 +249,7 @@ describe('SolicitacaoTitular — estabilidade sob carga', () => {
         tipo: i % 3 === 0 ? 'acesso' : i % 3 === 1 ? 'correcao' : 'eliminacao',
         tenantId: TenantId(`t-${i % 5}`),
         clienteFinalId: ClienteFinalId(`c-${i}`),
-        titularRef: `hash-${i}`,
+        titularRef: TitularRef.criar(`hash-${i}`),
         criadaEm: T0,
       })
         .iniciarVerificacao(T1)

@@ -5,6 +5,7 @@ import type {
 } from '../../application/ports.js';
 import type { ExtrairEditaisEmLoteUseCase } from '../../application/use-cases/extrair-editais-lote.js';
 import type { ExtrairEditalLoteItem } from '../../application/use-cases/extrair-editais-lote.js';
+import { erroSeguroParaLog } from '../logging.js';
 
 /**
  * Contrato canônico de `edital.ingerido` (A03 §3, enriquecido por RAD-95/P-97).
@@ -93,7 +94,7 @@ export class TriagemBatchWorker {
       await this.extrairLoteUC.executar(itens, batchSignal);
     } catch (err) {
       // Erro fatal do lote — loga sem crashar o worker; cada item foi tentado
-      console.error('[TriagemBatchWorker] erro ao executar lote:', err);
+      console.error('[TriagemBatchWorker] erro ao executar lote:', erroSeguroParaLog(err));
     }
   }
 
@@ -137,7 +138,7 @@ export class TriagemBatchWorker {
     this.timerFlush = setTimeout(() => {
       this.timerFlush = null;
       this.flush().catch((err) => {
-        console.error('[TriagemBatchWorker] erro no flush automático:', err);
+        console.error('[TriagemBatchWorker] erro no flush automático:', erroSeguroParaLog(err));
       });
     }, this.janelaMs);
   }

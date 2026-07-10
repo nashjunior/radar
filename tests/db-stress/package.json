@@ -1,0 +1,17 @@
+{
+  "name": "@radar/db-stress",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run --reporter=verbose"
+  },
+  "devDependencies": {
+    "@testcontainers/postgresql": "^10.0.0",
+    "@types/pg": "^8.11.10",
+    "pg": "^8.13.3",
+    "testcontainers": "^10.0.0",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.0"
+  }
+}

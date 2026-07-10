@@ -157,8 +157,9 @@ describe('TriagemBatchWorker', () => {
   });
 
   it('use case lança exceção → flush() resolve sem crashar (worker resiliente)', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const worker = new (await import('../../infra/queue/triagem-batch-worker.js')).TriagemBatchWorker(
-      { executar: vi.fn().mockRejectedValue(new Error('lote falhou')) } as any,
+      { executar: vi.fn().mockRejectedValue(new Error('lote falhou com cpf=123.456.789-00 senha=segredo')) } as any,
       { obterRefs: vi.fn(async (id: any) => docsRef(id, ['k1'])) },
       { obterTextoAnexo: vi.fn().mockResolvedValue('texto') },
       { encaminhar: vi.fn().mockResolvedValue(undefined) },
@@ -167,6 +168,12 @@ describe('TriagemBatchWorker', () => {
 
     await expect(worker.enfileirar(msg('e1'), signal)).resolves.toBeUndefined();
 
+    const logado = JSON.stringify(consoleError.mock.calls);
+    expect(logado).toContain('"tipo":"Error"');
+    expect(logado).not.toContain('123.456.789-00');
+    expect(logado).not.toContain('segredo');
+
+    consoleError.mockRestore();
     worker.teardown();
   });
 

@@ -105,7 +105,7 @@ describe('POST /api/matching/criterios', () => {
     expect(body.regiaoUf).toBe('SP');
   });
 
-  it('201 quando corpo não é JSON — rota faz fallback para objeto vazio (todos os campos opcionais)', async () => {
+  it('400 quando corpo não é JSON válido', async () => {
     const app = buildApp();
     const res = await app.request(
       new Request(`${BASE}/criterios`, {
@@ -115,9 +115,20 @@ describe('POST /api/matching/criterios', () => {
       }),
     );
 
-    // DefinirCriterioBodySchema tem todos os campos opcionais →
-    // c.req.json().catch(() => ({})) → {} → valid → prossegue
-    expect(res.status).toBe(201);
+    expect(res.status).toBe(400);
+  });
+
+  it('400 quando corpo tenta mass assignment com campo fora do schema', async () => {
+    const app = buildApp();
+    const res = await app.request(
+      new Request(`${BASE}/criterios`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ regiaoUf: 'SP', clienteFinalId: 'outro-cliente' }),
+      }),
+    );
+
+    expect(res.status).toBe(400);
   });
 
   it('404 quando perfilAtivo retorna null (sem perfil ativo)', async () => {
@@ -153,7 +164,7 @@ describe('POST /api/matching/criterios', () => {
     expect(body.code).toBe('ACESSO_NEGADO');
   });
 
-  it('clienteFinalId vem do perfilAtivo, não do corpo (P-51 IDOR)', async () => {
+  it('clienteFinalId vem do perfilAtivo em input válido (P-51 IDOR)', async () => {
     const executar = vi.fn().mockResolvedValue(CRITERIO_DTO);
     const app = buildApp({
       definirCriterio: { executar } as unknown as DefinirCriterioMonitoramentoUseCase,
@@ -163,13 +174,12 @@ describe('POST /api/matching/criterios', () => {
       new Request(`${BASE}/criterios`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clienteFinalId: 'outro-cliente-injetado' }),
+        body: JSON.stringify({ regiaoUf: 'SP' }),
       }),
     );
 
     const [input] = executar.mock.calls[0] as [{ clienteFinalId: string }];
     expect(input.clienteFinalId).toBe(CLIENTE);
-    expect(input.clienteFinalId).not.toBe('outro-cliente-injetado');
   });
 
   it('tenantId do JWT é passado ao use case', async () => {
@@ -232,6 +242,19 @@ describe('PATCH /api/matching/alertas/:alertaId/feedback', () => {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: 'não-é-json',
+      }),
+    );
+
+    expect(res.status).toBe(400);
+  });
+
+  it('400 quando feedback traz campo extra fora do schema', async () => {
+    const app = buildApp();
+    const res = await app.request(
+      new Request(FEEDBACK_URL, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ relevante: true, tenantId: 'tenant-injetado' }),
       }),
     );
 

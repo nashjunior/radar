@@ -29,7 +29,7 @@ const PerfilBodySchema = z.object({
   habFiscal: z.array(z.string()),
   habTecnica: z.array(z.string()),
   habEconomica: z.array(z.string()),
-});
+}).strict();
 
 export function criarIdentidadeRouter(container: IdentidadeContainer): Hono {
   const router = new Hono();

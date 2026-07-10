@@ -71,6 +71,7 @@ O MVP só vai a usuários externos quando **todos** forem verdade:
 - [ ] Checklist de conformidade por funcionalidade satisfeito (documento 04, §6).
 - [ ] Métricas de ativação e precisão instrumentadas e observáveis (documento 08).
 - [ ] Teste de estresse do core passa: NFRs mantidos sob a carga-alvo e degradação graciosa comprovada, sem violar as regras duras (arquitetura/04).
+  - **Suíte de banco** (RAD-162): cenários DB1–DB3/DB5 commitados em `tests/db-stress/` (schema executável + helpers + 4 arquivos de teste). Execução pendente de Docker disponível (RAD-130). Alvos numéricos finos — P-39/P-41.
 
 ## 7. Sequência de riscos a derrubar
 

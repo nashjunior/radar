@@ -73,8 +73,9 @@ describe('GET /api/alertas', () => {
     expect(res.status).toBe(200);
     const body = await res.json() as typeof ALERTA_DTO[];
     expect(body).toHaveLength(1);
-    expect(body[0].id).toBe('alerta-1');
-    expect(body[0].aderencia).toBe(0.8);
+    const alerta = body[0]!;
+    expect(alerta.id).toBe('alerta-1');
+    expect(alerta.aderencia).toBe(0.8);
   });
 
   it('200 + proveniência incluída quando presente no DTO', async () => {
@@ -87,7 +88,7 @@ describe('GET /api/alertas', () => {
     const res = await app.request(new Request(URL));
     expect(res.status).toBe(200);
     const body = await res.json() as typeof ALERTA_COM_PROVENIENCIA[];
-    expect(body[0].proveniencia?.fonte).toBe('PNCP');
+    expect(body[0]!.proveniencia?.fonte).toBe('PNCP');
   });
 
   it('tenantId do JWT é passado ao use case (authz por objeto)', async () => {

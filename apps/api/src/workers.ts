@@ -21,6 +21,7 @@ import type { DocumentosDoEditalPort } from '@radar/ingestao';
 import type { EditalId } from '@radar/kernel';
 import type { AnexosDTO } from '@radar/ingestao';
 import { DocumentosEditalAclAdapter } from './infra/documentos-edital-acl-adapter.js';
+import { redigirParaLog } from './logging.js';
 
 export interface WorkersHandle {
   worker: TriagemBatchWorker;
@@ -54,7 +55,10 @@ const documentosPortStub: DocumentosDoEditalPort = {
 /** Stub no-op de DlqClient — substituir por SqsDlqClient quando SQS provisionado. */
 const dlqStub = {
   async encaminhar(msg: { editalId: string }, err: unknown): Promise<void> {
-    console.error('[Workers][DLQ] edital descartado:', msg.editalId, err);
+    console.error('[Workers][DLQ] edital descartado:', {
+      editalId: msg.editalId,
+      erro: redigirParaLog(err),
+    });
   },
 };
 

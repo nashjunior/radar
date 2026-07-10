@@ -223,6 +223,18 @@ describe('POST /api/triagem/:editalId/contestar', () => {
     const res = await app.request(`${BASE}/${EDITAL}/contestar`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ motivo: null }),
+    });
+
+    expect(res.status).toBe(202);
+  });
+
+  it('202 sem campo motivo', async () => {
+    const app = buildApp();
+
+    const res = await app.request(`${BASE}/${EDITAL}/contestar`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
     });
 
@@ -260,6 +272,18 @@ describe('POST /api/triagem/:editalId/contestar', () => {
 
     const [input] = executar.mock.calls[0] as [{ motivo: string | null }];
     expect(input.motivo).toBeNull();
+  });
+
+  it('400 quando contestação traz campo extra fora do schema', async () => {
+    const app = buildApp();
+
+    const res = await app.request(`${BASE}/${EDITAL}/contestar`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ motivo: 'Não atende.', clienteFinalId: 'cliente-injetado' }),
+    });
+
+    expect(res.status).toBe(400);
   });
 });
 
@@ -314,6 +338,18 @@ describe('POST /api/triagem/:editalId/decisao', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: 'não-é-json',
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('400 quando decisão traz campo extra fora do schema', async () => {
+    const app = buildApp();
+
+    const res = await app.request(`${BASE}/${EDITAL}/decisao`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ go: true, tenantId: 'tenant-injetado' }),
     });
 
     expect(res.status).toBe(400);

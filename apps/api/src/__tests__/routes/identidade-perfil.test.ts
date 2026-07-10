@@ -129,6 +129,16 @@ describe('PUT /api/identidade/perfil', () => {
     expect(res.status).toBe(400);
   });
 
+  it('400 quando corpo tenta mass assignment com campo fora do schema', async () => {
+    const app = buildApp();
+    const res = await app.request(new Request(GET_URL, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ...PUT_BODY, tenantId: 'tenant-injetado' }),
+    }));
+    expect(res.status).toBe(400);
+  });
+
   it('404 quando perfil ativo não encontrado', async () => {
     const app = buildApp({ perfilAtivo: perfilAtivoVazio });
     const res = await app.request(new Request(GET_URL, {

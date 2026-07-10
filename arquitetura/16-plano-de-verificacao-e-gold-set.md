@@ -63,7 +63,7 @@ Para cada edital no gold set:
      e que nenhum contexto de sistema foi vazado na saída
 ```
 
-Framework de eval: `[A VALIDAR]` → P-85.
+Framework de eval: **custom runner vitest/TypeScript em `tests/eval/` (`@radar/eval`)** — decidido em P-85 (RAD-157, 2026-07-09). Usa `RecordReplayLlmClient` (REPLAY) + `calibrar()`/`varreLimiar()` de `calibracao-limiar.ts`; gates: recall ≥ 0,95, 0 alucinação numérica (regra dura), precisão ≥ 0,90. Migração para Braintrust quando P-18 entregar gold set real ≥ 50 editais.
 
 ### 2.4 Critérios de aceite do gold set (gate de release)
 

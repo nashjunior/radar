@@ -10,7 +10,6 @@
  */
 
 import { Hono } from 'hono';
-import { logger } from 'hono/logger';
 import {
   ConsultarTriagemUseCase,
   RegistrarFeedbackTriagemUseCase,
@@ -31,6 +30,9 @@ import { criarTriagemRouter } from './routes/triagem.js';
 import { criarMatchingRouter } from './routes/matching.js';
 import { criarIdentidadeRouter } from './routes/identidade.js';
 import { criarNotificacaoRouter } from './routes/notificacao.js';
+import { responderErro } from './errors.js';
+import { criarLoggerHttpSeguro, redigirParaLog } from './logging.js';
+import { corsMiddleware, csrfMiddleware, securityHeadersMiddleware } from './security.js';
 import { PerfilAtivoConfigAdapter } from './infra/perfil-ativo-config-adapter.js';
 import { triagemStub, extracaoStub } from './infra/triagem-stub.js';
 import { perfilRepositoryStub, perfilIdProviderStub } from './infra/identidade-stub.js';
@@ -79,7 +81,10 @@ export function criarApp(): Hono {
 
   const app = new Hono();
 
-  app.use('*', logger());
+  app.use('*', securityHeadersMiddleware);
+  app.use('/api/*', corsMiddleware);
+  app.use('/api/*', csrfMiddleware);
+  app.use('*', criarLoggerHttpSeguro());
 
   // Rota de saúde — sem autenticação
   app.route('/health', healthRouter);
@@ -96,15 +101,8 @@ export function criarApp(): Hono {
 
   // Tratamento global de exceções não capturadas
   app.onError((err, c) => {
-    const isDev = process.env['NODE_ENV'] !== 'production';
-    console.error('[API] Exceção não tratada:', err);
-    return c.json(
-      {
-        code: 'ERRO_INTERNO',
-        mensagem: isDev && err instanceof Error ? err.message : 'Erro interno.',
-      },
-      500,
-    );
+    console.error('[API] Exceção não tratada:', redigirParaLog(err));
+    return responderErro(c, err);
   });
 
   return app;

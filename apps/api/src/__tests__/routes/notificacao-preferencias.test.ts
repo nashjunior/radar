@@ -78,6 +78,12 @@ describe('PUT /api/notificacao/preferencias', () => {
     expect(res.status).toBe(400);
   });
 
+  it('400 quando corpo traz campo extra fora do schema', async () => {
+    const app = buildApp();
+    const res = await app.request(req({ ...BODY_VALIDO, usuarioId: 'usuario-injetado' }));
+    expect(res.status).toBe(400);
+  });
+
   it('422 quando use case lança CanalInvalidoError', async () => {
     const app = buildApp({
       definirPreferencias: {
