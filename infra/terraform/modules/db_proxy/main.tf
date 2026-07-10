@@ -54,9 +54,13 @@ resource "aws_iam_role" "proxy" {
 
 data "aws_iam_policy_document" "secret_access" {
   statement {
-    sid       = "ReadDbCredentials"
-    actions   = ["secretsmanager:GetSecretValue"]
-    resources = [var.db_credentials_secret_arn]
+    sid     = "ReadDbCredentials"
+    actions = ["secretsmanager:GetSecretValue"]
+    # Secret compartilhado + qualquer secret por-pool (auth como role do pool, P-41).
+    resources = distinct(concat(
+      [var.db_credentials_secret_arn],
+      [for _, p in var.pools : p.secret_arn if p.secret_arn != null],
+    ))
   }
   statement {
     sid       = "DecryptSecret"
@@ -77,7 +81,6 @@ resource "aws_iam_role_policy" "proxy" {
 }
 
 # SG do proxy: clientes da VPC (workers/seam serverless/Fargate) → 5432 do proxy.
-# O proxy→banco já é permitido pelo SG do banco (ingress 5432 do CIDR da VPC).
 resource "aws_security_group" "proxy" {
   name        = "${var.project}-${var.env}-rdsproxy-sg"
   description = "Acesso ao RDS Proxy — somente da VPC interna"
@@ -101,6 +104,20 @@ resource "aws_security_group" "proxy" {
   tags = local.tags
 }
 
+# ENFORCE "nunca pro RDS direto" (P-41) na camada de rede: o banco só aceita 5432 DO SG do
+# proxy. O SG do banco (módulo database) não tem mais ingress amplo por CIDR — este é o
+# único caminho para o cluster. Break-glass/migração via bastion = regra temporária à parte.
+resource "aws_vpc_security_group_ingress_rule" "db_from_proxy" {
+  security_group_id            = var.db_security_group_id
+  referenced_security_group_id = aws_security_group.proxy.id
+  from_port                    = 5432
+  to_port                      = 5432
+  ip_protocol                  = "tcp"
+  description                  = "RDS Proxy → banco (P-41: só o proxy alcança o cluster)"
+
+  tags = local.tags
+}
+
 # Um proxy por pool (for_each) — o isolamento é físico.
 resource "aws_db_proxy" "this" {
   for_each = var.pools
@@ -118,9 +135,12 @@ resource "aws_db_proxy" "this" {
 
   vpc_security_group_ids = [aws_security_group.proxy.id]
 
+  # Auth proxy→banco. Default = secret master compartilhado. Se o pool declarar seu
+  # próprio secret (role do pool), o proxy autentica COMO essa role → herda os
+  # statement_timeout/lock_timeout por role (ALTER ROLE) sem pinar. Ver README/runbook.
   auth {
     auth_scheme = "SECRETS"
-    secret_arn  = var.db_credentials_secret_arn
+    secret_arn  = coalesce(each.value.secret_arn, var.db_credentials_secret_arn)
     iam_auth    = "DISABLED"
   }
 
@@ -136,8 +156,10 @@ resource "aws_db_proxy_default_target_group" "this" {
   db_proxy_name = aws_db_proxy.this[each.key].name
 
   connection_pool_config {
-    max_connections_percent      = each.value.max_connections_percent
-    max_idle_connections_percent = each.value.max_idle_connections_percent
+    max_connections_percent = each.value.max_connections_percent
+    # AWS exige max_idle <= max_connections_percent; default = o próprio percent do pool
+    # (mantém os backends do bulkhead quentes). Nunca 50 fixo (estouraria pools de 3–8 %).
+    max_idle_connections_percent = coalesce(each.value.max_idle_connections_percent, each.value.max_connections_percent)
     connection_borrow_timeout    = each.value.connection_borrow_timeout
     # session_pinning_filters é MySQL-only; em PostgreSQL o anti-pin é disciplina de
     # driver (sem SET de sessão / advisory de sessão / prepared nomeado) — ver README.

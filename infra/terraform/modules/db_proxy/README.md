@@ -32,10 +32,26 @@ podem colapsar** (dev/staging → `ingestao` + `critical`) por **custo** (o RDS 
 cobrado *por proxy*). O gate de validação recusa soma de percentuais `> 80 %`.
 
 Os `statement_timeout`/`lock_timeout` **por pool** (30/10/5/60/300 s e 3 s) **não** cabem no
-proxy — em modo transação não se fixa estado de sessão. Eles são aplicados **por role** no
-bootstrap: `ALTER ROLE ingestao SET statement_timeout='30s'`, etc. O `db_parameter_group`
-do módulo `database` guarda os **pisos globais** (`max_connections`, `work_mem=16MB`,
-`idle_in_transaction=30s`, backstop de `statement_timeout`).
+proxy — em modo transação não se fixa estado de sessão. O `db_parameter_group` do módulo
+`database` guarda os **pisos globais** (`max_connections`, `work_mem=16MB`,
+`idle_in_transaction=30s`, backstop de `statement_timeout=300s`); o tightening por pool é
+**app-side** por `SET LOCAL` em transação (pin-safe — mecanismo recomendado) **ou** por role
+com secret por pool (ver abaixo). Detalhe em `scripts/apply-db-pool-runbook.md`.
+
+### Auth por pool (opcional) — habilita `ALTER ROLE` por pool
+
+Cada entrada de `var.pools` aceita um `secret_arn` próprio (`{username:"<role>",password:...}`).
+Quando presente, o proxy daquele pool autentica **como a role do pool** e herda seus
+`ALTER ROLE SET statement_timeout=...` no connect (sem pinar). Ausente → usa o secret master
+compartilhado (`var.db_credentials_secret_arn`) e o timeout por pool vem do `SET LOCAL`.
+
+### Enforcement "nunca pro RDS direto" (rede)
+
+O SG do banco (módulo `database`) **não tem mais ingress amplo por CIDR**: o único caminho
+5432 ao cluster é uma regra de ingress **do SG do proxy**, criada por este módulo
+(`aws_vpc_security_group_ingress_rule.db_from_proxy`). Um `DATABASE_URL` mal configurado
+apontando ao cluster **não conecta** — a invariante P-41 é fechada na camada de rede, não só
+por convenção. Bastion de migração/break-glass = regra temporária adicional.
 
 ## A pegadinha do modo transação — o que **pina** a conexão
 

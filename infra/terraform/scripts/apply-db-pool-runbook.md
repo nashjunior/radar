@@ -44,6 +44,15 @@ tofu apply tfplan
    ```
    O RDS Proxy autentica proxy→banco por este secret (`auth_scheme=SECRETS`).
 
+   > **Hardening (follow-up):** `manage_master_user_password=true` no `aws_rds_cluster`
+   > mantém a senha master **fora do tfstate** e cria um secret gerenciado que o proxy pode
+   > referenciar direto — elimina o placeholder manual. Fora do escopo mínimo de RAD-180
+   > (o par master já vinha de `db_username`/`db_password`); avaliar no unblock.
+
+   > **Migração/roles agora vão pelo proxy:** o SG do banco é **proxy-only** (P-41). Rode as
+   > migrações e o `ALTER ROLE`/`ALTER TABLE` conectando ao **endpoint do proxy** (pool
+   > `jobs`/`triagem`), ou abra uma regra de bastion temporária no SG do banco.
+
 2. **Construir o `DATABASE_URL` de cada pool a partir do endpoint do proxy** — nunca o do
    cluster (P-41). `tofu output db_proxy_endpoints` dá o mapa pool→endpoint:
    ```bash
@@ -56,25 +65,54 @@ tofu apply tfplan
 
 ## Timeouts POR POOL (o que o parameter group **não** carrega)
 
-Em modo transação não se fixa estado de sessão, então os `statement_timeout`/`lock_timeout`
-**por pool** de P-41 vão nas **roles** (aplicados no connect, não pinam). Rodar uma vez:
+O parameter group carrega os **pisos globais** (`work_mem=16MB`, `idle_in_transaction=30s`,
+`max_connections=200`, `statement_timeout` backstop=300s, `lock_timeout=0`). O **tightening
+por pool** de P-41 (30/10/5/60/300 s e `lock_timeout=3s` nos quentes) é **app-side** — e tem
+uma **pegadinha**: como todo backend passa pelo mesmo secret de auth do proxy, `ALTER ROLE`
+**não** basta a menos que o proxy autentique **como aquela role** (ver mecanismo B).
+
+### Mecanismo A (recomendado) — `SET LOCAL` por transação (pin-safe, P-41-blessed)
+
+`SET LOCAL` tem escopo de transação — **não pina** (é exatamente o permitido em modo
+transação). O worker sabe seu pool (env `WORKLOAD_POOL`) e abre cada unidade de trabalho com:
 
 ```sql
--- Piso global já vem do parameter group (work_mem=16MB, idle_in_transaction=30s,
--- max_connections=200, statement_timeout backstop=300s). Aqui só o tightening por pool:
-ALTER ROLE ingestao  SET statement_timeout = '30s'; ALTER ROLE ingestao  SET lock_timeout = '3s';
+BEGIN;
+SET LOCAL statement_timeout = '10s';   -- valor do pool (matching=10s, triagem=5s, ...)
+SET LOCAL lock_timeout      = '3s';    -- só nos pools quentes (ingestao/triagem)
+-- ... o trabalho ...
+COMMIT;
+```
+
+Leitura interativa autocommit (API) que hoje não abre transação explícita: envolver o SELECT
+num `BEGIN…COMMIT` de leitura, ou herdar o piso via role (mecanismo B). O analítico sobe
+`SET LOCAL work_mem='128MB'` aqui — nunca global.
+
+### Mecanismo B (opcional) — role por pool + secret por pool no proxy
+
+Se preferir o timeout **no connect** (sem tocar o driver), crie uma role por pool com
+`ALTER ROLE` e faça o **proxy autenticar como ela**: passe `secret_arn` por pool em
+`var.pools` (cada secret = `{username: "<role>", password: ...}`). O módulo registra esse
+secret no `auth` do proxy do pool e amplia a policy de leitura de secret automaticamente.
+
+```sql
+-- roles criadas nas migrações (Bento/DB); só então o ALTER ROLE surte efeito via proxy:
+ALTER ROLE ingestao  SET statement_timeout = '30s'; ALTER ROLE ingestao SET lock_timeout = '3s';
 ALTER ROLE matching  SET statement_timeout = '10s';
-ALTER ROLE triagem   SET statement_timeout = '5s';  ALTER ROLE triagem   SET lock_timeout = '3s';
+ALTER ROLE triagem   SET statement_timeout = '5s';  ALTER ROLE triagem  SET lock_timeout = '3s';
 ALTER ROLE analitico SET statement_timeout = '60s';
 ALTER ROLE jobs      SET statement_timeout = '300s';
--- work_mem alto é SÓ no analítico, e por transação (não pina), no código: SET LOCAL work_mem='128MB';
--- autovacuum agressivo é por-tabela nas churn tables:
+```
+
+> ⚠️ Sem o secret por pool (mecanismo B), TODO backend loga como master e os `ALTER ROLE`
+> **não surtem efeito** — use o mecanismo A. Não confie em `SET ROLE` pós-connect (pina).
+
+Autovacuum agressivo é **por-tabela** nas churn tables (migração), não global:
+
+```sql
 ALTER TABLE edital SET (autovacuum_vacuum_scale_factor = 0.02);
 ALTER TABLE alerta SET (autovacuum_vacuum_scale_factor = 0.02);
 ```
-
-Cada workload conecta com **sua role** (ou aponta o secret do seu pool a essa role) para
-herdar o timeout. As roles são criadas nas migrações (Bento/DB).
 
 ## Guardrails anti-pin no driver (node-pg) — P-41 "pegadinha"
 

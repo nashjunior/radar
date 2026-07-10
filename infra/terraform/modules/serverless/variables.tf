@@ -12,6 +12,11 @@ variable "env" {
   }
 }
 
+variable "aws_region" {
+  description = "Região AWS (condição kms:ViaService)"
+  type        = string
+}
+
 variable "vpc_id" {
   description = "ID da VPC dos workers"
   type        = string
@@ -69,12 +74,15 @@ variable "functions" {
     proxy_endpoint       = string           # endpoint do RDS Proxy desse pool
     queue_arn            = optional(string) # SQS-driven; null = agendada (ingestão/health)
     batch_size           = optional(number, 10)
+    schedule_expression  = optional(string, "rate(1 hour)") # só p/ agendadas (queue_arn=null)
   }))
+  # SQS→Lambda: maximum_concurrency tem mínimo 2 na AWS; agendadas aceitam 1.
   validation {
     condition = alltrue([
-      for _, f in var.functions : f.reserved_concurrency >= 1 && f.reserved_concurrency <= 1000
+      for _, f in var.functions :
+      f.reserved_concurrency <= 1000 && f.reserved_concurrency >= (f.queue_arn == null ? 1 : 2)
     ])
-    error_message = "reserved_concurrency de cada função deve estar entre 1 e 1000."
+    error_message = "reserved_concurrency: agendada >= 1; dirigida por SQS >= 2 (mínimo do maximum_concurrency); máx 1000."
   }
   # Gate P-41: soma dos tetos < max_connections com folga de admin.
   validation {

@@ -37,6 +37,11 @@ variable "db_cluster_id" {
   type        = string
 }
 
+variable "db_security_group_id" {
+  description = "SG do banco — o proxy adiciona ingress 5432 dele p/ o cluster (proxy-only, P-41)"
+  type        = string
+}
+
 variable "db_credentials_secret_arn" {
   description = "ARN do secret {username,password} para auth proxy→banco"
   type        = string
@@ -62,9 +67,10 @@ variable "pools" {
   description = "Mapa pool→config de bulkhead. Um RDS Proxy por entrada."
   type = map(object({
     max_connections_percent      = number
-    max_idle_connections_percent = optional(number, 50)
+    max_idle_connections_percent = optional(number) # null → default = max_connections_percent
     connection_borrow_timeout    = optional(number, 120)
     idle_client_timeout          = optional(number, 1800)
+    secret_arn                   = optional(string) # null → usa o secret master compartilhado
   }))
   default = {
     ingestao  = { max_connections_percent = 8 }
@@ -83,6 +89,14 @@ variable "pools" {
   validation {
     condition     = sum([for _, p in var.pools : p.max_connections_percent]) <= 80
     error_message = "Soma dos max_connections_percent dos pools deve ser <= 80% (folga admin, P-41)."
+  }
+  # AWS: max_idle_connections_percent <= max_connections_percent.
+  validation {
+    condition = alltrue([
+      for _, p in var.pools :
+      p.max_idle_connections_percent == null || try(p.max_idle_connections_percent <= p.max_connections_percent, false)
+    ])
+    error_message = "max_idle_connections_percent de um pool não pode exceder seu max_connections_percent."
   }
 }
 

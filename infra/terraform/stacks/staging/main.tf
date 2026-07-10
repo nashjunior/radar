@@ -76,6 +76,8 @@ module "db_proxy" {
   vpc_cidr                  = module.vpc.vpc_cidr
   subnet_ids                = module.vpc.private_subnet_ids
   db_cluster_id             = module.database.cluster_id
+  db_security_group_id      = module.database.security_group_id
+  db_max_connections        = module.database.max_connections
   db_credentials_secret_arn = module.secrets.db_credentials_secret_arn
   kms_key_arn               = var.kms_key_arn
   debug_logging             = true
@@ -88,6 +90,7 @@ module "serverless" {
   count                   = var.enable_serverless_workers ? 1 : 0
   project                 = "radar"
   env                     = "staging"
+  aws_region              = var.aws_region
   vpc_id                  = module.vpc.vpc_id
   subnet_ids              = module.vpc.private_subnet_ids
   proxy_security_group_id = module.db_proxy.security_group_id
@@ -114,8 +117,8 @@ module "serverless" {
     notificacao = {
       handler              = "dist/workers/notificacao.handler"
       reserved_concurrency = 4
-      pool                 = "matching"
-      proxy_endpoint       = module.db_proxy.proxy_endpoints["matching"]
+      pool                 = "triagem" # fora do pool matching p/ não somar 12 sobre 10 backends
+      proxy_endpoint       = module.db_proxy.proxy_endpoints["triagem"]
       queue_arn            = module.queue_alertas.queue_arn
     }
   }

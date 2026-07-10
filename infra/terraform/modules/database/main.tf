@@ -19,26 +19,23 @@ resource "aws_db_subnet_group" "this" {
   tags = local.tags
 }
 
+# SG do banco SEM ingress inline — o único caminho ao cluster é o RDS Proxy, que adiciona
+# a regra de ingress 5432 do SEU SG (P-41: "nunca pro RDS direto"). Regras standalone (não
+# inline) para o módulo db_proxy poder anexar ingress sem conflito de rule-set. Um bastion
+# de migração/break-glass adiciona sua própria regra temporária à parte.
 resource "aws_security_group" "db" {
   name        = "${var.project}-${var.env}-db-sg"
-  description = "Acesso ao banco de dados — somente da VPC interna"
+  description = "Acesso ao banco — somente via RDS Proxy (P-41)"
   vpc_id      = var.vpc_id
 
-  ingress {
-    from_port   = 5432
-    to_port     = 5432
-    protocol    = "tcp"
-    cidr_blocks = [var.vpc_cidr]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
   tags = local.tags
+}
+
+resource "aws_vpc_security_group_egress_rule" "db_all" {
+  security_group_id = aws_security_group.db.id
+  ip_protocol       = "-1"
+  cidr_ipv4         = "0.0.0.0/0"
+  description       = "Egress do banco (respostas / replicação gerenciada)"
 }
 
 # Parameter group instância — pisos do pool (P-41, arq/05 §6).

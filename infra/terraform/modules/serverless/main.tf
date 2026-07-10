@@ -66,6 +66,11 @@ data "aws_iam_policy_document" "worker" {
     sid       = "DecryptSecrets"
     actions   = ["kms:Decrypt"]
     resources = [var.kms_key_arn]
+    condition {
+      test     = "StringEquals"
+      variable = "kms:ViaService"
+      values   = ["secretsmanager.${var.aws_region}.amazonaws.com"]
+    }
   }
   statement {
     sid       = "ConsumeQueues"
@@ -162,5 +167,62 @@ resource "aws_lambda_event_source_mapping" "sqs" {
 
   scaling_config {
     maximum_concurrency = each.value.reserved_concurrency
+  }
+}
+
+# Funções AGENDADAS (queue_arn=null) — ingestão/health (arq/08 §2: "serverless job
+# agendado"). EventBridge Scheduler invoca a Lambda na cadência do schedule_expression.
+locals {
+  scheduled_functions = { for k, f in var.functions : k => f if f.queue_arn == null }
+}
+
+data "aws_iam_policy_document" "scheduler_assume" {
+  statement {
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "Service"
+      identifiers = ["scheduler.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "scheduler" {
+  count              = length(local.scheduled_functions) > 0 ? 1 : 0
+  name               = "${var.project}-${var.env}-worker-scheduler-role"
+  assume_role_policy = data.aws_iam_policy_document.scheduler_assume.json
+  tags               = local.tags
+}
+
+data "aws_iam_policy_document" "scheduler_invoke" {
+  count = length(local.scheduled_functions) > 0 ? 1 : 0
+  statement {
+    sid       = "InvokeScheduledWorkers"
+    actions   = ["lambda:InvokeFunction"]
+    resources = [for k, _ in local.scheduled_functions : aws_lambda_function.worker[k].arn]
+  }
+}
+
+resource "aws_iam_role_policy" "scheduler" {
+  count  = length(local.scheduled_functions) > 0 ? 1 : 0
+  name   = "${var.project}-${var.env}-worker-scheduler-policy"
+  role   = aws_iam_role.scheduler[0].id
+  policy = data.aws_iam_policy_document.scheduler_invoke[0].json
+}
+
+resource "aws_scheduler_schedule" "worker" {
+  for_each = local.scheduled_functions
+
+  name = "${var.project}-${var.env}-${each.key}"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  schedule_expression = each.value.schedule_expression
+  state               = var.enabled ? "ENABLED" : "DISABLED"
+
+  target {
+    arn      = aws_lambda_function.worker[each.key].arn
+    role_arn = aws_iam_role.scheduler[0].arn
   }
 }
