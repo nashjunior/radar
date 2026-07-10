@@ -70,3 +70,16 @@ export class UrlBloqueadaPorSsrfError extends DomainError {
     super(`URL bloqueada pelo guarda SSRF ('${url}'): ${motivo}`);
   }
 }
+
+/**
+ * Operação rejeitada porque o circuit breaker está aberto (arq/04 §7, P-34).
+ * Degradação graciosa: o chamador deve servir o estado atual sem tocar na fonte.
+ */
+export class BreakerAbertoError extends DomainError {
+  readonly code = 'BREAKER_ABERTO' as const;
+  constructor(breaker: string) {
+    super(
+      `circuit breaker '${breaker}' está aberto — operação rejeitada por degradação graciosa (arq/04 §7)`,
+    );
+  }
+}

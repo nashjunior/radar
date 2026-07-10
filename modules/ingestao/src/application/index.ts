@@ -1,6 +1,14 @@
 export type { AnexosDTO, EditalDTO, IngestaoResumoDTO, ReconciliacaoDTO } from './dtos.js';
-export { AnexoAprovado, AnexoQuarentenado, AnexoRejeitado, EditalFaseMudou, EditalIngerido } from './events.js';
-export type { DomainEvent } from './events.js';
+export {
+  AnexoAprovado,
+  AnexoQuarentenado,
+  AnexoRejeitado,
+  EditalFaseMudou,
+  EditalIngerido,
+  PipelineBreakerEstadoMudou,
+  PipelineCicloConcluido,
+} from './events.js';
+export type { DomainEvent, EstadoBreaker } from './events.js';
 export { editalParaDTO } from './mappers.js';
 export type {
   AnexoEditalRepository,
@@ -36,3 +44,7 @@ export {
   ReconciliarCatalogoUseCase,
 } from './use-cases/reconciliar-catalogo.js';
 export type { ReconciliarCatalogoInput } from './use-cases/reconciliar-catalogo.js';
+export {
+  IngerirAtualizacoesUseCase,
+} from './use-cases/ingerir-atualizacoes.js';
+export type { IngerirAtualizacoesInput } from './use-cases/ingerir-atualizacoes.js';
