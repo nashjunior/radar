@@ -16,9 +16,11 @@ import { DefinirCriterioUseCase } from '@/application/use-cases/definir-criterio
 import { RegistrarFeedbackUseCase } from '@/application/use-cases/registrar-feedback';
 import { ConsultarPerfilHabilitacaoUseCase } from '@/application/use-cases/consultar-perfil-habilitacao';
 import { SalvarPerfilHabilitacaoUseCase } from '@/application/use-cases/salvar-perfil-habilitacao';
+import { ListarAlertasUseCase } from '@/application/use-cases/listar-alertas';
 import { TriagemHttpGateway } from '@/infra/api/triagem-http-gateway';
 import { MatchingHttpGateway } from '@/infra/api/matching-http-gateway';
 import { EditalStubGateway } from '@/infra/api/edital-stub-gateway';
+import { AlertasHttpGateway } from '@/infra/api/alertas-http-gateway';
 import { PerfilHabilitacaoHttpGateway } from '@/infra/api/perfil-habilitacao-http-gateway';
 import { CognitoOidcGateway } from '@/infra/auth/cognito-oidc-gateway';
 import { DevAuthGateway } from '@/infra/auth/dev-auth-gateway';
@@ -49,6 +51,7 @@ const apiBase = (import.meta.env['VITE_API_URL'] as string | undefined) ?? '';
 const triagemGateway = new TriagemHttpGateway(apiBase, () => authGateway.obterToken());
 const matchingGateway = new MatchingHttpGateway(apiBase, () => authGateway.obterToken());
 const editalGateway = new EditalStubGateway();
+const alertasGateway = new AlertasHttpGateway(apiBase, () => authGateway.obterToken());
 const perfilHabilitacaoGateway = new PerfilHabilitacaoHttpGateway(apiBase, () => authGateway.obterToken());
 
 export const useCases = {
@@ -59,6 +62,7 @@ export const useCases = {
   registrarFeedback: new RegistrarFeedbackUseCase(matchingGateway),
   consultarPerfilHabilitacao: new ConsultarPerfilHabilitacaoUseCase(perfilHabilitacaoGateway),
   salvarPerfilHabilitacao: new SalvarPerfilHabilitacaoUseCase(perfilHabilitacaoGateway),
+  listarAlertas: new ListarAlertasUseCase(alertasGateway),
 } as const;
 
 export type UseCases = typeof useCases;

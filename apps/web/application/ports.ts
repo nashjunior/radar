@@ -1,6 +1,7 @@
 import type { EditalId, PerfilId, TenantId } from '@radar/kernel';
 import type { TriagemViewModel } from '@/domain/triagem-view-model';
 import type { EditalDetalhe } from '@/domain/edital-detalhe';
+import type { AlertaCardItem } from '@/domain/alerta-card';
 
 /**
  * Port de saída: repositório de triagens (implementado pela infra/).
@@ -108,4 +109,18 @@ export interface PerfilHabilitacaoDTO {
 export interface PerfilHabilitacaoGateway {
   consultar(signal: AbortSignal): Promise<PerfilHabilitacaoDTO | null>;
   salvar(input: PerfilHabilitacaoDTO, signal: AbortSignal): Promise<void>;
+}
+
+// ---------------------------------------------------------------------------
+// Alertas (US-01 · ListarAlertas — RAD-147)
+// Aguardando endpoint GET /api/alertas no BFF.
+// AlertaDTO.proveniencia agora disponível no backend (RAD-115).
+// ---------------------------------------------------------------------------
+
+/**
+ * Port de alertas — GET /api/alertas (futuro).
+ * Implementado por AlertasStubGateway até o endpoint existir no BFF.
+ */
+export interface AlertasApiGateway {
+  listar(signal: AbortSignal): Promise<AlertaCardItem[]>;
 }
