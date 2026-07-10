@@ -1,0 +1,19 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "../..",
+    "outDir": "dist",
+    "noEmit": true,
+    "baseUrl": "../..",
+    "paths": {
+      "@radar/governanca": ["modules/governanca/src/index.ts"],
+      "@radar/identidade": ["modules/identidade/src/index.ts"],
+      "@radar/ingestao": ["modules/ingestao/src/index.ts"],
+      "@radar/kernel": ["shared/kernel/ts/src/index.ts"],
+      "@radar/matching": ["modules/matching/src/index.ts"],
+      "@radar/notificacao": ["modules/notificacao/src/index.ts"],
+      "@radar/triagem": ["modules/triagem/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*"]
+}

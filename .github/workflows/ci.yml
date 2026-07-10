@@ -24,13 +24,13 @@ jobs:
     name: Instalar dependências
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: ${{ env.PNPM_VERSION }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
@@ -39,7 +39,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Salvar node_modules no cache
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             node_modules
@@ -56,19 +56,19 @@ jobs:
     runs-on: ubuntu-latest
     needs: install
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: ${{ env.PNPM_VERSION }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
 
       - name: Restaurar node_modules
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             node_modules
@@ -91,19 +91,19 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: ${{ env.PNPM_VERSION }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
 
       - name: Restaurar node_modules
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             node_modules
@@ -129,19 +129,19 @@ jobs:
     runs-on: ubuntu-latest
     needs: lint
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: ${{ env.PNPM_VERSION }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
 
       - name: Restaurar node_modules
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             node_modules
@@ -156,7 +156,10 @@ jobs:
         run: pnpm build
 
       - name: Testes unitários e de integração (excl. BDD — step defs pendentes)
-        run: pnpm turbo test --filter=!@radar/bdd --filter=!@radar/e2e
+        run: pnpm turbo test --filter=!@radar/bdd --filter=!@radar/e2e --filter=!@radar/security-gates
+
+      - name: Gate AB1/AB10/AB13/AB14 — segurança A07 (P-51/P-62)
+        run: pnpm --filter @radar/security-gates test
 
       - name: Testes BDD (cucumber — informacional, não bloqueia até step defs prontos)
         continue-on-error: true
@@ -183,19 +186,19 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: ${{ env.PNPM_VERSION }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
 
       - name: Restaurar node_modules
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             node_modules
@@ -209,64 +212,108 @@ jobs:
       - name: pnpm build
         run: pnpm build
 
-      - name: Testes de stress (k6)
+      - name: Testes de stress do banco (A04/A05)
         env:
           DATABASE_URL: postgresql://radar:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/radar_test
-        run: |
-          if [ -f "tests/stress/package.json" ]; then
-            pnpm --filter @radar/stress test
-          else
-            echo "Stress tests ainda não configurados — pulando"
-          fi
+        run: pnpm --filter @radar/db-stress test
 
-  # ─── Gate 6: segurança A07 (SAST) — crítico/alto BLOQUEIA (P-63) ──────────
+  # ─── Gate 6: segurança A07 — crítico/alto BLOQUEIA (P-56/P-63) ────────────
   security:
-    name: Gate segurança A07 (Trivy SAST)
+    name: Gate segurança A07 (AppSec)
     runs-on: ubuntu-latest
     needs: test
     permissions:
       security-events: write
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - name: Trivy — SAST filesystem (crítico+alto bloqueia)
-        uses: aquasecurity/trivy-action@master
+      - name: Gitleaks — secret scanning (bloqueante)
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Semgrep — SAST Radar + OWASP (bloqueante)
+        uses: semgrep/semgrep-action@713efdd345f3035192eaa63f56867b88e63e4e5d # v1
+        with:
+          config: >-
+            .semgrep.yml
+            p/owasp-top-ten
+            p/secrets
+          generateSarif: "1"
+
+      - name: Upload SARIF Semgrep
+        if: always() && hashFiles('semgrep.sarif')
+        uses: github/codeql-action/upload-sarif@02c5e83432fe5497fd85b873b6c9f16a8578e1d9 # v3
+        with:
+          sarif_file: semgrep.sarif
+
+      - name: Trivy — SCA filesystem (crítico+alto bloqueia)
+        uses: aquasecurity/trivy-action@c07df6fec6fa692e6fd1200d50aaa1fdd66f03c8 # master
         with:
           scan-type: fs
           scan-ref: .
+          scanners: vuln,secret,misconfig
           severity: CRITICAL,HIGH
           exit-code: "1"
           format: sarif
-          output: trivy-sast.sarif
+          output: trivy-fs.sarif
         continue-on-error: false
 
-      - name: Upload SARIF para GitHub Security
+      - name: Upload SARIF Trivy FS
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@02c5e83432fe5497fd85b873b6c9f16a8578e1d9 # v3
         with:
-          sarif_file: trivy-sast.sarif
+          sarif_file: trivy-fs.sarif
 
-  # ─── Gate 7: scan de imagem (P-56) — só em push para main ─────────────────
+      - name: Trivy — gerar SBOM CycloneDX
+        uses: aquasecurity/trivy-action@c07df6fec6fa692e6fd1200d50aaa1fdd66f03c8 # master
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: cyclonedx
+          output: sbom.cdx.json
+
+      - name: Publicar SBOM como artefato
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sbom-cyclonedx
+          path: sbom.cdx.json
+          if-no-files-found: error
+
+      - name: OWASP ZAP baseline (DAST quando houver alvo)
+        if: ${{ vars.DAST_TARGET_URL != '' }}
+        uses: zaproxy/action-baseline@7c4deb10e6261301961c86d65d54a516394f9aed # v0.14.0
+        with:
+          target: ${{ vars.DAST_TARGET_URL }}
+          fail_action: true
+          allow_issue_writing: false
+
+  # ─── Gate 7: scan de imagem (P-56) — PR e push para main ──────────────────
   image-scan:
     name: Scan de imagem Docker (P-56)
     runs-on: ubuntu-latest
     needs: security
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      security-events: write
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Build imagem api (se Dockerfile existir)
+        id: build_image
         run: |
           if [ -f "apps/api/Dockerfile" ]; then
             docker build -t radar/api:ci apps/api/
+            echo "skip=false" >> "$GITHUB_OUTPUT"
           else
             echo "Dockerfile não encontrado em apps/api — pulando build"
-            touch /tmp/skip-image-scan
+            echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Trivy — scan de imagem
-        if: ${{ !hashFiles('/tmp/skip-image-scan') }}
-        uses: aquasecurity/trivy-action@master
+        if: steps.build_image.outputs.skip == 'false'
+        uses: aquasecurity/trivy-action@c07df6fec6fa692e6fd1200d50aaa1fdd66f03c8 # master
         with:
           image-ref: radar/api:ci
           severity: CRITICAL,HIGH
@@ -276,7 +323,7 @@ jobs:
 
       - name: Upload SARIF imagem
         if: always() && hashFiles('trivy-image.sarif')
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@02c5e83432fe5497fd85b873b6c9f16a8578e1d9 # v3
         with:
           sarif_file: trivy-image.sarif
 
@@ -292,9 +339,9 @@ jobs:
       matrix:
         stack: [dev, staging, prod]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
         with:
           terraform_version: "~1.10"
 

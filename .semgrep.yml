@@ -1,0 +1,65 @@
+rules:
+  - id: radar-no-hardcoded-secret-default
+    message: Segredo ou token não pode ter default hardcoded no código.
+    severity: ERROR
+    languages: [typescript, javascript]
+    patterns:
+      - pattern-either:
+          - pattern: process.env.$NAME || "$VALUE"
+          - pattern: process.env.$NAME ?? "$VALUE"
+          - pattern: process.env[$NAME] || "$VALUE"
+          - pattern: process.env[$NAME] ?? "$VALUE"
+          - pattern: $ENV[$NAME] || "$VALUE"
+          - pattern: $ENV[$NAME] ?? "$VALUE"
+      - metavariable-regex:
+          metavariable: $NAME
+          regex: (?i).*['"`]?(secret|token|key|password|senha)['"`]?.*
+      - metavariable-regex:
+          metavariable: $VALUE
+          regex: .{8,}
+
+  - id: radar-no-tenant-header-source
+    message: tenantId deve vir de claim JWT verificada, nunca de header controlado pelo cliente.
+    severity: ERROR
+    languages: [typescript, javascript]
+    patterns:
+      - pattern-either:
+          - pattern: $C.req.header($HEADER)
+          - pattern: $REQ.headers.get($HEADER)
+          - pattern: $REQ.headers[$HEADER]
+          - pattern: $REQ.headers[$HEADER.toLowerCase()]
+      - metavariable-regex:
+          metavariable: $HEADER
+          regex: (?i).*x-tenant-id.*
+
+  - id: radar-no-critical-data-console-log
+    message: Classe crítica/PII não deve ser enviada a console/log estruturado.
+    severity: ERROR
+    languages: [typescript, javascript]
+    patterns:
+      - pattern-either:
+          - pattern: console.$METHOD(..., $VALUE, ...)
+          - pattern: console.$METHOD($VALUE)
+          - pattern: $LOGGER.$METHOD(..., $VALUE, ...)
+          - pattern: $LOGGER.$METHOD($VALUE)
+      - metavariable-regex:
+          metavariable: $VALUE
+          regex: (?i).*(criterio|critério|palavrasChave|goNoGo|precoPretendido|perfilHabilitacao|cpf|email|telefone|tenantId|clienteFinalId).*
+      - metavariable-regex:
+          metavariable: $METHOD
+          regex: ^(log|info|warn|error|debug|trace|fatal)$
+
+  - id: radar-no-critical-data-object-log
+    message: Classe crítica/PII não deve ser enviada como objeto de log.
+    severity: ERROR
+    languages: [typescript, javascript]
+    patterns:
+      - pattern-either:
+          - pattern: 'console.$METHOD(..., { ..., $KEY: $VALUE, ... }, ...)'
+          - pattern: '$LOGGER.$METHOD(..., { ..., $KEY: $VALUE, ... }, ...)'
+      - metavariable-regex:
+          metavariable: $KEY
+          regex: (?i)(criterio|critério|palavrasChave|goNoGo|precoPretendido|perfilHabilitacao|cpf|email|telefone|tenantId|clienteFinalId)
+      - metavariable-regex:
+          metavariable: $METHOD
+          regex: ^(log|info|warn|error|debug|trace|fatal)$
