@@ -36,6 +36,32 @@ resource "aws_secretsmanager_secret_version" "database_url" {
   }
 }
 
+# Credenciais master do RDS no formato {username,password} que o RDS Proxy exige
+# para autenticar proxy→banco (auth_scheme=SECRETS). Distinto do database-url (string de
+# conexão da app, cujo HOST deve ser o ENDPOINT DO PROXY, nunca o do cluster — P-41).
+# Preencher pós-bootstrap com o mesmo par usado no cluster. Refs: docs/98 P-41/P-08.
+resource "aws_secretsmanager_secret" "db_credentials" {
+  name        = "/${var.project}/${var.env}/db-credentials"
+  description = "Credenciais master {username,password} para o RDS Proxy (radar-${var.env})"
+  kms_key_id  = var.kms_key_arn
+
+  recovery_window_in_days = var.env == "prod" ? 30 : 7
+
+  tags = local.tags
+}
+
+resource "aws_secretsmanager_secret_version" "db_credentials" {
+  secret_id = aws_secretsmanager_secret.db_credentials.id
+  secret_string = jsonencode({
+    username = "PLACEHOLDER"
+    password = "PLACEHOLDER"
+  })
+
+  lifecycle {
+    ignore_changes = [secret_string]
+  }
+}
+
 resource "aws_secretsmanager_secret" "pncp_api_key" {
   name        = "/${var.project}/${var.env}/pncp-api-key"
   description = "Chave de acesso à API do PNCP (se exigida)"

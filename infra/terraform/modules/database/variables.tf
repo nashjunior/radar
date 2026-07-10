@@ -49,3 +49,25 @@ variable "kms_key_arn" {
   description = "ARN da chave KMS para criptografia em repouso (LGPD 13.709/2018)"
   type        = string
 }
+
+variable "max_connections" {
+  description = "max_connections do Postgres (P-41: teto modesto; pools do proxy somam < isto)"
+  type        = number
+  default     = 200
+  validation {
+    condition     = var.max_connections >= 100 && var.max_connections <= 5000
+    error_message = "max_connections deve estar entre 100 e 5000 (P-41 parte de 200)."
+  }
+}
+
+variable "statement_timeout_ms" {
+  description = "statement_timeout GLOBAL (ms) — backstop; pisos por pool via ALTER ROLE (P-41)"
+  type        = number
+  default     = 300000
+}
+
+variable "lock_timeout_ms" {
+  description = "lock_timeout GLOBAL (ms) — 0=espera indefinida; 3 s só nos pools quentes por role (P-41)"
+  type        = number
+  default     = 0
+}

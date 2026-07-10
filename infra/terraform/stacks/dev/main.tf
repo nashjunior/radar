@@ -70,6 +70,60 @@ module "secrets" {
   kms_key_arn = var.kms_key_arn
 }
 
+# RDS Proxy em modo transação + bulkheads por workload (P-41/RAD-165).
+module "db_proxy" {
+  source                    = "../../modules/db_proxy"
+  project                   = "radar"
+  env                       = "dev"
+  aws_region                = var.aws_region
+  vpc_id                    = module.vpc.vpc_id
+  vpc_cidr                  = module.vpc.vpc_cidr
+  subnet_ids                = module.vpc.private_subnet_ids
+  db_cluster_id             = module.database.cluster_id
+  db_credentials_secret_arn = module.secrets.db_credentials_secret_arn
+  kms_key_arn               = var.kms_key_arn
+  debug_logging             = true
+}
+
+# Seam serverless de P-27 — gated off (workers em Fargate no MVP-Now, P-96).
+module "serverless" {
+  source                  = "../../modules/serverless"
+  count                   = var.enable_serverless_workers ? 1 : 0
+  project                 = "radar"
+  env                     = "dev"
+  vpc_id                  = module.vpc.vpc_id
+  subnet_ids              = module.vpc.private_subnet_ids
+  proxy_security_group_id = module.db_proxy.security_group_id
+  kms_key_arn             = var.kms_key_arn
+  secret_arns             = [module.secrets.database_url_secret_arn, module.secrets.field_crypto_key_secret_arn]
+  database_url_secret_arn = module.secrets.database_url_secret_arn
+  enabled                 = false
+
+  functions = {
+    ingestao = {
+      handler              = "dist/workers/ingestao.handler"
+      reserved_concurrency = 12
+      pool                 = "ingestao"
+      proxy_endpoint       = module.db_proxy.proxy_endpoints["ingestao"]
+      queue_arn            = null
+    }
+    matching = {
+      handler              = "dist/workers/matching.handler"
+      reserved_concurrency = 8
+      pool                 = "matching"
+      proxy_endpoint       = module.db_proxy.proxy_endpoints["matching"]
+      queue_arn            = module.queue_ingestao.queue_arn
+    }
+    notificacao = {
+      handler              = "dist/workers/notificacao.handler"
+      reserved_concurrency = 4
+      pool                 = "matching"
+      proxy_endpoint       = module.db_proxy.proxy_endpoints["matching"]
+      queue_arn            = module.queue_alertas.queue_arn
+    }
+  }
+}
+
 module "identity" {
   source                  = "../../modules/identity"
   project                 = "radar"

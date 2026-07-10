@@ -43,3 +43,15 @@ variable "cognito_advanced_security_mode" {
     error_message = "cognito_advanced_security_mode deve ser ENFORCED, AUDIT ou OFF."
   }
 }
+
+variable "enable_serverless_workers" {
+  description = "Extrai os workers p/ o tier Lambda (seam P-27). false = coabitam apps/api (P-96)."
+  type        = bool
+  default     = false
+}
+
+variable "ops_alarm_sns_topic_arn" {
+  description = "SNS de destino dos alarmes de infra (ex.: pin de conexão do RDS Proxy). Vazio = sem ação."
+  type        = string
+  default     = ""
+}

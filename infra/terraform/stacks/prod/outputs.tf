@@ -32,3 +32,18 @@ output "field_crypto_key_secret_arn" {
   description = "Secret do FIELD_CRYPTO_KEY isolado do ambiente prod"
   value       = module.secrets.field_crypto_key_secret_arn
 }
+
+output "db_proxy_endpoints" {
+  description = "Endpoints do RDS Proxy por pool — HOST do DATABASE_URL de cada workload (P-41)"
+  value       = module.db_proxy.proxy_endpoints
+}
+
+output "db_pool_backends_reservados" {
+  description = "Backends PG estimados reservados pelos pools do proxy (gate P-41: < max_connections)"
+  value       = module.db_proxy.backends_reservados
+}
+
+output "serverless_worker_functions" {
+  description = "Nomes das Lambdas worker (vazio enquanto o seam P-27 está gated off)"
+  value       = try(module.serverless[0].function_names, {})
+}
