@@ -15,6 +15,7 @@
 
 import type {
   AlertaRepository,
+  AuditCriterioPort,
   CriterioRepository,
   EditalCatalogoPort,
   EventPublisher,
@@ -33,8 +34,15 @@ export const criterioStub: CriterioRepository = {
   async listarAtivos(_signal: AbortSignal) {
     return [];
   },
-  async casarComEdital(_edital, _signal: AbortSignal) {
+  async listarPorTenant(_tenantId, _signal: AbortSignal) {
     return [];
+  },
+};
+
+/** Stub de auditoria de critério — no-op em dev (sem trilha persistida). */
+export const auditCriterioStub: AuditCriterioPort = {
+  async registrar(_entrada, _signal) {
+    /* no-op no stub */
   },
 };
 

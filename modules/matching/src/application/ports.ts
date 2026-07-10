@@ -1,9 +1,7 @@
-import type { AlertaId, CriterioId, EditalId, TenantId } from '@radar/kernel';
+import type { AlertaId, ClienteFinalId, CriterioId, EditalId, TenantId } from '@radar/kernel';
 import type { Alerta } from '../domain/entities/alerta.js';
 import type { CriterioDeMonitoramento } from '../domain/entities/criterio-de-monitoramento.js';
 import type {
-  CriterioComScore,
-  EditalParaMatchingDTO,
   EditalResumoParaMatchingDTO,
   FaixaValorDTO,
 } from './dtos.js';
@@ -17,15 +15,19 @@ import type { DomainEvent } from './events.js';
 export interface CriterioRepository {
   salvar(criterio: CriterioDeMonitoramento, signal: AbortSignal): Promise<void>;
   porId(id: CriterioId, signal: AbortSignal): Promise<CriterioDeMonitoramento | null>;
+  /** Candidatos para o fan-out de matching (docs/13 §3). P-40: scan SQL no MVP; percolator no Next. */
   listarAtivos(signal: AbortSignal): Promise<CriterioDeMonitoramento[]>;
-  /**
-   * Fan-out edital × critérios ativos, retorna critérios com score.
-   * P-40: no MVP scan SQL; no Next, percolator (índice invertido de critérios).
-   */
-  casarComEdital(
-    edital: EditalParaMatchingDTO,
-    signal: AbortSignal,
-  ): Promise<CriterioComScore[]>;
+  /** Lista critérios ativos do tenant — usado para consulta autenticada com auditoria (P-61). */
+  listarPorTenant(tenantId: TenantId, signal: AbortSignal): Promise<CriterioDeMonitoramento[]>;
+}
+
+/**
+ * Criptografia de campo para estratégia comercial do cliente (docs/05 §9, P-59).
+ * A application conhece o papel; algoritmo/chave ficam em infra.
+ */
+export interface FieldCryptoProvider {
+  cifrarTexto(valor: string, contexto: string, signal: AbortSignal): Promise<string>;
+  decifrarTexto(valor: string, contexto: string, signal: AbortSignal): Promise<string>;
 }
 
 /** Repositório do agregado Alerta. */
@@ -100,4 +102,29 @@ export interface MetricaMatchingRepository {
     janelaEmDias: number,
     signal: AbortSignal,
   ): Promise<{ ativados: number; total: number }>;
+}
+
+// ---------------------------------------------------------------------------
+// Auditoria de classe crítica (docs/05 §9, P-61, AB13)
+// ---------------------------------------------------------------------------
+
+/** Dados mínimos de um evento auditável sobre CRITERIO_MONITORAMENTO. */
+export interface AuditCriterioEntrada {
+  readonly operadorId: string;
+  readonly recurso: string;
+  readonly acao: string;
+  readonly baseLegal: string;
+  readonly escopo: {
+    readonly tenantId: TenantId;
+    readonly clienteFinalId?: ClienteFinalId;
+  };
+}
+
+/**
+ * Port de auditoria append-only para operações sobre CRITERIO_MONITORAMENTO.
+ * Fail-closed (AB13/P-61): a implementação deve lançar em caso de falha de gravação.
+ * Adaptada na infra para o AuditLogRepository de @radar/governanca.
+ */
+export interface AuditCriterioPort {
+  registrar(entrada: AuditCriterioEntrada, signal: AbortSignal): Promise<void>;
 }

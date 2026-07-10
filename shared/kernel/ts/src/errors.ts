@@ -21,3 +21,15 @@ export class AcessoNegadoError extends DomainError {
     super('acesso negado ao recurso solicitado');
   }
 }
+
+/**
+ * Trilha de auditoria indisponível — operação sensível interrompida.
+ * Fail-closed: lançado quando o AuditLogRepository não consegue gravar (AB13/P-61).
+ * Mapeado para 503 na borda.
+ */
+export class AuditoriaIndisponivelError extends DomainError {
+  readonly code = 'AUDITORIA_INDISPONIVEL' as const;
+  constructor() {
+    super('trilha de auditoria indisponível — operação sensível interrompida (fail-closed)');
+  }
+}

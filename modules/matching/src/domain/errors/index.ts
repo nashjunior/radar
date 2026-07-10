@@ -40,5 +40,5 @@ export class AlertaNaoEncontradoError extends DomainError {
   }
 }
 
-// AcessoNegadoError vive no @radar/kernel — re-exportada para conveniência dos consumidores.
-export { AcessoNegadoError } from '@radar/kernel';
+// Erros de segurança compartilhados — vivem no @radar/kernel para uso cross-contexto.
+export { AcessoNegadoError, AuditoriaIndisponivelError } from '@radar/kernel';

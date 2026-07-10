@@ -2,13 +2,14 @@ import type { ClienteFinalId, TenantId } from '@radar/kernel';
 import {
   CriterioDeMonitoramento,
 } from '../../domain/entities/criterio-de-monitoramento.js';
-import { CriterioInvalidoError } from '../../domain/errors/index.js';
+import { AuditoriaIndisponivelError, CriterioInvalidoError } from '../../domain/errors/index.js';
 import { FaixaValor } from '../../domain/value-objects/faixa-valor.js';
 import { PalavrasChave } from '../../domain/value-objects/palavras-chave.js';
 import { criterioParaDTO } from '../dtos.js';
 import type { CriterioDTO } from '../dtos.js';
 import { CriterioDefinido } from '../events.js';
 import type {
+  AuditCriterioPort,
   ClockProvider,
   CriterioIdProvider,
   CriterioRepository,
@@ -31,6 +32,7 @@ export interface DefinirCriterioInput {
  * Define um novo critério de monitoramento para o clienteFinal.
  * Trigger: usuário via API.
  * Faixa de valor lida da tabela parametrizável datada, nunca hardcoded.
+ * Auditoria fail-closed (AB13/P-61, docs/05 §9): registro de escrita obrigatório.
  */
 export class DefinirCriterioMonitoramentoUseCase {
   constructor(
@@ -39,6 +41,7 @@ export class DefinirCriterioMonitoramentoUseCase {
     private readonly eventos: EventPublisher,
     private readonly ids: CriterioIdProvider,
     private readonly clock: ClockProvider,
+    private readonly audit: AuditCriterioPort,
   ) {}
 
   async executar(
@@ -71,6 +74,20 @@ export class DefinirCriterioMonitoramentoUseCase {
     });
 
     await this.criterios.salvar(criterio, signal);
+
+    // Auditoria de escrita fail-closed (AB13/P-61, docs/05 §9 — CRITERIO_MONITORAMENTO é classe crítica).
+    // Falha interrompe a operação: o evento NÃO é publicado e o caller recebe erro.
+    try {
+      await this.audit.registrar({
+        operadorId: input.clienteFinalId,
+        recurso: `criterio-monitoramento:${criterio.id}`,
+        acao: 'ESCREVER',
+        baseLegal: 'Lei 14.133/2021 art. 174 — monitoramento de licitações',
+        escopo: { tenantId: input.tenantId, clienteFinalId: input.clienteFinalId },
+      }, signal);
+    } catch {
+      throw new AuditoriaIndisponivelError();
+    }
 
     await this.eventos.publicar(
       new CriterioDefinido({
