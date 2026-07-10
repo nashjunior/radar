@@ -1,3 +1,4 @@
+export { AesGcmFieldCryptoProvider } from './adapters/aes-gcm-field-crypto-provider.js';
 export { CryptoCriterioIdProvider, CryptoAlertaIdProvider } from './adapters/crypto-id-provider.js';
 export { paraHttpStatus } from './adapters/error-mapping.js';
 export { PostgresAlertaRepository } from './adapters/postgres-alerta-repository.js';

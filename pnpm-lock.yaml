@@ -240,6 +240,27 @@ importers:
         specifier: ^5.7.2
         version: 5.9.3
 
+  tests/db-stress:
+    devDependencies:
+      '@testcontainers/postgresql':
+        specifier: ^10.0.0
+        version: 10.28.0
+      '@types/pg':
+        specifier: ^8.11.10
+        version: 8.20.0
+      pg:
+        specifier: ^8.13.3
+        version: 8.22.0
+      testcontainers:
+        specifier: ^10.0.0
+        version: 10.28.0
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.6(@types/node@22.20.0)(tsx@4.23.0)(yaml@2.9.0)
+
   tests/e2e:
     dependencies:
       '@radar/kernel':
@@ -271,6 +292,37 @@ importers:
         specifier: ^3.0.0
         version: 3.2.6(@types/node@22.20.0)(tsx@4.23.0)(yaml@2.9.0)
 
+  tests/security:
+    dependencies:
+      '@radar/governanca':
+        specifier: workspace:*
+        version: link:../../modules/governanca
+      '@radar/identidade':
+        specifier: workspace:*
+        version: link:../../modules/identidade
+      '@radar/ingestao':
+        specifier: workspace:*
+        version: link:../../modules/ingestao
+      '@radar/kernel':
+        specifier: workspace:*
+        version: link:../../shared/kernel/ts
+      '@radar/matching':
+        specifier: workspace:*
+        version: link:../../modules/matching
+      '@radar/notificacao':
+        specifier: workspace:*
+        version: link:../../modules/notificacao
+      '@radar/triagem':
+        specifier: workspace:*
+        version: link:../../modules/triagem
+    devDependencies:
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.6(@types/node@22.20.0)(tsx@4.23.0)(yaml@2.9.0)
+
   tools/eslint-rules:
     devDependencies:
       '@typescript-eslint/parser':
@@ -279,6 +331,15 @@ importers:
       eslint:
         specifier: ^9.18.0
         version: 9.39.4
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.6(@types/node@22.20.0)(tsx@4.23.0)(yaml@2.9.0)
+
+  tools/pncp-mock:
+    devDependencies:
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
       vitest:
         specifier: ^3.0.0
         version: 3.2.6(@types/node@22.20.0)(tsx@4.23.0)(yaml@2.9.0)

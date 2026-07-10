@@ -1,4 +1,5 @@
 import { CasarEditalComCriteriosUseCase } from '../application/use-cases/casar-edital-com-criterios.js';
+import { AesGcmFieldCryptoProvider } from './adapters/aes-gcm-field-crypto-provider.js';
 import { CryptoAlertaIdProvider } from './adapters/crypto-id-provider.js';
 import { PostgresAlertaRepository } from './adapters/postgres-alerta-repository.js';
 import { PostgresCriterioRepository } from './adapters/postgres-criterio-repository.js';
@@ -44,7 +45,8 @@ export function criarMatchingComposicao(
   dlq: DlqClient,
   config: MatchingComposicaoConfig,
 ): MatchingComposicao {
-  const criterioRepo = new PostgresCriterioRepository(db);
+  const fieldCrypto = AesGcmFieldCryptoProvider.fromEnv();
+  const criterioRepo = new PostgresCriterioRepository(db, fieldCrypto);
   const alertaRepo = new PostgresAlertaRepository(db);
   const publisher = new SqsEventPublisher(sqs, config.alertaGeradoQueueUrl);
   const alertaIds = new CryptoAlertaIdProvider();

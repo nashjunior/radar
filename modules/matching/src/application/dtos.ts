@@ -17,13 +17,6 @@ export interface EditalParaMatchingDTO {
   proveniencia?: { fonte: string; baseLegal: string; dataColeta: string };
 }
 
-/** Critério com score calculado pelo adapter. */
-export interface CriterioComScore {
-  criterio: CriterioDeMonitoramento;
-  /** Score de aderência [0,1] calculado pelo adapter (SQL + full-text). */
-  score: number;
-}
-
 export interface CriterioDTO {
   id: string;
   tenantId: string;

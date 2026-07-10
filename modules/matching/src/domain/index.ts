@@ -1,7 +1,10 @@
 export { Alerta } from './entities/alerta.js';
 export type { CriarAlertaParams } from './entities/alerta.js';
 export { CriterioDeMonitoramento } from './entities/criterio-de-monitoramento.js';
-export type { CriarCriterioParams } from './entities/criterio-de-monitoramento.js';
+export type {
+  CriarCriterioParams,
+  EditalParaCasamento,
+} from './entities/criterio-de-monitoramento.js';
 export {
   AcessoNegadoError,
   AderenciaMatchingInvalidaError,

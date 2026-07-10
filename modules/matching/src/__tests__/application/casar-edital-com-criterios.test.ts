@@ -38,15 +38,25 @@ function criarCriterio(clienteFinalId: string): CriterioDeMonitoramento {
   });
 }
 
+function mockCriterioRepo(criterios: CriterioDeMonitoramento[]): CriterioRepository {
+  return {
+    salvar: vi.fn(),
+    porId: vi.fn(),
+    listarAtivos: vi.fn().mockResolvedValue(criterios),
+    listarPorTenant: vi.fn(),
+  };
+}
+
 describe('CasarEditalComCriteriosUseCase', () => {
   it('retorna lista vazia quando nenhum critério supera o limiar de aderência (< 0.3)', async () => {
-    const criterio = criarCriterio('cliente-A');
-    const criterios: CriterioRepository = {
-      salvar: vi.fn(),
-      porId: vi.fn(),
-      listarAtivos: vi.fn(),
-      casarComEdital: vi.fn().mockResolvedValue([{ criterio, score: 0.1 }]),
-    };
+    // Palavras-chave que não aparecem no objeto do edital → score binário = 0 < 0.3
+    const criterioSemMatch = CriterioDeMonitoramento.criar({
+      id: CriterioId('crit-001'),
+      tenantId: TenantId('tenant-a'),
+      clienteFinalId: ClienteFinalId('cliente-A'),
+      palavrasChave: PalavrasChave.criar(['cloud', 'erp']),
+    });
+    const criterios = mockCriterioRepo([criterioSemMatch]);
     const alertas: AlertaRepository = { salvar: vi.fn(), porId: vi.fn(), atualizarFeedback: vi.fn(), listarPorTenant: vi.fn() };
     const eventos: EventPublisher = { publicar: vi.fn() };
     const ids: AlertaIdProvider = { gerar: vi.fn().mockReturnValue(AlertaId('uuid-1')) };
@@ -58,17 +68,12 @@ describe('CasarEditalComCriteriosUseCase', () => {
     expect(alertas.salvar).not.toHaveBeenCalled();
   });
 
-  it('gera alerta quando score supera limiar (≥ 0.3) e persiste + publica evento', async () => {
+  it('gera alerta quando aderência supera limiar (≥ 0.3) e persiste + publica evento', async () => {
     const criterio = criarCriterio('cliente-A');
     const salvarAlerta = vi.fn().mockResolvedValue(undefined);
     const publicar = vi.fn().mockResolvedValue(undefined);
 
-    const criterios: CriterioRepository = {
-      salvar: vi.fn(),
-      porId: vi.fn(),
-      listarAtivos: vi.fn(),
-      casarComEdital: vi.fn().mockResolvedValue([{ criterio, score: 0.75 }]),
-    };
+    const criterios = mockCriterioRepo([criterio]);
     const alertas: AlertaRepository = { salvar: salvarAlerta, porId: vi.fn(), atualizarFeedback: vi.fn(), listarPorTenant: vi.fn() };
     const eventos: EventPublisher = { publicar };
     const ids: AlertaIdProvider = { gerar: vi.fn().mockReturnValue(AlertaId('uuid-alerta')) };
@@ -76,20 +81,16 @@ describe('CasarEditalComCriteriosUseCase', () => {
     const uc = new CasarEditalComCriteriosUseCase(criterios, alertas, eventos, ids);
     const result = await uc.executar({ edital: editalFixture }, noop);
 
+    // Criterio com ['ti'] casa com 'serviços de TI' → score binário = 1
     expect(result).toHaveLength(1);
-    expect(result[0]?.aderencia).toBe(0.75);
+    expect(result[0]?.aderencia).toBe(1);
     expect(salvarAlerta).toHaveBeenCalledOnce();
     expect(publicar).toHaveBeenCalledOnce();
   });
 
   it('projeta proveniencia no AlertaDTO quando edital a contém (RAD-115)', async () => {
     const criterio = criarCriterio('cliente-A');
-    const criterios: CriterioRepository = {
-      salvar: vi.fn(),
-      porId: vi.fn(),
-      listarAtivos: vi.fn(),
-      casarComEdital: vi.fn().mockResolvedValue([{ criterio, score: 0.8 }]),
-    };
+    const criterios = mockCriterioRepo([criterio]);
     const alertas: AlertaRepository = { salvar: vi.fn().mockResolvedValue(undefined), porId: vi.fn(), atualizarFeedback: vi.fn(), listarPorTenant: vi.fn() };
     const eventos: EventPublisher = { publicar: vi.fn().mockResolvedValue(undefined) };
     const ids: AlertaIdProvider = { gerar: vi.fn().mockReturnValue(AlertaId('uuid-prov')) };
@@ -112,15 +113,7 @@ describe('CasarEditalComCriteriosUseCase', () => {
       palavrasChave: PalavrasChave.criar(['ti']),
     });
 
-    const criterios: CriterioRepository = {
-      salvar: vi.fn(),
-      porId: vi.fn(),
-      listarAtivos: vi.fn(),
-      casarComEdital: vi.fn().mockResolvedValue([
-        { criterio: criterioA, score: 0.8 },
-        { criterio: criterioB, score: 0.6 },
-      ]),
-    };
+    const criterios = mockCriterioRepo([criterioA, criterioB]);
     const alertas: AlertaRepository = { salvar: vi.fn().mockResolvedValue(undefined), porId: vi.fn(), atualizarFeedback: vi.fn(), listarPorTenant: vi.fn() };
     const eventos: EventPublisher = { publicar: vi.fn().mockResolvedValue(undefined) };
     let idCounter = 0;
