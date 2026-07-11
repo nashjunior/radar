@@ -1,6 +1,5 @@
 import type { TenantId } from '@radar/kernel';
-import { RegistroAuditoria } from '../../domain/entities/registro-auditoria.js';
-import { AuditoriaIndisponivelError } from '../../domain/errors/index.js';
+import { RegistrarAuditoriaUseCase } from './registrar-auditoria.js';
 import type {
   AcaoRetencao,
   AuditLogIdProvider,
@@ -38,13 +37,17 @@ export interface AplicarRetencaoInput {
  * - Não vaza PII em logs ou relatório — itemId é opaco (hash/UUID gerido pela infra).
  */
 export class AplicarRetencaoUseCase {
+  private readonly registrarAuditoriaUseCase: RegistrarAuditoriaUseCase;
+
   constructor(
     private readonly candidatos: ExpurgoCandidatoRepository,
     private readonly expurgo: ExpurgoPort,
-    private readonly auditLog: AuditLogRepository,
-    private readonly idProvider: AuditLogIdProvider,
+    auditLog: AuditLogRepository,
+    idProvider: AuditLogIdProvider,
     private readonly clock: Clock,
-  ) {}
+  ) {
+    this.registrarAuditoriaUseCase = new RegistrarAuditoriaUseCase(auditLog, idProvider, clock);
+  }
 
   async executar(input: AplicarRetencaoInput, signal: AbortSignal): Promise<RetencaoDTO> {
     const resultados: ResultadoExpurgo[] = [];
@@ -127,21 +130,16 @@ export class AplicarRetencaoUseCase {
     input: AplicarRetencaoInput,
     signal: AbortSignal,
   ): Promise<void> {
-    const registro = RegistroAuditoria.criar({
-      id: this.idProvider.gerar(),
-      usuarioId: input.operadorId,
-      recurso: `retencao:${candidato.conjunto}:${candidato.itemId}`,
-      acao,
-      baseLegal: 'LGPD art. 15-16 término do tratamento',
-      escopo: { tenantId: input.tenantId },
-      ocorridoEm: this.clock.agora(),
-    });
-
-    try {
-      await this.auditLog.registrar(registro, signal);
-    } catch {
-      // Fail-closed: auditoria indisponível para o expurgo — interrompe (AB13/P-61).
-      throw new AuditoriaIndisponivelError();
-    }
+    // Fail-closed: RegistrarAuditoriaUseCase relança AuditoriaIndisponivelError (AB13/P-61).
+    await this.registrarAuditoriaUseCase.executar(
+      {
+        usuarioId: input.operadorId,
+        recurso: `retencao:${candidato.conjunto}:${candidato.itemId}`,
+        acao,
+        baseLegal: 'LGPD art. 15-16 término do tratamento',
+        escopo: { tenantId: input.tenantId },
+      },
+      signal,
+    );
   }
 }

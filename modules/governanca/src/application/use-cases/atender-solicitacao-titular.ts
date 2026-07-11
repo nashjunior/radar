@@ -1,12 +1,11 @@
 import { AcessoNegadoError } from '@radar/kernel';
 import type { ClienteFinalId, TenantId } from '@radar/kernel';
-import { RegistroAuditoria } from '../../domain/entities/registro-auditoria.js';
 import {
   IdentidadeNaoVerificadaError,
   SolicitacaoTitular,
 } from '../../domain/entities/solicitacao-titular.js';
-import { AuditoriaIndisponivelError } from '../../domain/errors/index.js';
 import { TitularRef } from '../../domain/value-objects/titular-ref.js';
+import { RegistrarAuditoriaUseCase } from './registrar-auditoria.js';
 import type {
   AuditLogIdProvider,
   AuditLogRepository,
@@ -43,14 +42,22 @@ export interface AtenderSolicitacaoTitularInput {
  * - Não envia dados do titular para LLM ou logs.
  */
 export class AtenderSolicitacaoTitularUseCase {
+  private readonly registrarAuditoriaUseCase: RegistrarAuditoriaUseCase;
+
   constructor(
     private readonly solicitacoes: SolicitacaoTitularRepository,
     private readonly identidadeGateway: IdentidadeGateway,
-    private readonly auditLog: AuditLogRepository,
+    auditLog: AuditLogRepository,
     private readonly solicitacaoIdProvider: SolicitacaoIdProvider,
-    private readonly auditLogIdProvider: AuditLogIdProvider,
+    auditLogIdProvider: AuditLogIdProvider,
     private readonly clock: Clock,
-  ) {}
+  ) {
+    this.registrarAuditoriaUseCase = new RegistrarAuditoriaUseCase(
+      auditLog,
+      auditLogIdProvider,
+      clock,
+    );
+  }
 
   async executar(
     input: AtenderSolicitacaoTitularInput,
@@ -233,21 +240,10 @@ export class AtenderSolicitacaoTitularUseCase {
     tenantId: TenantId,
     signal: AbortSignal,
   ): Promise<void> {
-    const registro = RegistroAuditoria.criar({
-      id: this.auditLogIdProvider.gerar(),
-      usuarioId: operadorId,
-      recurso,
-      acao,
-      baseLegal,
-      escopo: { tenantId },
-      ocorridoEm: this.clock.agora(),
-    });
-
-    try {
-      await this.auditLog.registrar(registro, signal);
-    } catch {
-      // Fail-closed: se auditoria falhar, a operação para (AB13/P-61).
-      throw new AuditoriaIndisponivelError();
-    }
+    // Fail-closed: RegistrarAuditoriaUseCase relança AuditoriaIndisponivelError (AB13/P-61).
+    await this.registrarAuditoriaUseCase.executar(
+      { usuarioId: operadorId, recurso, acao, baseLegal, escopo: { tenantId } },
+      signal,
+    );
   }
 }
