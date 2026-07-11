@@ -1,4 +1,5 @@
 import { EditalId } from '@radar/kernel';
+import type { DbClient } from '@radar/kernel';
 import { ExtracaoEdital } from '../../domain/extracao-edital.js';
 import { CampoExtraido } from '../../domain/value-objects/campo-extraido.js';
 import { Citacao } from '../../domain/value-objects/citacao.js';
@@ -8,18 +9,6 @@ import type { CategoriaHabilitacao } from '../../domain/value-objects/requisito.
 import { Risco } from '../../domain/value-objects/risco.js';
 import type { Severidade } from '../../domain/value-objects/risco.js';
 import type { ExtracaoRepository } from '../../application/ports.js';
-
-/**
- * Contrato mínimo do driver — injetado no composition root (mantém `pg` fora do boundary, P-74).
- * SQL sempre PARAMETRIZADO (AB8): nenhum valor é concatenado na query.
- */
-interface DbClient {
-  query<R extends object>(
-    sql: string,
-    params: unknown[],
-    opts?: { signal?: AbortSignal },
-  ): Promise<{ rows: R[] }>;
-}
 
 /**
  * Catálogo GLOBAL e cacheável (P-45): a chave é o `edital_id`, SEM `tenant_id` (docs/12 §2). Upsert

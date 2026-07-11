@@ -1,13 +1,5 @@
-import type { TenantId } from '@radar/kernel';
+import type { DbClient, TenantId } from '@radar/kernel';
 import type { MetricaMatchingRepository } from '../../application/ports.js';
-
-interface DbClient {
-  query<R extends object>(
-    sql: string,
-    params: unknown[],
-    opts?: { signal?: AbortSignal },
-  ): Promise<{ rows: R[] }>;
-}
 
 /**
  * Lê métricas de qualidade do matching a partir da tabela `alerta` (P-14, P-15, docs/08 §3).

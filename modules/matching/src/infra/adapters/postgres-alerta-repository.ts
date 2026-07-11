@@ -1,15 +1,8 @@
 import { AlertaId, ClienteFinalId, CriterioId, EditalId, TenantId } from '@radar/kernel';
+import type { DbClient } from '@radar/kernel';
 import { Alerta } from '../../domain/entities/alerta.js';
 import { AderenciaMatching } from '../../domain/value-objects/aderencia-matching.js';
 import type { AlertaRepository } from '../../application/ports.js';
-
-interface DbClient {
-  query<R extends object>(
-    sql: string,
-    params: unknown[],
-    opts?: { signal?: AbortSignal },
-  ): Promise<{ rows: R[] }>;
-}
 
 export class PostgresAlertaRepository implements AlertaRepository {
   constructor(private readonly db: DbClient) {}

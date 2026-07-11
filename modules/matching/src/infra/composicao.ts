@@ -1,3 +1,4 @@
+import type { DbClient } from '@radar/kernel';
 import { CasarEditalComCriteriosUseCase } from '../application/use-cases/casar-edital-com-criterios.js';
 import { AesGcmFieldCryptoProvider } from './adapters/aes-gcm-field-crypto-provider.js';
 import { CryptoAlertaIdProvider } from './adapters/crypto-id-provider.js';
@@ -6,14 +7,6 @@ import { PostgresCriterioRepository } from './adapters/postgres-criterio-reposit
 import { SqsEventPublisher } from './adapters/sqs-event-publisher.js';
 import { ConsumidorAlertaBatch } from './queue/consumidor-alerta-batch.js';
 import { MatchingWorker } from './queue/matching-worker.js';
-
-interface DbClient {
-  query<R extends object>(
-    sql: string,
-    params: unknown[],
-    opts?: { signal?: AbortSignal },
-  ): Promise<{ rows: R[] }>;
-}
 
 interface SqsClient {
   sendMessage(

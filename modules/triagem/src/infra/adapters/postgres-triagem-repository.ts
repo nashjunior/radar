@@ -1,4 +1,5 @@
 import { ClienteFinalId, EditalId, PerfilId, TenantId } from '@radar/kernel';
+import type { DbClient } from '@radar/kernel';
 import { Triagem } from '../../domain/triagem.js';
 import type { Recomendacao, TriagemStatus } from '../../domain/triagem.js';
 import { Aderencia } from '../../domain/value-objects/aderencia.js';
@@ -6,15 +7,6 @@ import { Citacao } from '../../domain/value-objects/citacao.js';
 import { Risco } from '../../domain/value-objects/risco.js';
 import type { Severidade } from '../../domain/value-objects/risco.js';
 import type { TriagemRepository } from '../../application/ports.js';
-
-/** Contrato mínimo do driver — injetado no composition root (mantém `pg` fora do boundary, P-74). */
-interface DbClient {
-  query<R extends object>(
-    sql: string,
-    params: unknown[],
-    opts?: { signal?: AbortSignal },
-  ): Promise<{ rows: R[] }>;
-}
 
 /**
  * Triagem é escopada a `tenant_id`/`cliente_final_id` (P-49) — isolamento ESTRUTURAL (docs/05 §3):

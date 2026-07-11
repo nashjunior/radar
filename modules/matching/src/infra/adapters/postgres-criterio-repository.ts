@@ -1,18 +1,11 @@
 import { ClienteFinalId, CriterioId, TenantId } from '@radar/kernel';
+import type { DbClient } from '@radar/kernel';
 import {
   CriterioDeMonitoramento,
 } from '../../domain/entities/criterio-de-monitoramento.js';
 import { FaixaValor } from '../../domain/value-objects/faixa-valor.js';
 import { PalavrasChave } from '../../domain/value-objects/palavras-chave.js';
 import type { CriterioRepository, FieldCryptoProvider } from '../../application/ports.js';
-
-interface DbClient {
-  query<R extends object>(
-    sql: string,
-    params: unknown[],
-    opts?: { signal?: AbortSignal },
-  ): Promise<{ rows: R[] }>;
-}
 
 /** Implementação PostgreSQL do CriterioRepository. */
 export class PostgresCriterioRepository implements CriterioRepository {

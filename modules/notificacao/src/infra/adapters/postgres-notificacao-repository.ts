@@ -1,15 +1,7 @@
-import type { AlertaId } from '@radar/kernel';
+import type { AlertaId, DbClient } from '@radar/kernel';
 import type { Notificacao } from '../../domain/entities/notificacao.js';
 import type { UsuarioId } from '../../domain/entities/notificacao.js';
 import type { NotificacaoRepository } from '../../application/ports.js';
-
-interface DbClient {
-  query<R extends object>(
-    sql: string,
-    params: unknown[],
-    opts?: { signal?: AbortSignal },
-  ): Promise<{ rows: R[] }>;
-}
 
 /** Upsert idempotente por id — reprocessamento de mensagem da fila é seguro. */
 export class PostgresNotificacaoRepository implements NotificacaoRepository {

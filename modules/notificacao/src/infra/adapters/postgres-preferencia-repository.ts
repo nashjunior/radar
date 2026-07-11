@@ -1,15 +1,8 @@
+import type { DbClient } from '@radar/kernel';
 import type { CanalTipo, FrequenciaTipo } from '../../domain/index.js';
 import type { UsuarioId } from '../../domain/entities/notificacao.js';
 import type { PreferenciaDTO } from '../../application/dtos.js';
 import type { PreferenciaRepository } from '../../application/ports.js';
-
-interface DbClient {
-  query<R extends object>(
-    sql: string,
-    params: unknown[],
-    opts?: { signal?: AbortSignal },
-  ): Promise<{ rows: R[] }>;
-}
 
 export class PostgresPreferenciaRepository implements PreferenciaRepository {
   constructor(private readonly db: DbClient) {}

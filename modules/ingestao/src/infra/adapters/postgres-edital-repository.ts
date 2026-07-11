@@ -1,15 +1,7 @@
-import type { EditalId } from '@radar/kernel';
+import type { DbClient, EditalId } from '@radar/kernel';
 import type { EditalRepository } from '../../application/ports.js';
 import type { Edital } from '../../domain/entities/edital.js';
 import { Edital as EditalEntity } from '../../domain/entities/edital.js';
-
-interface DbClient {
-  query<R extends object>(
-    sql: string,
-    params: unknown[],
-    opts?: { signal?: AbortSignal },
-  ): Promise<{ rows: R[] }>;
-}
 
 interface ItemJson {
   numeroItem: number;

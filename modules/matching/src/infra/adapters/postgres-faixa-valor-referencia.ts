@@ -1,13 +1,6 @@
+import type { DbClient } from '@radar/kernel';
 import type { FaixaValorReferencia } from '../../application/ports.js';
 import type { FaixaValorDTO } from '../../application/dtos.js';
-
-interface DbClient {
-  query<R extends object>(
-    sql: string,
-    params: unknown[],
-    opts?: { signal?: AbortSignal },
-  ): Promise<{ rows: R[] }>;
-}
 
 interface Row {
   codigo: string;

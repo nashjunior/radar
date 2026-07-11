@@ -1,13 +1,5 @@
-import type { EditalId } from '@radar/kernel';
+import type { DbClient, EditalId } from '@radar/kernel';
 import type { ProvenienciaRepository } from '../../application/ports.js';
-
-interface DbClient {
-  query<R extends object>(
-    sql: string,
-    params: unknown[],
-    opts?: { signal?: AbortSignal },
-  ): Promise<{ rows: R[] }>;
-}
 
 /**
  * Adaptador PostgreSQL para o repositório de proveniência.
