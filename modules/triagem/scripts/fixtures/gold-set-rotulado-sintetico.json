@@ -5,247 +5,1379 @@
     "tipo": "sintetico",
     "totalEditais": 30,
     "geradoEm": "2026-07-08",
-    "nota": "Dataset sintético para validar o harness de calibração e confirmar LIMIAR_CONFIANCA_PADRAO=0,70 (P-19). Confiança por campo baseada na distribuição realista de LLMs em extração estruturada de editais. Substituir por gold set real quando P-18/P-84/P-85 forem resolvidos."
+    "nota": "Dataset sintético para validar o harness de calibração e confirmar LIMIAR_CONFIANCA_PADRAO=0,70 (P-19). Confiança por campo baseada na distribuição realista de LLMs em extração estruturada de editais. Substituir por gold set real quando P-18/P-84/P-85 forem resolvidos. Habilitação (RAD-218): gs-001..003 têm 1 requisito jurídico+fiscal cada (demonstra a forma); gs-012 tem 9 requisitos técnicos (8 corretos, 1 errado) demonstrando recall PARCIAL sobre lista. dataSessao ainda não rotulado neste sintético (rotuloPresente: false em todos), aguardando P-18."
   },
   "editais": [
     {
-      "id": "gs-001", "modalidade": "PregaoEletronico", "formato": "nativo", "adversarial": false,
+      "id": "gs-001",
+      "modalidade": "PregaoEletronico",
+      "formato": "nativo",
+      "adversarial": false,
       "campos": {
-        "objeto":                { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.99, "critico": true, "numerico": false },
-        "valorEstimado":         { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.98, "critico": true, "numerico": true  },
-        "dataAberturaPropostas": { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.97, "critico": true, "numerico": true  }
+        "objeto": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.99,
+          "critico": true,
+          "numerico": false
+        },
+        "valorEstimado": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.98,
+          "critico": true,
+          "numerico": true
+        },
+        "dataAberturaPropostas": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.97,
+          "critico": true,
+          "numerico": true
+        },
+        "dataSessao": {
+          "rotuloPresente": false,
+          "extraidoCorreto": false,
+          "confianca": 0,
+          "critico": true,
+          "numerico": true
+        },
+        "habilitacao": {
+          "juridica": [
+            {
+              "rotuloPresente": true,
+              "extraidoCorreto": true,
+              "confianca": 0.97,
+              "critico": true,
+              "numerico": false
+            }
+          ],
+          "fiscal": [
+            {
+              "rotuloPresente": true,
+              "extraidoCorreto": true,
+              "confianca": 0.96,
+              "critico": true,
+              "numerico": false
+            }
+          ],
+          "tecnica": [],
+          "economica": []
+        }
       }
     },
     {
-      "id": "gs-002", "modalidade": "PregaoEletronico", "formato": "nativo", "adversarial": false,
+      "id": "gs-002",
+      "modalidade": "PregaoEletronico",
+      "formato": "nativo",
+      "adversarial": false,
       "campos": {
-        "objeto":                { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.98, "critico": true, "numerico": false },
-        "valorEstimado":         { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.97, "critico": true, "numerico": true  },
-        "dataAberturaPropostas": { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.96, "critico": true, "numerico": true  }
+        "objeto": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.98,
+          "critico": true,
+          "numerico": false
+        },
+        "valorEstimado": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.97,
+          "critico": true,
+          "numerico": true
+        },
+        "dataAberturaPropostas": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.96,
+          "critico": true,
+          "numerico": true
+        },
+        "dataSessao": {
+          "rotuloPresente": false,
+          "extraidoCorreto": false,
+          "confianca": 0,
+          "critico": true,
+          "numerico": true
+        },
+        "habilitacao": {
+          "juridica": [
+            {
+              "rotuloPresente": true,
+              "extraidoCorreto": true,
+              "confianca": 0.96,
+              "critico": true,
+              "numerico": false
+            }
+          ],
+          "fiscal": [
+            {
+              "rotuloPresente": true,
+              "extraidoCorreto": true,
+              "confianca": 0.95,
+              "critico": true,
+              "numerico": false
+            }
+          ],
+          "tecnica": [],
+          "economica": []
+        }
       }
     },
     {
-      "id": "gs-003", "modalidade": "PregaoEletronico", "formato": "nativo", "adversarial": false,
+      "id": "gs-003",
+      "modalidade": "PregaoEletronico",
+      "formato": "nativo",
+      "adversarial": false,
       "campos": {
-        "objeto":                { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.97, "critico": true, "numerico": false },
-        "valorEstimado":         { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.96, "critico": true, "numerico": true  },
-        "dataAberturaPropostas": { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.95, "critico": true, "numerico": true  }
+        "objeto": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.97,
+          "critico": true,
+          "numerico": false
+        },
+        "valorEstimado": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.96,
+          "critico": true,
+          "numerico": true
+        },
+        "dataAberturaPropostas": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.95,
+          "critico": true,
+          "numerico": true
+        },
+        "dataSessao": {
+          "rotuloPresente": false,
+          "extraidoCorreto": false,
+          "confianca": 0,
+          "critico": true,
+          "numerico": true
+        },
+        "habilitacao": {
+          "juridica": [
+            {
+              "rotuloPresente": true,
+              "extraidoCorreto": true,
+              "confianca": 0.95,
+              "critico": true,
+              "numerico": false
+            }
+          ],
+          "fiscal": [
+            {
+              "rotuloPresente": true,
+              "extraidoCorreto": true,
+              "confianca": 0.94,
+              "critico": true,
+              "numerico": false
+            }
+          ],
+          "tecnica": [],
+          "economica": []
+        }
       }
     },
     {
-      "id": "gs-004", "modalidade": "Concorrencia", "formato": "nativo", "adversarial": false,
+      "id": "gs-004",
+      "modalidade": "Concorrencia",
+      "formato": "nativo",
+      "adversarial": false,
       "campos": {
-        "objeto":                { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.96, "critico": true, "numerico": false },
-        "valorEstimado":         { "rotuloPresente": false, "extraidoCorreto": true,  "confianca": 0.88, "critico": true, "numerico": true  },
-        "dataAberturaPropostas": { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.94, "critico": true, "numerico": true  }
+        "objeto": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.96,
+          "critico": true,
+          "numerico": false
+        },
+        "valorEstimado": {
+          "rotuloPresente": false,
+          "extraidoCorreto": true,
+          "confianca": 0.88,
+          "critico": true,
+          "numerico": true
+        },
+        "dataAberturaPropostas": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.94,
+          "critico": true,
+          "numerico": true
+        },
+        "dataSessao": {
+          "rotuloPresente": false,
+          "extraidoCorreto": false,
+          "confianca": 0,
+          "critico": true,
+          "numerico": true
+        },
+        "habilitacao": {
+          "juridica": [],
+          "fiscal": [],
+          "tecnica": [],
+          "economica": []
+        }
       }
     },
     {
-      "id": "gs-005", "modalidade": "Concorrencia", "formato": "nativo", "adversarial": false,
+      "id": "gs-005",
+      "modalidade": "Concorrencia",
+      "formato": "nativo",
+      "adversarial": false,
       "campos": {
-        "objeto":                { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.95, "critico": true, "numerico": false },
-        "valorEstimado":         { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.94, "critico": true, "numerico": true  },
-        "dataAberturaPropostas": { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.93, "critico": true, "numerico": true  }
+        "objeto": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.95,
+          "critico": true,
+          "numerico": false
+        },
+        "valorEstimado": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.94,
+          "critico": true,
+          "numerico": true
+        },
+        "dataAberturaPropostas": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.93,
+          "critico": true,
+          "numerico": true
+        },
+        "dataSessao": {
+          "rotuloPresente": false,
+          "extraidoCorreto": false,
+          "confianca": 0,
+          "critico": true,
+          "numerico": true
+        },
+        "habilitacao": {
+          "juridica": [],
+          "fiscal": [],
+          "tecnica": [],
+          "economica": []
+        }
       }
     },
     {
-      "id": "gs-006", "modalidade": "Dispensa", "formato": "nativo", "adversarial": false,
+      "id": "gs-006",
+      "modalidade": "Dispensa",
+      "formato": "nativo",
+      "adversarial": false,
       "campos": {
-        "objeto":                { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.94, "critico": true, "numerico": false },
-        "valorEstimado":         { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.93, "critico": true, "numerico": true  },
-        "dataAberturaPropostas": { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.92, "critico": true, "numerico": true  }
+        "objeto": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.94,
+          "critico": true,
+          "numerico": false
+        },
+        "valorEstimado": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.93,
+          "critico": true,
+          "numerico": true
+        },
+        "dataAberturaPropostas": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.92,
+          "critico": true,
+          "numerico": true
+        },
+        "dataSessao": {
+          "rotuloPresente": false,
+          "extraidoCorreto": false,
+          "confianca": 0,
+          "critico": true,
+          "numerico": true
+        },
+        "habilitacao": {
+          "juridica": [],
+          "fiscal": [],
+          "tecnica": [],
+          "economica": []
+        }
       }
     },
     {
-      "id": "gs-007", "modalidade": "Dispensa", "formato": "nativo", "adversarial": false,
+      "id": "gs-007",
+      "modalidade": "Dispensa",
+      "formato": "nativo",
+      "adversarial": false,
       "campos": {
-        "objeto":                { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.93, "critico": true, "numerico": false },
-        "valorEstimado":         { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.92, "critico": true, "numerico": true  },
-        "dataAberturaPropostas": { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.91, "critico": true, "numerico": true  }
+        "objeto": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.93,
+          "critico": true,
+          "numerico": false
+        },
+        "valorEstimado": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.92,
+          "critico": true,
+          "numerico": true
+        },
+        "dataAberturaPropostas": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.91,
+          "critico": true,
+          "numerico": true
+        },
+        "dataSessao": {
+          "rotuloPresente": false,
+          "extraidoCorreto": false,
+          "confianca": 0,
+          "critico": true,
+          "numerico": true
+        },
+        "habilitacao": {
+          "juridica": [],
+          "fiscal": [],
+          "tecnica": [],
+          "economica": []
+        }
       }
     },
     {
-      "id": "gs-008", "modalidade": "Inexigibilidade", "formato": "nativo", "adversarial": false,
+      "id": "gs-008",
+      "modalidade": "Inexigibilidade",
+      "formato": "nativo",
+      "adversarial": false,
       "campos": {
-        "objeto":                { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.92, "critico": true, "numerico": false },
-        "valorEstimado":         { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.91, "critico": true, "numerico": true  },
-        "dataAberturaPropostas": { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.90, "critico": true, "numerico": true  }
+        "objeto": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.92,
+          "critico": true,
+          "numerico": false
+        },
+        "valorEstimado": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.91,
+          "critico": true,
+          "numerico": true
+        },
+        "dataAberturaPropostas": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.9,
+          "critico": true,
+          "numerico": true
+        },
+        "dataSessao": {
+          "rotuloPresente": false,
+          "extraidoCorreto": false,
+          "confianca": 0,
+          "critico": true,
+          "numerico": true
+        },
+        "habilitacao": {
+          "juridica": [],
+          "fiscal": [],
+          "tecnica": [],
+          "economica": []
+        }
       }
     },
     {
-      "id": "gs-009", "modalidade": "Inexigibilidade", "formato": "nativo", "adversarial": false,
+      "id": "gs-009",
+      "modalidade": "Inexigibilidade",
+      "formato": "nativo",
+      "adversarial": false,
       "campos": {
-        "objeto":                { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.91, "critico": true, "numerico": false },
-        "valorEstimado":         { "rotuloPresente": false, "extraidoCorreto": true,  "confianca": 0.85, "critico": true, "numerico": true  },
-        "dataAberturaPropostas": { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.89, "critico": true, "numerico": true  }
+        "objeto": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.91,
+          "critico": true,
+          "numerico": false
+        },
+        "valorEstimado": {
+          "rotuloPresente": false,
+          "extraidoCorreto": true,
+          "confianca": 0.85,
+          "critico": true,
+          "numerico": true
+        },
+        "dataAberturaPropostas": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.89,
+          "critico": true,
+          "numerico": true
+        },
+        "dataSessao": {
+          "rotuloPresente": false,
+          "extraidoCorreto": false,
+          "confianca": 0,
+          "critico": true,
+          "numerico": true
+        },
+        "habilitacao": {
+          "juridica": [],
+          "fiscal": [],
+          "tecnica": [],
+          "economica": []
+        }
       }
     },
     {
-      "id": "gs-010", "modalidade": "PregaoEletronico", "formato": "nativo", "adversarial": false,
+      "id": "gs-010",
+      "modalidade": "PregaoEletronico",
+      "formato": "nativo",
+      "adversarial": false,
       "campos": {
-        "objeto":                { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.90, "critico": true, "numerico": false },
-        "valorEstimado":         { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.89, "critico": true, "numerico": true  },
-        "dataAberturaPropostas": { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.88, "critico": true, "numerico": true  }
+        "objeto": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.9,
+          "critico": true,
+          "numerico": false
+        },
+        "valorEstimado": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.89,
+          "critico": true,
+          "numerico": true
+        },
+        "dataAberturaPropostas": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.88,
+          "critico": true,
+          "numerico": true
+        },
+        "dataSessao": {
+          "rotuloPresente": false,
+          "extraidoCorreto": false,
+          "confianca": 0,
+          "critico": true,
+          "numerico": true
+        },
+        "habilitacao": {
+          "juridica": [],
+          "fiscal": [],
+          "tecnica": [],
+          "economica": []
+        }
       }
     },
     {
-      "id": "gs-011", "modalidade": "PregaoEletronico", "formato": "nativo", "adversarial": false,
+      "id": "gs-011",
+      "modalidade": "PregaoEletronico",
+      "formato": "nativo",
+      "adversarial": false,
       "campos": {
-        "objeto":                { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.89, "critico": true, "numerico": false },
-        "valorEstimado":         { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.88, "critico": true, "numerico": true  },
-        "dataAberturaPropostas": { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.87, "critico": true, "numerico": true  }
+        "objeto": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.89,
+          "critico": true,
+          "numerico": false
+        },
+        "valorEstimado": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.88,
+          "critico": true,
+          "numerico": true
+        },
+        "dataAberturaPropostas": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.87,
+          "critico": true,
+          "numerico": true
+        },
+        "dataSessao": {
+          "rotuloPresente": false,
+          "extraidoCorreto": false,
+          "confianca": 0,
+          "critico": true,
+          "numerico": true
+        },
+        "habilitacao": {
+          "juridica": [],
+          "fiscal": [],
+          "tecnica": [],
+          "economica": []
+        }
       }
     },
     {
-      "id": "gs-012", "modalidade": "Concorrencia", "formato": "nativo", "adversarial": false,
+      "id": "gs-012",
+      "modalidade": "Concorrencia",
+      "formato": "nativo",
+      "adversarial": false,
       "campos": {
-        "objeto":                { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.88, "critico": true, "numerico": false },
-        "valorEstimado":         { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.87, "critico": true, "numerico": true  },
-        "dataAberturaPropostas": { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.86, "critico": true, "numerico": true  }
+        "objeto": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.88,
+          "critico": true,
+          "numerico": false
+        },
+        "valorEstimado": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.87,
+          "critico": true,
+          "numerico": true
+        },
+        "dataAberturaPropostas": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.86,
+          "critico": true,
+          "numerico": true
+        },
+        "dataSessao": {
+          "rotuloPresente": false,
+          "extraidoCorreto": false,
+          "confianca": 0,
+          "critico": true,
+          "numerico": true
+        },
+        "habilitacao": {
+          "juridica": [],
+          "fiscal": [],
+          "tecnica": [
+            {
+              "rotuloPresente": true,
+              "extraidoCorreto": true,
+              "confianca": 0.88,
+              "critico": true,
+              "numerico": false
+            },
+            {
+              "rotuloPresente": true,
+              "extraidoCorreto": true,
+              "confianca": 0.88,
+              "critico": true,
+              "numerico": false
+            },
+            {
+              "rotuloPresente": true,
+              "extraidoCorreto": true,
+              "confianca": 0.88,
+              "critico": true,
+              "numerico": false
+            },
+            {
+              "rotuloPresente": true,
+              "extraidoCorreto": true,
+              "confianca": 0.88,
+              "critico": true,
+              "numerico": false
+            },
+            {
+              "rotuloPresente": true,
+              "extraidoCorreto": true,
+              "confianca": 0.88,
+              "critico": true,
+              "numerico": false
+            },
+            {
+              "rotuloPresente": true,
+              "extraidoCorreto": true,
+              "confianca": 0.88,
+              "critico": true,
+              "numerico": false
+            },
+            {
+              "rotuloPresente": true,
+              "extraidoCorreto": true,
+              "confianca": 0.88,
+              "critico": true,
+              "numerico": false
+            },
+            {
+              "rotuloPresente": true,
+              "extraidoCorreto": true,
+              "confianca": 0.88,
+              "critico": true,
+              "numerico": false
+            },
+            {
+              "rotuloPresente": true,
+              "extraidoCorreto": false,
+              "confianca": 0.55,
+              "critico": true,
+              "numerico": false
+            }
+          ],
+          "economica": []
+        }
       }
     },
     {
-      "id": "gs-013", "modalidade": "Dispensa", "formato": "nativo", "adversarial": false,
+      "id": "gs-013",
+      "modalidade": "Dispensa",
+      "formato": "nativo",
+      "adversarial": false,
       "campos": {
-        "objeto":                { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.87, "critico": true, "numerico": false },
-        "valorEstimado":         { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.86, "critico": true, "numerico": true  },
-        "dataAberturaPropostas": { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.85, "critico": true, "numerico": true  }
+        "objeto": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.87,
+          "critico": true,
+          "numerico": false
+        },
+        "valorEstimado": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.86,
+          "critico": true,
+          "numerico": true
+        },
+        "dataAberturaPropostas": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.85,
+          "critico": true,
+          "numerico": true
+        },
+        "dataSessao": {
+          "rotuloPresente": false,
+          "extraidoCorreto": false,
+          "confianca": 0,
+          "critico": true,
+          "numerico": true
+        },
+        "habilitacao": {
+          "juridica": [],
+          "fiscal": [],
+          "tecnica": [],
+          "economica": []
+        }
       }
     },
     {
-      "id": "gs-014", "modalidade": "PregaoEletronico", "formato": "imagem", "adversarial": false,
+      "id": "gs-014",
+      "modalidade": "PregaoEletronico",
+      "formato": "imagem",
+      "adversarial": false,
       "campos": {
-        "objeto":                { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.86, "critico": true, "numerico": false },
-        "valorEstimado":         { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.85, "critico": true, "numerico": true  },
-        "dataAberturaPropostas": { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.84, "critico": true, "numerico": true  }
+        "objeto": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.86,
+          "critico": true,
+          "numerico": false
+        },
+        "valorEstimado": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.85,
+          "critico": true,
+          "numerico": true
+        },
+        "dataAberturaPropostas": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.84,
+          "critico": true,
+          "numerico": true
+        },
+        "dataSessao": {
+          "rotuloPresente": false,
+          "extraidoCorreto": false,
+          "confianca": 0,
+          "critico": true,
+          "numerico": true
+        },
+        "habilitacao": {
+          "juridica": [],
+          "fiscal": [],
+          "tecnica": [],
+          "economica": []
+        }
       }
     },
     {
-      "id": "gs-015", "modalidade": "PregaoEletronico", "formato": "imagem", "adversarial": false,
+      "id": "gs-015",
+      "modalidade": "PregaoEletronico",
+      "formato": "imagem",
+      "adversarial": false,
       "campos": {
-        "objeto":                { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.85, "critico": true, "numerico": false },
-        "valorEstimado":         { "rotuloPresente": false, "extraidoCorreto": true,  "confianca": 0.82, "critico": true, "numerico": true  },
-        "dataAberturaPropostas": { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.83, "critico": true, "numerico": true  }
+        "objeto": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.85,
+          "critico": true,
+          "numerico": false
+        },
+        "valorEstimado": {
+          "rotuloPresente": false,
+          "extraidoCorreto": true,
+          "confianca": 0.82,
+          "critico": true,
+          "numerico": true
+        },
+        "dataAberturaPropostas": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.83,
+          "critico": true,
+          "numerico": true
+        },
+        "dataSessao": {
+          "rotuloPresente": false,
+          "extraidoCorreto": false,
+          "confianca": 0,
+          "critico": true,
+          "numerico": true
+        },
+        "habilitacao": {
+          "juridica": [],
+          "fiscal": [],
+          "tecnica": [],
+          "economica": []
+        }
       }
     },
     {
-      "id": "gs-016", "modalidade": "Concorrencia", "formato": "imagem", "adversarial": false,
+      "id": "gs-016",
+      "modalidade": "Concorrencia",
+      "formato": "imagem",
+      "adversarial": false,
       "campos": {
-        "objeto":                { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.84, "critico": true, "numerico": false },
-        "valorEstimado":         { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.83, "critico": true, "numerico": true  },
-        "dataAberturaPropostas": { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.82, "critico": true, "numerico": true  }
+        "objeto": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.84,
+          "critico": true,
+          "numerico": false
+        },
+        "valorEstimado": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.83,
+          "critico": true,
+          "numerico": true
+        },
+        "dataAberturaPropostas": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.82,
+          "critico": true,
+          "numerico": true
+        },
+        "dataSessao": {
+          "rotuloPresente": false,
+          "extraidoCorreto": false,
+          "confianca": 0,
+          "critico": true,
+          "numerico": true
+        },
+        "habilitacao": {
+          "juridica": [],
+          "fiscal": [],
+          "tecnica": [],
+          "economica": []
+        }
       }
     },
     {
-      "id": "gs-017", "modalidade": "Concorrencia", "formato": "nativo", "adversarial": false,
+      "id": "gs-017",
+      "modalidade": "Concorrencia",
+      "formato": "nativo",
+      "adversarial": false,
       "campos": {
-        "objeto":                { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.83, "critico": true, "numerico": false },
-        "valorEstimado":         { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.82, "critico": true, "numerico": true  },
-        "dataAberturaPropostas": { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.81, "critico": true, "numerico": true  }
+        "objeto": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.83,
+          "critico": true,
+          "numerico": false
+        },
+        "valorEstimado": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.82,
+          "critico": true,
+          "numerico": true
+        },
+        "dataAberturaPropostas": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.81,
+          "critico": true,
+          "numerico": true
+        },
+        "dataSessao": {
+          "rotuloPresente": false,
+          "extraidoCorreto": false,
+          "confianca": 0,
+          "critico": true,
+          "numerico": true
+        },
+        "habilitacao": {
+          "juridica": [],
+          "fiscal": [],
+          "tecnica": [],
+          "economica": []
+        }
       }
     },
     {
-      "id": "gs-018", "modalidade": "Inexigibilidade", "formato": "nativo", "adversarial": false,
+      "id": "gs-018",
+      "modalidade": "Inexigibilidade",
+      "formato": "nativo",
+      "adversarial": false,
       "campos": {
-        "objeto":                { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.82, "critico": true, "numerico": false },
-        "valorEstimado":         { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.81, "critico": true, "numerico": true  },
-        "dataAberturaPropostas": { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.80, "critico": true, "numerico": true  }
+        "objeto": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.82,
+          "critico": true,
+          "numerico": false
+        },
+        "valorEstimado": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.81,
+          "critico": true,
+          "numerico": true
+        },
+        "dataAberturaPropostas": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.8,
+          "critico": true,
+          "numerico": true
+        },
+        "dataSessao": {
+          "rotuloPresente": false,
+          "extraidoCorreto": false,
+          "confianca": 0,
+          "critico": true,
+          "numerico": true
+        },
+        "habilitacao": {
+          "juridica": [],
+          "fiscal": [],
+          "tecnica": [],
+          "economica": []
+        }
       }
     },
     {
-      "id": "gs-019", "modalidade": "PregaoEletronico", "formato": "nativo", "adversarial": false,
+      "id": "gs-019",
+      "modalidade": "PregaoEletronico",
+      "formato": "nativo",
+      "adversarial": false,
       "campos": {
-        "objeto":                { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.81, "critico": true, "numerico": false },
-        "valorEstimado":         { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.80, "critico": true, "numerico": true  },
-        "dataAberturaPropostas": { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.79, "critico": true, "numerico": true  }
+        "objeto": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.81,
+          "critico": true,
+          "numerico": false
+        },
+        "valorEstimado": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.8,
+          "critico": true,
+          "numerico": true
+        },
+        "dataAberturaPropostas": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.79,
+          "critico": true,
+          "numerico": true
+        },
+        "dataSessao": {
+          "rotuloPresente": false,
+          "extraidoCorreto": false,
+          "confianca": 0,
+          "critico": true,
+          "numerico": true
+        },
+        "habilitacao": {
+          "juridica": [],
+          "fiscal": [],
+          "tecnica": [],
+          "economica": []
+        }
       }
     },
     {
-      "id": "gs-020", "modalidade": "Dispensa", "formato": "nativo", "adversarial": false,
+      "id": "gs-020",
+      "modalidade": "Dispensa",
+      "formato": "nativo",
+      "adversarial": false,
       "campos": {
-        "objeto":                { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.80, "critico": true, "numerico": false },
-        "valorEstimado":         { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.79, "critico": true, "numerico": true  },
-        "dataAberturaPropostas": { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.78, "critico": true, "numerico": true  }
+        "objeto": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.8,
+          "critico": true,
+          "numerico": false
+        },
+        "valorEstimado": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.79,
+          "critico": true,
+          "numerico": true
+        },
+        "dataAberturaPropostas": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.78,
+          "critico": true,
+          "numerico": true
+        },
+        "dataSessao": {
+          "rotuloPresente": false,
+          "extraidoCorreto": false,
+          "confianca": 0,
+          "critico": true,
+          "numerico": true
+        },
+        "habilitacao": {
+          "juridica": [],
+          "fiscal": [],
+          "tecnica": [],
+          "economica": []
+        }
       }
     },
     {
-      "id": "gs-021", "modalidade": "PregaoEletronico", "formato": "imagem", "adversarial": false,
+      "id": "gs-021",
+      "modalidade": "PregaoEletronico",
+      "formato": "imagem",
+      "adversarial": false,
       "campos": {
-        "objeto":                { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.79, "critico": true, "numerico": false },
-        "valorEstimado":         { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.78, "critico": true, "numerico": true  },
-        "dataAberturaPropostas": { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.77, "critico": true, "numerico": true  }
+        "objeto": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.79,
+          "critico": true,
+          "numerico": false
+        },
+        "valorEstimado": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.78,
+          "critico": true,
+          "numerico": true
+        },
+        "dataAberturaPropostas": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.77,
+          "critico": true,
+          "numerico": true
+        },
+        "dataSessao": {
+          "rotuloPresente": false,
+          "extraidoCorreto": false,
+          "confianca": 0,
+          "critico": true,
+          "numerico": true
+        },
+        "habilitacao": {
+          "juridica": [],
+          "fiscal": [],
+          "tecnica": [],
+          "economica": []
+        }
       }
     },
     {
-      "id": "gs-022", "modalidade": "Concorrencia", "formato": "nativo", "adversarial": false,
+      "id": "gs-022",
+      "modalidade": "Concorrencia",
+      "formato": "nativo",
+      "adversarial": false,
       "campos": {
-        "objeto":                { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.78, "critico": true, "numerico": false },
-        "valorEstimado":         { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.77, "critico": true, "numerico": true  },
-        "dataAberturaPropostas": { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.76, "critico": true, "numerico": true  }
+        "objeto": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.78,
+          "critico": true,
+          "numerico": false
+        },
+        "valorEstimado": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.77,
+          "critico": true,
+          "numerico": true
+        },
+        "dataAberturaPropostas": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.76,
+          "critico": true,
+          "numerico": true
+        },
+        "dataSessao": {
+          "rotuloPresente": false,
+          "extraidoCorreto": false,
+          "confianca": 0,
+          "critico": true,
+          "numerico": true
+        },
+        "habilitacao": {
+          "juridica": [],
+          "fiscal": [],
+          "tecnica": [],
+          "economica": []
+        }
       }
     },
     {
-      "id": "gs-023", "modalidade": "Dispensa", "formato": "nativo", "adversarial": false,
+      "id": "gs-023",
+      "modalidade": "Dispensa",
+      "formato": "nativo",
+      "adversarial": false,
       "campos": {
-        "objeto":                { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.77, "critico": true, "numerico": false },
-        "valorEstimado":         { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.76, "critico": true, "numerico": true  },
-        "dataAberturaPropostas": { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.75, "critico": true, "numerico": true  }
+        "objeto": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.77,
+          "critico": true,
+          "numerico": false
+        },
+        "valorEstimado": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.76,
+          "critico": true,
+          "numerico": true
+        },
+        "dataAberturaPropostas": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.75,
+          "critico": true,
+          "numerico": true
+        },
+        "dataSessao": {
+          "rotuloPresente": false,
+          "extraidoCorreto": false,
+          "confianca": 0,
+          "critico": true,
+          "numerico": true
+        },
+        "habilitacao": {
+          "juridica": [],
+          "fiscal": [],
+          "tecnica": [],
+          "economica": []
+        }
       }
     },
     {
-      "id": "gs-024", "modalidade": "PregaoEletronico", "formato": "nativo", "adversarial": false,
+      "id": "gs-024",
+      "modalidade": "PregaoEletronico",
+      "formato": "nativo",
+      "adversarial": false,
       "campos": {
-        "objeto":                { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.76, "critico": true, "numerico": false },
-        "valorEstimado":         { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.75, "critico": true, "numerico": true  },
-        "dataAberturaPropostas": { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.74, "critico": true, "numerico": true  }
+        "objeto": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.76,
+          "critico": true,
+          "numerico": false
+        },
+        "valorEstimado": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.75,
+          "critico": true,
+          "numerico": true
+        },
+        "dataAberturaPropostas": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.74,
+          "critico": true,
+          "numerico": true
+        },
+        "dataSessao": {
+          "rotuloPresente": false,
+          "extraidoCorreto": false,
+          "confianca": 0,
+          "critico": true,
+          "numerico": true
+        },
+        "habilitacao": {
+          "juridica": [],
+          "fiscal": [],
+          "tecnica": [],
+          "economica": []
+        }
       }
     },
     {
-      "id": "gs-025", "modalidade": "Concorrencia", "formato": "misto", "adversarial": false,
+      "id": "gs-025",
+      "modalidade": "Concorrencia",
+      "formato": "misto",
+      "adversarial": false,
       "campos": {
-        "objeto":                { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.75, "critico": true, "numerico": false },
-        "valorEstimado":         { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.74, "critico": true, "numerico": true  },
-        "dataAberturaPropostas": { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.73, "critico": true, "numerico": true  }
+        "objeto": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.75,
+          "critico": true,
+          "numerico": false
+        },
+        "valorEstimado": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.74,
+          "critico": true,
+          "numerico": true
+        },
+        "dataAberturaPropostas": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.73,
+          "critico": true,
+          "numerico": true
+        },
+        "dataSessao": {
+          "rotuloPresente": false,
+          "extraidoCorreto": false,
+          "confianca": 0,
+          "critico": true,
+          "numerico": true
+        },
+        "habilitacao": {
+          "juridica": [],
+          "fiscal": [],
+          "tecnica": [],
+          "economica": []
+        }
       }
     },
     {
-      "id": "gs-026", "modalidade": "PregaoEletronico", "formato": "imagem", "adversarial": false,
+      "id": "gs-026",
+      "modalidade": "PregaoEletronico",
+      "formato": "imagem",
+      "adversarial": false,
       "campos": {
-        "objeto":                { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.74, "critico": true, "numerico": false },
-        "valorEstimado":         { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.73, "critico": true, "numerico": true  },
-        "dataAberturaPropostas": { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.72, "critico": true, "numerico": true  }
+        "objeto": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.74,
+          "critico": true,
+          "numerico": false
+        },
+        "valorEstimado": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.73,
+          "critico": true,
+          "numerico": true
+        },
+        "dataAberturaPropostas": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.72,
+          "critico": true,
+          "numerico": true
+        },
+        "dataSessao": {
+          "rotuloPresente": false,
+          "extraidoCorreto": false,
+          "confianca": 0,
+          "critico": true,
+          "numerico": true
+        },
+        "habilitacao": {
+          "juridica": [],
+          "fiscal": [],
+          "tecnica": [],
+          "economica": []
+        }
       }
     },
     {
-      "id": "gs-027", "modalidade": "Dispensa", "formato": "nativo", "adversarial": false,
+      "id": "gs-027",
+      "modalidade": "Dispensa",
+      "formato": "nativo",
+      "adversarial": false,
       "campos": {
-        "objeto":                { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.73, "critico": true, "numerico": false },
-        "valorEstimado":         { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.72, "critico": true, "numerico": true  },
-        "dataAberturaPropostas": { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.71, "critico": true, "numerico": true  }
+        "objeto": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.73,
+          "critico": true,
+          "numerico": false
+        },
+        "valorEstimado": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.72,
+          "critico": true,
+          "numerico": true
+        },
+        "dataAberturaPropostas": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.71,
+          "critico": true,
+          "numerico": true
+        },
+        "dataSessao": {
+          "rotuloPresente": false,
+          "extraidoCorreto": false,
+          "confianca": 0,
+          "critico": true,
+          "numerico": true
+        },
+        "habilitacao": {
+          "juridica": [],
+          "fiscal": [],
+          "tecnica": [],
+          "economica": []
+        }
       }
     },
     {
-      "id": "gs-028", "modalidade": "PregaoEletronico", "formato": "nativo", "adversarial": false,
+      "id": "gs-028",
+      "modalidade": "PregaoEletronico",
+      "formato": "nativo",
+      "adversarial": false,
       "campos": {
-        "objeto":                { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.70, "critico": true, "numerico": false },
-        "valorEstimado":         { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.70, "critico": true, "numerico": true  },
-        "dataAberturaPropostas": { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.70, "critico": true, "numerico": true  }
+        "objeto": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.7,
+          "critico": true,
+          "numerico": false
+        },
+        "valorEstimado": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.7,
+          "critico": true,
+          "numerico": true
+        },
+        "dataAberturaPropostas": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.7,
+          "critico": true,
+          "numerico": true
+        },
+        "dataSessao": {
+          "rotuloPresente": false,
+          "extraidoCorreto": false,
+          "confianca": 0,
+          "critico": true,
+          "numerico": true
+        },
+        "habilitacao": {
+          "juridica": [],
+          "fiscal": [],
+          "tecnica": [],
+          "economica": []
+        }
       }
     },
     {
-      "id": "gs-029", "modalidade": "PregaoEletronico", "formato": "nativo", "adversarial": true,
+      "id": "gs-029",
+      "modalidade": "PregaoEletronico",
+      "formato": "nativo",
+      "adversarial": true,
       "campos": {
-        "objeto":                { "rotuloPresente": true,  "extraidoCorreto": false, "confianca": 0.58, "critico": true, "numerico": false },
-        "valorEstimado":         { "rotuloPresente": true,  "extraidoCorreto": false, "confianca": 0.62, "critico": true, "numerico": true  },
-        "dataAberturaPropostas": { "rotuloPresente": true,  "extraidoCorreto": false, "confianca": 0.48, "critico": true, "numerico": true  }
+        "objeto": {
+          "rotuloPresente": true,
+          "extraidoCorreto": false,
+          "confianca": 0.58,
+          "critico": true,
+          "numerico": false
+        },
+        "valorEstimado": {
+          "rotuloPresente": true,
+          "extraidoCorreto": false,
+          "confianca": 0.62,
+          "critico": true,
+          "numerico": true
+        },
+        "dataAberturaPropostas": {
+          "rotuloPresente": true,
+          "extraidoCorreto": false,
+          "confianca": 0.48,
+          "critico": true,
+          "numerico": true
+        },
+        "dataSessao": {
+          "rotuloPresente": false,
+          "extraidoCorreto": false,
+          "confianca": 0,
+          "critico": true,
+          "numerico": true
+        },
+        "habilitacao": {
+          "juridica": [],
+          "fiscal": [],
+          "tecnica": [],
+          "economica": []
+        }
       }
     },
     {
-      "id": "gs-030", "modalidade": "Inexigibilidade", "formato": "nativo", "adversarial": false,
+      "id": "gs-030",
+      "modalidade": "Inexigibilidade",
+      "formato": "nativo",
+      "adversarial": false,
       "campos": {
-        "objeto":                { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.90, "critico": true, "numerico": false },
-        "valorEstimado":         { "rotuloPresente": true,  "extraidoCorreto": false, "confianca": 0.65, "critico": true, "numerico": true  },
-        "dataAberturaPropostas": { "rotuloPresente": true,  "extraidoCorreto": true,  "confianca": 0.85, "critico": true, "numerico": true  }
+        "objeto": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.9,
+          "critico": true,
+          "numerico": false
+        },
+        "valorEstimado": {
+          "rotuloPresente": true,
+          "extraidoCorreto": false,
+          "confianca": 0.65,
+          "critico": true,
+          "numerico": true
+        },
+        "dataAberturaPropostas": {
+          "rotuloPresente": true,
+          "extraidoCorreto": true,
+          "confianca": 0.85,
+          "critico": true,
+          "numerico": true
+        },
+        "dataSessao": {
+          "rotuloPresente": false,
+          "extraidoCorreto": false,
+          "confianca": 0,
+          "critico": true,
+          "numerico": true
+        },
+        "habilitacao": {
+          "juridica": [],
+          "fiscal": [],
+          "tecnica": [],
+          "economica": []
+        }
       }
     }
   ]

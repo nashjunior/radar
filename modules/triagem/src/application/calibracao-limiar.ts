@@ -22,6 +22,22 @@ export interface CampoRotulado {
   numerico: boolean;
 }
 
+/**
+ * `habilitação` não é escalar (docs/10 §5.2): cada categoria é uma LISTA de N requisitos
+ * exigidos pelo edital. Cada requisito rotulado vira seu próprio `CampoRotulado` — mesma forma
+ * usada pelos campos escalares — para que varreLimiar()/calibrar() somem hits/total requisito a
+ * requisito, expressando recall PARCIAL sobre a lista (ex.: 7 de 9 corretos) sem precisar de
+ * agregação especial. `rotuloPresente` é sempre `true` aqui: um requisito só entra no array
+ * quando algum anotador consegue ancorá-lo no texto-fonte (docs/10 §5.4 regra 4); o que nenhum
+ * anotador ancora simplesmente não vira item da lista, já excluído do denominador do recall.
+ */
+export interface CamposHabilitacao {
+  juridica: CampoRotulado[];
+  fiscal: CampoRotulado[];
+  tecnica: CampoRotulado[];
+  economica: CampoRotulado[];
+}
+
 export interface EditalRotulado {
   id: string;
   modalidade: string;
@@ -31,6 +47,9 @@ export interface EditalRotulado {
     objeto: CampoRotulado;
     valorEstimado: CampoRotulado;
     dataAberturaPropostas: CampoRotulado;
+    /** Data da sessão pública — is_critico: sim em docs/10 §5.2, distinto do prazo de envio de propostas */
+    dataSessao: CampoRotulado;
+    habilitacao: CamposHabilitacao;
   };
 }
 
@@ -68,6 +87,23 @@ export interface ResultadoCalibracao {
 }
 
 /**
+ * Achata todos os campos atômicos de um edital rotulado para fins de recall: os escalares
+ * (objeto, valorEstimado, ...) e cada requisito de cada categoria de habilitação, um a um —
+ * é o que faz varreLimiar() somar recall PARCIAL sobre a lista de habilitação junto com o
+ * recall dos campos escalares, sem tratamento especial.
+ */
+function camposAtomicos(edital: EditalRotulado): CampoRotulado[] {
+  const { habilitacao, ...escalares } = edital.campos;
+  return [
+    ...Object.values(escalares),
+    ...habilitacao.juridica,
+    ...habilitacao.fiscal,
+    ...habilitacao.tecnica,
+    ...habilitacao.economica,
+  ];
+}
+
+/**
  * Varre limiares de 0,50 a 1,00 (passo = 0,01) e calcula métricas por ponto.
  * Usa aritmética inteira para evitar erro de ponto flutuante.
  */
@@ -82,8 +118,7 @@ export function varreLimiar(editais: EditalRotulado[]): PontoLimiar[] {
     let alucinacoesNumericas = 0;
 
     for (const edital of editais) {
-      const campos = Object.values(edital.campos) as CampoRotulado[];
-      for (const campo of campos) {
+      for (const campo of camposAtomicos(edital)) {
         if (!campo.critico || !campo.rotuloPresente) continue;
         total++;
         if (campo.confianca >= limiar) {

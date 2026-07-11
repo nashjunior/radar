@@ -29,6 +29,10 @@ function campoAusente(numerico = false): EditalRotulado['campos']['objeto'] {
   return { rotuloPresente: false, extraidoCorreto: false, confianca: 0, critico: true, numerico };
 }
 
+function habilitacaoVazia(): EditalRotulado['campos']['habilitacao'] {
+  return { juridica: [], fiscal: [], tecnica: [], economica: [] };
+}
+
 function edital(
   id: string,
   objConf: number,
@@ -46,8 +50,15 @@ function edital(
       valorEstimado:
         valConf === null ? campoAusente(true) : valCorreto ? campoCorreto(valConf, true) : campoErrado(valConf, true),
       dataAberturaPropostas: dataCorreto ? campoCorreto(dataConf, true) : campoErrado(dataConf, true),
+      // não rotulado nestes casos de teste — excluído do denominador (rotuloPresente: false)
+      dataSessao: campoAusente(true),
+      habilitacao: habilitacaoVazia(),
     },
   };
+}
+
+function requisito(confianca: number, correto = true): EditalRotulado['campos']['objeto'] {
+  return { rotuloPresente: true, extraidoCorreto: correto, confianca, critico: true, numerico: false };
 }
 
 // ─── testes ──────────────────────────────────────────────────────────────────
@@ -104,6 +115,48 @@ describe('varreLimiar — mecânica da varredura', () => {
     const editais = [edital('e1', 0.9, 0.9, 0.9, false, true, true)]; // objeto errado (textual)
     const ponto80 = varreLimiar(editais).find((p) => Math.round(p.limiar * 100) === 80)!;
     expect(ponto80.alucinacoesNumericas).toBe(0);
+  });
+});
+
+describe('varreLimiar — recall parcial sobre lista de habilitação (RAD-218)', () => {
+  it('7 de 9 requisitos técnicos corretos contam como 7 hits em 9 no total, não boolean 0/1', () => {
+    const e = edital('e1', 0.9, 0.9, 0.9);
+    e.campos.habilitacao.tecnica = [
+      ...Array.from({ length: 7 }, () => requisito(0.9, true)),
+      ...Array.from({ length: 2 }, () => requisito(0.9, false)),
+    ];
+    const ponto80 = varreLimiar([e]).find((p) => Math.round(p.limiar * 100) === 80)!;
+    expect(ponto80.total).toBe(3 + 9); // objeto+valor+data + 9 requisitos técnicos
+    expect(ponto80.hits).toBe(3 + 7); // 3 escalares corretos + 7 requisitos corretos
+  });
+
+  it('requisito de habilitação não-crítico (economica) não entra no denominador do recall', () => {
+    const e = edital('e1', 0.9, 0.9, 0.9);
+    e.campos.habilitacao.economica = [{ ...requisito(0.9, false), critico: false }];
+    const ponto80 = varreLimiar([e]).find((p) => Math.round(p.limiar * 100) === 80)!;
+    expect(ponto80.total).toBe(3); // requisito não-crítico excluído
+  });
+
+  it('categoria de habilitação vazia (edital sem exigências daquela categoria) não afeta o total', () => {
+    const e = edital('e1', 0.9, 0.9, 0.9); // habilitação vazia por padrão do helper
+    const pontos = varreLimiar([e]);
+    expect(pontos[0]!.total).toBe(3);
+  });
+
+  it('requisito de habilitação errado e crítico não conta como alucinação numérica (lista é textual)', () => {
+    const e = edital('e1', 0.9, 0.9, 0.9);
+    e.campos.habilitacao.juridica = [requisito(0.9, false)];
+    const ponto80 = varreLimiar([e]).find((p) => Math.round(p.limiar * 100) === 80)!;
+    expect(ponto80.alucinacoesNumericas).toBe(0);
+  });
+
+  it('duas categorias de habilitação somam requisitos independentemente no recall agregado', () => {
+    const e = edital('e1', 0.9, 0.9, 0.9);
+    e.campos.habilitacao.juridica = [requisito(0.9, true), requisito(0.9, true)];
+    e.campos.habilitacao.fiscal = [requisito(0.9, true), requisito(0.9, false)];
+    const ponto80 = varreLimiar([e]).find((p) => Math.round(p.limiar * 100) === 80)!;
+    expect(ponto80.total).toBe(3 + 4);
+    expect(ponto80.hits).toBe(3 + 3);
   });
 });
 

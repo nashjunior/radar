@@ -47,7 +47,7 @@ O **valor calibrado** é a decisão de P-19 (RAD-139, 2026-07-08):
 |-----------|:--------------:|-----------|--------|
 | Limiar da confiança agregada (gate de release dos campos críticos) | **0,70** | `LIMIAR_CONFIANCA_PADRAO` em `@radar/triagem` (fonte única; a composição-root injeta em `TriarEditalInput.limiarConfianca`) | Calibrado — P-19 fechado |
 
-- **Resultado da calibração (A16 §2.4 · RAD-139).** Protocolo executado com gold set sintético de 30 editais (`scripts/calibrar-limiar-gold-set.ts`): recall@0,70 = **95,4%** ✓, recall@0,71 = 91,9% ✗ — 0,70 é o maior corte que mantém recall ≥ 95%. Zero alucinação numérica verificada @0,70 (todos os erros numéricos tinham confiança < 0,70). Sem corte separado por classe numérica necessário.
+- **Resultado da calibração (A16 §2.4 · RAD-139).** Protocolo executado com gold set sintético de 30 editais (`scripts/calibrar-limiar-gold-set.ts`): recall@0,70 = **95,1%** ✓, recall@0,71 = 92,2% ✗ — 0,70 é o maior corte que mantém recall ≥ 95%. Zero alucinação numérica verificada @0,70 (todos os erros numéricos tinham confiança < 0,70). Sem corte separado por classe numérica necessário. *(Números atualizados em RAD-218 ao estender o fixture sintético com `habilitação`/`dataSessao` — §5.2; a conclusão de P-19 não muda, só o denominador do recall.)*
 - **Recalibração com gold set real.** Quando P-18 (gold set rotulado, ≥ 50 editais reais) e P-84/P-85 (protocolo de rotulagem + framework de eval) estiverem resolvidos, rodar `pnpm --filter @radar/triagem calibrar:limiar [gold-set-rotulado.json]` para confirmar ou ajustar o número. A estrutura (parâmetro injetado) não muda — só o valor aqui e no código-fonte.
 
 ## 5. Barra de qualidade e avaliação (eval)
@@ -90,20 +90,22 @@ Distribuição mínima `[A VALIDAR — confirmar com especialista de domínio]`:
 
 Cada edital no gold set carrega um rótulo estruturado. O campo `is_critico` define onde o **recall ≥ 95% é regra dura** (gate de release, documento 07, §6); campos não-críticos seguem a meta de precisão geral (≥ 90%).
 
+Implementado no tipo `EditalRotulado` (`modules/triagem/src/application/calibracao-limiar.ts`, RAD-218): `objeto`, `valor_estimado`, `data_abertura_propostas`, `data_sessao` e as quatro categorias de `habilitacao`. **`habilitação` não é escalar** — cada categoria é uma **lista de `CampoRotulado`** (um por requisito, não `string[]` de descrições soltas); `varreLimiar()`/`calibrar()` somam hits/total requisito a requisito, o que expressa **recall parcial** sobre a lista (ex.: 7 de 9 requisitos técnicos corretos) em vez de um booleano por categoria. `modalidade_codigo`, `prazo_vigencia_meses`, `penalidades` e `fontes` ainda não têm campo dedicado no tipo — não bloqueiam P-18 (só `modalidade_codigo` é `is_critico`, e a modalidade já existe como metadado de estratificação em `EditalRotulado.modalidade`, apenas sem recall/confiança de extração associados; ficou de fora do escopo de RAD-218 por não ter sido apontado na análise de RAD-202).
+
 | Campo | Tipo | `is_critico` | Notas |
 |-------|------|:------------:|-------|
 | `objeto` | `string` | sim | Descrição literal do edital |
-| `modalidade_codigo` | `string` | sim | Código PNCP (FK para tabela de domínio, arquitetura/03, §4) |
+| `modalidade_codigo` | `string` | sim | Código PNCP (FK para tabela de domínio, arquitetura/03, §4). **Não implementado como `CampoRotulado`** — ver nota acima |
 | `valor_estimado` | `number \| null` | sim | `null` se sigiloso ou omitido |
 | `data_abertura_propostas` | `ISO date` | sim | Prazo para envio de propostas |
 | `data_sessao` | `ISO date \| null` | sim | Data da sessão pública |
-| `prazo_vigencia_meses` | `number \| null` | não | Do contrato, se mencionado |
-| `habilitacao.juridica` | `string[]` | sim | Lista de exigências |
-| `habilitacao.fiscal` | `string[]` | sim | |
-| `habilitacao.tecnica` | `string[]` | sim | |
-| `habilitacao.economica` | `string[]` | não | |
-| `penalidades` | `string[]` | não | Percentuais ou condições |
-| `fontes` | `Record<campo, {pagina, secao}>` | — | Origem de cada campo no PDF |
+| `prazo_vigencia_meses` | `number \| null` | não | Do contrato, se mencionado. Não implementado (não-crítico) |
+| `habilitacao.juridica` | `CampoRotulado[]` | sim | Um item por requisito jurídico exigido |
+| `habilitacao.fiscal` | `CampoRotulado[]` | sim | Um item por requisito fiscal exigido |
+| `habilitacao.tecnica` | `CampoRotulado[]` | sim | Um item por requisito técnico exigido |
+| `habilitacao.economica` | `CampoRotulado[]` | não | Um item por requisito econômico exigido |
+| `penalidades` | `string[]` | não | Percentuais ou condições. Não implementado (não-crítico) |
+| `fontes` | `Record<campo, {pagina, secao}>` | — | Origem de cada campo no PDF. Não implementado |
 
 ### 5.3 Protocolo de avaliação
 
@@ -159,13 +161,11 @@ O desempate é **procedimental** — acontece na planilha de anotação, contra 
 
 O gold set é **um único arquivo JSON** tipado `GoldSet` (`meta` + `editais[]`), ao lado do sintético em `modules/triagem/scripts/fixtures/` — o real entra como `gold-set-rotulado-real.json` com `meta.tipo: 'real'`. O versionamento **já existe no próprio artefato** (`meta.versao`, `meta.geradoEm`): é git, não um CHANGELOG paralelo. O sintético de 30 editais **não é descartado** — continua servindo de teste do harness de calibração (P-19/RAD-139).
 
-#### Pré-condição de código: o esquema não rotula `habilitação`
+#### Pré-condição de código — resolvida (RAD-218)
 
-Este § define **quem** rotula e **como** desempata, mas a rotulagem só produz um gold set útil depois de uma correção no esquema tipado. Hoje `EditalRotulado.campos` tem exatamente três campos — `objeto`, `valorEstimado`, `dataAberturaPropostas` — enquanto **este documento (§5) define os críticos como prazo, objeto e habilitação**. `habilitação` não existe no tipo nem no fixture.
+Este § define **quem** rotula e **como** desempata; a rotulagem só produz um gold set útil com um esquema tipado correto, e esse era o bloqueio: `EditalRotulado.campos` tinha exatamente três campos — `objeto`, `valorEstimado`, `dataAberturaPropostas` — enquanto este documento (§5) define os críticos como prazo, objeto e habilitação. `habilitação` não existia no tipo nem no fixture: os 50 editais reais de P-18 mediriam recall sobre um conjunto que não inclui o campo que sustenta a aderência e o checklist — um verde falso no eval (P-85), o pior tipo: o gate passaria.
 
-Consequência, se a rotulagem começar antes do conserto: os 50 editais medem recall sobre um conjunto que **não inclui o campo que sustenta a aderência e o checklist** — o eval (P-85) reportaria "recall crítico ≥ 95% ✓" com o campo de maior valor do produto simplesmente não medido. É um verde falso, e o pior tipo: o gate passa.
-
-**Bloqueia P-18.** O esquema precisa acomodar `habilitação` (requisitos são lista, não escalar — o `CampoRotulado` de hoje é booleano por campo e não expressa recall parcial sobre N requisitos) **antes** de o primeiro edital real ser rotulado, sob pena de retrabalho nos 50. Owner: Eng.
+**Resolvido.** `EditalRotulado.campos` agora tem `dataSessao` (cobre a lacuna de "prazo" apontada — `data_sessao` é `is_critico: sim` em §5.2, distinto do prazo de envio de propostas) e `habilitacao: { juridica, fiscal, tecnica, economica }`, cada categoria uma **lista de `CampoRotulado`** — um item por requisito, não um booleano por campo — para expressar recall parcial (ex.: 7 de 9 requisitos corretos). `varreLimiar()`/`calibrar()` (`modules/triagem/src/application/calibracao-limiar.ts`) achatam escalares e itens de habilitação num único pool de campos atômicos, sem agregação especial. Fixture sintético (`gold-set-rotulado-sintetico.json`) estendido com exemplos de habilitação, incluindo um caso de recall parcial (8 de 9); `LIMIAR_CONFIANCA_PADRAO = 0,70` (P-19) confirmado com o novo denominador (recall@0,70 = 95,1%, ver §4.1) — não exigiu recalibração. **P-18 desbloqueado.**
 
 ## 6. Modos de falha e fallback
 
