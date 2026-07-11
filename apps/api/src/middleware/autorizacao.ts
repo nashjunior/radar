@@ -74,10 +74,10 @@ export function criarAutorizarMiddlewareFactory(deps: AutorizacaoDeps) {
         await deps.autorizarAcesso.executar({ contexto, recurso, acao }, signal);
       } catch (err) {
         if (err instanceof AcessoNegadoError) {
-          console.warn(
-            '[API] RBAC negado',
-            redigirParaLog({ recurso, acao, tenantId: c.get('tenantId') }),
-          );
+          // tenantId NÃO vai ao log operacional/stdout (regra radar-no-critical-data-console-log,
+          // docs/05 §9): o breadcrumb é só recurso+acao. O registro ESCOPADO da negação (com
+          // tenantId) é responsabilidade do audit log access-controlled (RegistrarAuditoria, AB13).
+          console.warn('[API] RBAC negado', redigirParaLog({ recurso, acao }));
           return c.json(
             { code: 'PAPEL_NAO_AUTORIZADO', mensagem: 'Papel não autorizado para esta ação.' },
             403,
