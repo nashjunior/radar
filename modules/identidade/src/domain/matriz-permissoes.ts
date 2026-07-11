@@ -54,5 +54,5 @@ const MATRIZ: Record<Papel, Partial<Record<Recurso, readonly Acao[]>>> = {
  * Pura, sem I/O — não confirma posse do objeto (isso é AB1/P-51, camada separada).
  */
 export function podeExecutar(papel: Papel, recurso: Recurso, acao: Acao): boolean {
-  return MATRIZ[papel][recurso]?.includes(acao) ?? false;
+  return MATRIZ[papel]?.[recurso]?.includes(acao) ?? false;
 }

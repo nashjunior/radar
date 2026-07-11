@@ -127,23 +127,45 @@ Cada edital no gold set carrega um rótulo estruturado. O campo `is_critico` def
 
 A separação de papéis evita viés de confirmação: o primário não sabe o que o modelo extraiu; a revisão valida o protocolo, não a saída da IA.
 
+#### Dupla anotação e medida de concordância
+
+Anotar em duplicata os **50 editais inteiros custa caro e não paga**. A regra:
+
+- **100% dos editais** recebem anotação do primário.
+- **≥ 20% (amostra sorteada, mínimo 10 editais)** recebem também anotação independente do revisor, *às cegas* — o revisor não vê o rótulo do primário antes de fechar o seu.
+- Sobre essa amostra mede-se a **taxa de discordância por campo crítico**. Se passar de **10%**, o protocolo falhou (não o anotador): o esquema de rótulo está ambíguo → suspender a rotulagem, corrigir a definição do campo em §5.2 e **rerotular a amostra**. Desempatar caso a caso um esquema ambíguo só esconde o problema.
+
 #### Critério de desempate entre anotadores
 
-1. Comparar as anotações campo a campo antes de consultar o edital novamente.
-2. Discordâncias em campos **não-críticos**: o anotador primário prevalece, com nota de justificativa.
-3. Discordâncias em campos **críticos** (`is_critico: true`): obrigatório consultar o texto-fonte; prevalece a anotação ancorada no trecho exato (`citacao` preenchida). Se ambas tiverem citação, o árbitro decide.
-4. Qualquer campo onde nenhum anotador consegue ancorar uma citação verificável é marcado `indeterminado` e excluído do cálculo de recall para aquele edital.
+O desempate é **procedimental** — acontece na planilha de anotação, contra o texto-fonte, *antes* de virar rótulo. O artefato final (§5.2) grava só o resultado:
+
+1. Comparar as anotações campo a campo **antes** de reabrir o edital.
+2. Discordância em campo **não-crítico** (`critico: false`): prevalece o anotador primário.
+3. Discordância em campo **crítico** (`critico: true`): obrigatório reabrir o texto-fonte. Prevalece a anotação que o anotador consegue **ancorar num trecho literal** do edital. Se ambos ancoram em trechos diferentes (o edital se contradiz — é um caso-limite legítimo de §5.1), decide o **árbitro**.
+4. Campo que **nenhum** anotador consegue ancorar no texto-fonte é rotulado `rotuloPresente: false` — o campo é tratado como ausente do edital, e o `varreLimiar()` já o exclui do denominador do recall. Não se inventa um valor "provável" para não deixar a célula vazia.
+
+> A regra 4 usa o vocabulário que o esquema tipado **já tem** (`CampoRotulado.rotuloPresente`, em `modules/triagem/src/application/calibracao-limiar.ts`); não há — nem é preciso haver — um estado `indeterminado`.
 
 #### Cadência de atualização
 
 | Momento | Ação |
 |---|---|
 | **Pré-lançamento** | Rotular os ≥ 50 editais iniciais (cobertura obrigatória de §5.1) antes do Gate 4 (CI). |
-| **A cada sprint que alterar prompt ou modelo** | Re-verificar editais do eixo afetado; acrescentar ao menos 3 editais novos se recall degradar. |
-| **Trimestral** | Revisar rótulos de editais cujo formato foi atualizado pelo órgão publicador; descartar os desatualizados e repor. |
-| **Ao resolver P-93/P-94/P-95** | Rerotular os editais de cada faixa de dificuldade impactada e recalibrar o limiar (P-19). |
+| **A cada mudança de prompt, modelo ou pipeline** | O gold set roda como gate (§5.3). Se o recall cair num eixo (modalidade × formato), **acrescentar editais reais daquele eixo** até o recall voltar — a regressão diz onde o gold set é raso. Sem cota fixa: a métrica é que manda. |
+| **Trimestral** | Reamostrar contra o PNCP: descartar rótulos de editais cujo formato o órgão publicador mudou e repor mantendo a matriz de §5.1. |
+| **Ao resolver P-93/P-94/P-95** | Rerotular os editais das faixas de dificuldade impactadas e **recalibrar o limiar** (P-19, `calibrar:limiar`). |
 
-O gold set é um artefato versionado em `data/gold-set/` (um arquivo JSON por edital, conforme o esquema de §5.2). Cada edição gera uma entrada no CHANGELOG do diretório com data, responsáveis e motivo.
+#### Onde o artefato vive
+
+O gold set é **um único arquivo JSON** tipado `GoldSet` (`meta` + `editais[]`), ao lado do sintético em `modules/triagem/scripts/fixtures/` — o real entra como `gold-set-rotulado-real.json` com `meta.tipo: 'real'`. O versionamento **já existe no próprio artefato** (`meta.versao`, `meta.geradoEm`): é git, não um CHANGELOG paralelo. O sintético de 30 editais **não é descartado** — continua servindo de teste do harness de calibração (P-19/RAD-139).
+
+#### Pré-condição de código: o esquema não rotula `habilitação`
+
+Este § define **quem** rotula e **como** desempata, mas a rotulagem só produz um gold set útil depois de uma correção no esquema tipado. Hoje `EditalRotulado.campos` tem exatamente três campos — `objeto`, `valorEstimado`, `dataAberturaPropostas` — enquanto **este documento (§5) define os críticos como prazo, objeto e habilitação**. `habilitação` não existe no tipo nem no fixture.
+
+Consequência, se a rotulagem começar antes do conserto: os 50 editais medem recall sobre um conjunto que **não inclui o campo que sustenta a aderência e o checklist** — o eval (P-85) reportaria "recall crítico ≥ 95% ✓" com o campo de maior valor do produto simplesmente não medido. É um verde falso, e o pior tipo: o gate passa.
+
+**Bloqueia P-18.** O esquema precisa acomodar `habilitação` (requisitos são lista, não escalar — o `CampoRotulado` de hoje é booleano por campo e não expressa recall parcial sobre N requisitos) **antes** de o primeiro edital real ser rotulado, sob pena de retrabalho nos 50. Owner: Eng.
 
 ## 6. Modos de falha e fallback
 
