@@ -1,10 +1,10 @@
-import { Edital } from '../../domain/entities/edital.js';
 import {
   FonteIndisponivelError,
   SchemaDriftError,
 } from '../../domain/errors/index.js';
 import type { IngestaoResumoDTO } from '../dtos.js';
-import { EditalFaseMudou, EditalIngerido } from '../events.js';
+import { paraEventoEditalIngerido, paraEventoFaseMudou } from '../mappers.js';
+import { NormalizarEPersistirEditalService } from '../services/normalizar-e-persistir-edital-service.js';
 import type {
   EditalRepository,
   EventPublisher,
@@ -31,13 +31,17 @@ export interface IngerirAtualizacoesInput {
  * para atingir frescor p95 ≤ 30 min sem furar rate-limit (ver PncpPollingScheduler).
  */
 export class IngerirAtualizacoesUseCase {
+  private readonly normalizarEPersistir: NormalizarEPersistirEditalService;
+
   constructor(
     private readonly pncpGateway: PncpGateway,
     private readonly editais: EditalRepository,
-    private readonly proveniencias: ProvenienciaRepository,
+    proveniencias: ProvenienciaRepository,
     private readonly eventos: EventPublisher,
     private readonly ids: IdProvider,
-  ) {}
+  ) {
+    this.normalizarEPersistir = new NormalizarEPersistirEditalService(editais, proveniencias);
+  }
 
   async executar(
     input: IngerirAtualizacoesInput,
@@ -59,62 +63,15 @@ export class IngerirAtualizacoesUseCase {
 
           const id = existente?.id ?? this.ids.gerar();
 
-          const edital = Edital.criar({
-            id,
-            ...dado,
-            proveniencia: {
-              fonte: 'PNCP',
-              baseLegal: 'Lei 14.133/2021, art. 174',
-              coletadoEm: new Date(),
-            },
-          });
-
-          await this.editais.upsertPorNumeroControle(edital, signal);
-
-          await this.proveniencias.registrar(
-            {
-              editalId: edital.id,
-              fonte: 'PNCP',
-              baseLegal: 'Lei 14.133/2021, art. 174',
-              coletadoEm: edital.proveniencia.coletadoEm,
-            },
-            signal,
-          );
+          const edital = await this.normalizarEPersistir.persistir(id, dado, signal);
 
           if (existente !== null && dado.faseAtual !== existente.faseAtual) {
-            await this.eventos.publicar(
-              new EditalFaseMudou({
-                editalId: edital.id,
-                numeroControlePncp: edital.numeroControlePncp.valor,
-                faseAnterior: existente.faseAtual,
-                faseAtual: edital.faseAtual,
-                dataAtualizacao: edital.dataAtualizacao,
-              }),
-              signal,
-            );
+            await this.eventos.publicar(paraEventoFaseMudou(existente, edital), signal);
             atualizados++;
           } else if (existente !== null) {
             atualizados++;
           } else {
-            await this.eventos.publicar(
-              new EditalIngerido({
-                editalId: edital.id,
-                numeroControlePncp: edital.numeroControlePncp.valor,
-                modalidadeCodigo: edital.modalidade.codigo,
-                faseAtual: edital.faseAtual,
-                dataAtualizacao: edital.dataAtualizacao,
-                objeto: edital.objeto,
-                orgaoUf: edital.orgao.uf,
-                valorEstimado: edital.valorEstimado?.valor ?? null,
-                dataPublicacao: edital.dataPublicacao,
-                proveniencia: {
-                  fonte: edital.proveniencia.fonte,
-                  baseLegal: edital.proveniencia.baseLegal,
-                  dataColeta: edital.proveniencia.coletadoEm.toISOString(),
-                },
-              }),
-              signal,
-            );
+            await this.eventos.publicar(paraEventoEditalIngerido(edital), signal);
             ingeridos++;
           }
         } catch (err) {
