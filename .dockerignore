@@ -16,11 +16,8 @@ infra
 tests
 **/coverage
 
-# ⚠️ `__tests__` NÃO entra nesta lista, por mais tentador que seja: nenhum módulo declara
-# `@types/node`, e o global `AbortSignal` (convenção de operação abortável do projeto) só
-# resolve porque o `vitest` — devDependency importada pelos testes — arrasta esses tipos.
-# Cortar os testes do contexto quebra o `tsc` de `@radar/identidade` e irmãos. O conserto de
-# verdade é `@types/node` nas devDependencies de cada módulo (follow-up de código, não de IaC).
+**/__tests__
+**/*.test.ts
 
 .env
 .env.*
