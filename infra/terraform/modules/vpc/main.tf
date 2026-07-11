@@ -47,7 +47,10 @@ resource "aws_subnet" "public" {
   cidr_block        = cidrsubnet(var.network_cidr, 8, count.index)
   availability_zone = var.availability_zones[count.index]
 
-  map_public_ip_on_launch = true
+  # false: nada aqui depende de auto-assign na ENI. NAT ganha IP público via `aws_eip`
+  # (associação explícita, não este atributo) e o ALB (`edge`) gerencia sua própria face
+  # pública como serviço gerenciado — nenhum EC2/task cru sobe nesta sub-rede (Trivy AWS-0164).
+  map_public_ip_on_launch = false
   tags                    = merge(local.tags, { Name = "${var.project}-${var.env}-public-${count.index}" })
 }
 

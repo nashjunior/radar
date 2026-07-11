@@ -39,6 +39,7 @@ module "database" {
   project            = "radar"
   env                = "prod"
   network_id         = module.vpc.network_id
+  network_cidr       = module.vpc.network_cidr
   private_subnet_ids = module.vpc.private_subnet_ids
   db_username        = var.db_username
   db_password        = var.db_password

@@ -268,9 +268,12 @@ resource "aws_vpc_security_group_egress_rule" "tasks_pooler" {
   description                  = "Postgres via RDS Proxy (P-41)"
 }
 
-# ⚠️ 443 aberto espelha o SG do módulo `serverless` (mesma postura, mesma dívida). O egress
-# allowlist de SSRF é P-58 e está ABERTO: fechar aqui sozinho quebraria ECR/Secrets/PNCP/LLM
-# sem uma allowlist decidida. Quando P-58 fechar, os DOIS SGs apertam juntos.
+# ⚠️ 443 aberto espelha o SG do módulo `serverless` (mesma postura, mesma dívida). P-58
+# está RESOLVIDO (RAD-159/RAD-199) mas com a rede DELIBERADAMENTE aberta: quem sustenta a
+# allowlist é o `SsrfGuard` no código (destinos são públicos — PNCP/LLM sem PrivateLink — e
+# um egress firewall de rede ficou como hardening futuro sem gate hoje, docs/98 P-58). Fechar
+# aqui sozinho quebraria ECR/Secrets/CloudWatch/PNCP/LLM sem uma allowlist de rede decidida.
+# Achado esperado do Trivy (AWS-0104) — ver .trivyignore.yaml.
 resource "aws_vpc_security_group_egress_rule" "tasks_https" {
   security_group_id = aws_security_group.tasks.id
   ip_protocol       = "tcp"

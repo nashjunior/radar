@@ -43,8 +43,8 @@ resource "aws_security_group" "db" {
 resource "aws_vpc_security_group_egress_rule" "db_all" {
   security_group_id = aws_security_group.db.id
   ip_protocol       = "-1"
-  cidr_ipv4         = "0.0.0.0/0"
-  description       = "Egress do banco (respostas / replicacao gerenciada)"
+  cidr_ipv4         = var.network_cidr
+  description       = "Egress do banco, escopado a VPC (respostas ja sao stateful; sem motivo pra alcancar a internet)"
 }
 
 # Parameter group instância — pisos do pool (P-41, arq/05 §6).

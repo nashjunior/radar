@@ -95,10 +95,25 @@ resource "aws_security_group" "proxy" {
     cidr_blocks = [var.network_cidr]
   }
 
+  # Ao cluster: só 5432, só dentro da VPC (proxy->banco nunca sai pra fora, P-41).
   egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
+    description = "Postgres ao cluster Aurora, dentro da VPC"
+    from_port   = 5432
+    to_port     = 5432
+    protocol    = "tcp"
+    cidr_blocks = [var.network_cidr]
+  }
+
+  # Ao Secrets Manager/KMS: 443 pra fora da VPC — sem VPC endpoint de interface hoje, o
+  # proxy busca a credencial pelo endpoint publico do servico (sem CIDR/prefix-list estavel
+  # pra restringir). Mesma classe de divida que o SG de `compute` (tasks_https): P-58 decidiu
+  # que a rede segue aberta e quem sustenta a postura e o controle de aplicacao (SsrfGuard),
+  # nao SG (docs/98 P-58, RAD-159/RAD-199). Ver .trivyignore.yaml.
+  egress {
+    description = "Secrets Manager / KMS (credencial do proxy)"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
 

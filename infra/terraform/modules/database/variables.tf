@@ -20,6 +20,11 @@ variable "network_id" {
   type        = string
 }
 
+variable "network_cidr" {
+  description = "CIDR da rede privada — teto do egress do banco (não alcança nada fora da VPC). AWS: VPC cidr"
+  type        = string
+}
+
 variable "private_subnet_ids" {
   description = "Sub-redes privadas do banco (sem IP público). AWS: subnet ids"
   type        = list(string)

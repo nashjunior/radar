@@ -1,0 +1,46 @@
+# Achados do Trivy (SCA filesystem, gate A07/RAD-224) aceitos com justificativa — não são
+# "esconder problema", são decisão de segurança já tomada e registrada em docs/98. Cada
+# entrada aponta pro P-NN/RAD que decidiu. Path relativo à raiz do repo (scan-ref: . no CI).
+# Achado novo de uma regra já listada aqui, em arquivo NÃO listado, continua bloqueando —
+# `paths` escopa por arquivo, não desliga a regra inteira.
+
+misconfigurations:
+  # Egress 443 pro SG das tasks (ECR/Secrets/CloudWatch/PNCP/LLM): destinos públicos, sem
+  # PrivateLink pro PNCP/LLM — CIDR não dá pra apertar. P-58 RESOLVIDO (RAD-159/RAD-199)
+  # com o controle no código (`SsrfGuard`), não na rede; egress firewall de rede é hardening
+  # futuro sem gate hoje (docs/98 P-58).
+  - id: AVD-AWS-0104
+    paths:
+      - "infra/terraform/modules/compute/main.tf"
+    statement: "P-58 resolvido (RAD-159/RAD-199): SsrfGuard no código sustenta a allowlist; rede aberta é decisão, não lacuna."
+
+  # Egress 443 do RDS Proxy pro Secrets Manager/KMS (credencial): sem VPC endpoint de
+  # interface hoje, é endpoint público da AWS, sem CIDR estável. Mesma classe de P-58 acima.
+  # O 5432 pro cluster já foi apertado a var.network_cidr (RAD-224) — só o 443 público segue.
+  - id: AVD-AWS-0104
+    paths:
+      - "infra/terraform/modules/db_proxy/main.tf"
+    statement: "Mesma decisão de P-58: Secrets Manager é endpoint público da AWS, sem CIDR pra restringir sem VPC endpoint de interface (custo, hardening futuro)."
+
+  # ALB com internal=false: é a BORDA PÚBLICA da API por desenho (P-55/RAD-199) — o único
+  # recurso com face pública do tier sempre-ligado. Marcar como interno quebraria o produto.
+  - id: AVD-AWS-0053
+    paths:
+      - "infra/terraform/modules/edge/main.tf"
+    statement: "Borda pública é o requisito (P-55, RAD-199) — API precisa ser alcançável da internet."
+
+  # Listener HTTP:80: quando há certificado, só redireciona pra 443 (dynamic default_action).
+  # Sem certificado, serve — mas só dev/staging (o `lifecycle.precondition` do próprio recurso
+  # BLOQUEIA apply de prod sem certificate_ref, A08 §5/docs/05 §4). Trivy não avalia
+  # precondition; a garantia real em prod é mais forte que o check estático.
+  - id: AVD-AWS-0054
+    paths:
+      - "infra/terraform/modules/edge/main.tf"
+    statement: "Prod exige TLS via lifecycle.precondition (apply falha sem certificate_ref). Dev/staging só servem HTTP até o ACM ser provisionado (bloqueado em AWS, RAD-130/134)."
+
+  # Tag mutável no ECR de dev/staging: decisão deliberada (re-push da mesma tag no ciclo de
+  # dev/validação) — comentário no próprio módulo. Prod já é IMMUTABLE.
+  - id: AVD-AWS-0031
+    paths:
+      - "infra/terraform/modules/registry/main.tf"
+    statement: "MUTABLE só em dev/staging por conveniência de ciclo; prod usa IMMUTABLE (stacks/prod/main.tf)."

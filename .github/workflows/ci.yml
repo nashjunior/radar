@@ -258,6 +258,7 @@ jobs:
           severity: CRITICAL,HIGH
           exit-code: "0"
           format: table
+          trivyignores: infra/terraform/.trivyignore.yaml
         continue-on-error: true
 
       - name: Trivy — SCA filesystem (crítico+alto bloqueia)
@@ -270,6 +271,7 @@ jobs:
           exit-code: "1"
           format: sarif
           output: trivy-fs.sarif
+          trivyignores: infra/terraform/.trivyignore.yaml
         continue-on-error: false
 
 
