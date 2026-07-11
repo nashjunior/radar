@@ -251,6 +251,14 @@ jobs:
 
       - name: Trivy — SCA filesystem (crítico+alto bloqueia)
         uses: aquasecurity/trivy-action@c07df6fec6fa692e6fd1200d50aaa1fdd66f03c8 # master
+        env:
+          # O ignorefile É passado via env var — NÃO pelo input `trivyignores` da action.
+          # A action concatena os arquivos do `trivyignores` num arquivo SEM extensão
+          # (`./trivyignores`), e o Trivy escolhe o parser pela extensão: sem `.yaml` ele
+          # lê como formato legado (um ID por linha) e DESCARTA silenciosamente o nosso
+          # `.trivyignore.yaml` (bloco `misconfigurations:`) — os misconfigs de terraform
+          # ressurgem e o gate falha. `TRIVY_IGNOREFILE` preserva a extensão → parser YAML.
+          TRIVY_IGNOREFILE: infra/terraform/.trivyignore.yaml
         with:
           scan-type: fs
           scan-ref: .
@@ -264,7 +272,6 @@ jobs:
           exit-code: "1"
           format: sarif
           output: trivy-fs.sarif
-          trivyignores: infra/terraform/.trivyignore.yaml
         continue-on-error: false
 
 

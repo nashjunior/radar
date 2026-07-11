@@ -1,0 +1,19 @@
+# .gitleaks.toml — Radar de Licitações (gate A07/CI, RAD-224)
+# Estende as regras default do gitleaks e allowlista 2 falsos positivos VERIFICADOS.
+# Não afrouxa detecção real: são valores literais não-sensíveis, não credenciais.
+# Surgiram quando o fetch-depth: 0 (RAD-224) destravou o scan de histórico do gitleaks.
+title = "Radar de Licitações — gitleaks"
+
+[extend]
+useDefault = true
+
+# FP 1 — fileKey público do Figma nas anotações @figma de Code Connect (apps/web/ui, RAD-15).
+#         Identificador de arquivo de design, não é segredo (aparece na própria memória do projeto).
+# FP 2 — "PLACEHOLDER" literal do bootstrap do aws_secretsmanager_secret_version
+#         (infra/terraform/modules/secrets): o valor real é injetado fora do TF via ignore_changes.
+[allowlist]
+description = "FP verificados (RAD-224): Figma fileKey de Code Connect + placeholder de bootstrap do Secrets Manager."
+regexes = [
+  '''SAbjXOQO4gFAH4syq7VdQf''',
+  '''PLACEHOLDER''',
+]

@@ -125,9 +125,13 @@ module "db_proxy" {
   # Os bulkheads por workload existem pra isolar rajada sob carga em PROD; dev não tem essa
   # carga. Colapso sancionado pelo módulo (db_proxy/variables.tf §pools). Prod mantém os 5.
   pools = {
-    # idle_client_timeout curto (5 min) pro proxy não segurar conexão ociosa — senão o Aurora
-    # vê conexão viva e NUNCA cai a 0 ACU, anulando o auto-pause do banco (min_capacity_acu=0).
-    ingestao = { max_connections_percent = 40, idle_client_timeout = 300 }
+    # Tentativa de viabilizar o auto-pause do Aurora (min_capacity_acu=0): o proxy NÃO pode
+    # segurar backend ocioso, senão o cluster vê conexão viva e nunca cai a 0 ACU.
+    #   - idle_client_timeout=300: fecha a perna cliente↔proxy.
+    #   - max_idle_connections_percent=0: fecha a perna proxy↔Aurora (o knob que de fato importa).
+    # ⚠️ Mesmo assim a AWS PODE não suportar scale-to-zero com RDS Proxy anexado — VERIFICAR no
+    # 1º apply credenciado (RAD-134). Se não pausar, o caminho confiável é stop/start agendado.
+    ingestao = { max_connections_percent = 40, idle_client_timeout = 300, max_idle_connections_percent = 0 }
   }
 }
 

@@ -34,8 +34,10 @@ Primitiva A08 §4 "Postgres gerenciado". **Contrato** (`variables.tf`/`outputs.t
   `statement_timeout=300000` (backstop), `lock_timeout=0` (global; 3 s por role nos quentes).
 - **Serverless v2 scaling** — `min_capacity_acu` / `max_capacity_acu`, decididos pelo stack
   (RAD-192): **prod 2→16 ACU** (piso de 2 é P-67 — 0,5 ACU não segura o working set do
-  fan-out e o cold cache fura o frescor); dev/staging 0,5→4. O piso é cobrado 24/7 **por
-  instância**. Guarda cruzada `max >= min` é `precondition` (o `validate` não pega isso).
+  fan-out e o cold cache fura o frescor); staging 0,5→4. **Dev tenta 0→4** (auto-pause /
+  scale-to-zero, exige PG 16.6+) — cai a ~$0 de compute ocioso SE o RDS Proxy não segurar
+  conexão (ver ressalva no stack dev). O piso é cobrado 24/7 **por instância**. Guarda
+  cruzada `max >= min` é `precondition` (o `validate` não pega isso).
 - **Topologia / HA** — `instance_count`: 1 = instância única (failover **reconstrói** o
   writer, minutos); 2 = writer + reader em outra AZ (failover ~30–60 s). **Prod = 2.** Em
   Aurora, "Multi-AZ" não é flag: é ter ≥2 instâncias. O motivo é failover, **não**
@@ -53,7 +55,7 @@ Reescrever `main.tf` para GCP Cloud SQL / Azure DB for PostgreSQL exige:
   equivalente 1:1 — Cloud SQL/AlloyDB e Azure Flexible escalam por tier/compute, não por ACU.
 - **SG standalone + ingress externo** — o padrão "SG do banco sem ingress, proxy anexa
   depois" é AWS. Em GCP/Azure a regra proxy-only é firewall rule por tag / NSG.
-- **`engine="aurora-postgresql"`, `engine_version="16.4"`, `kms_key_id`** — identificadores
+- **`engine="aurora-postgresql"`, `engine_version="16.6"`, `kms_key_id`** — identificadores
   do provedor.
 
 ## Diferenças vs. `infra/terraform/modules/database` (paridade preservada)
