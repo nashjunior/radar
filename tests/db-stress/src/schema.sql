@@ -57,6 +57,14 @@ CREATE INDEX IF NOT EXISTS idx_editais_modalidade ON editais (modalidade_codigo)
 CREATE INDEX IF NOT EXISTS idx_editais_uf         ON editais (orgao_uf);
 CREATE INDEX IF NOT EXISTS idx_editais_valor      ON editais (valor_estimado);
 
+-- Autovacuum agressivo + fillfactor (P-41/RAD-191, arquitetura/05 §6, 06 §3) — espelha
+-- modules/ingestao/src/infra/migrations/003_autovacuum_edital.sql. Storage parameters não
+-- podem ser setados no pai particionado (Postgres recusa) — uma linha por partição folha.
+ALTER TABLE editais_2026_05 SET (fillfactor = 90, autovacuum_vacuum_scale_factor = 0.02, autovacuum_analyze_scale_factor = 0.02, autovacuum_vacuum_cost_limit = 400);
+ALTER TABLE editais_2026_06 SET (fillfactor = 90, autovacuum_vacuum_scale_factor = 0.02, autovacuum_analyze_scale_factor = 0.02, autovacuum_vacuum_cost_limit = 400);
+ALTER TABLE editais_2026_07 SET (fillfactor = 90, autovacuum_vacuum_scale_factor = 0.02, autovacuum_analyze_scale_factor = 0.02, autovacuum_vacuum_cost_limit = 400);
+ALTER TABLE editais_default SET (fillfactor = 90, autovacuum_vacuum_scale_factor = 0.02, autovacuum_analyze_scale_factor = 0.02, autovacuum_vacuum_cost_limit = 400);
+
 -- ---------------------------------------------------------------------------
 -- CRITERIO_MONITORAMENTO — lido a cada edital ingerido (fan-out alvo, DB2)
 -- P-39: NÃO particionado (point-lookup/tenant, sem crescimento ilimitado).
@@ -115,6 +123,14 @@ CREATE INDEX IF NOT EXISTS idx_alerta_tenant ON alerta (tenant_id, cliente_final
 CREATE INDEX IF NOT EXISTS idx_alerta_edital ON alerta (edital_id);
 CREATE INDEX IF NOT EXISTS idx_alerta_criado ON alerta (criado_em DESC);
 
+-- Autovacuum agressivo (P-41/RAD-191, arquitetura/05 §6, 06 §3) — espelha
+-- modules/matching/src/infra/migrations/004_autovacuum_alerta.sql. Sem fillfactor:
+-- ALERTA é insert-only (fan-out), não tem churn de UPDATE como EDITAL.
+ALTER TABLE alerta_2026_05 SET (autovacuum_vacuum_scale_factor = 0.02, autovacuum_analyze_scale_factor = 0.02, autovacuum_vacuum_cost_limit = 400);
+ALTER TABLE alerta_2026_06 SET (autovacuum_vacuum_scale_factor = 0.02, autovacuum_analyze_scale_factor = 0.02, autovacuum_vacuum_cost_limit = 400);
+ALTER TABLE alerta_2026_07 SET (autovacuum_vacuum_scale_factor = 0.02, autovacuum_analyze_scale_factor = 0.02, autovacuum_vacuum_cost_limit = 400);
+ALTER TABLE alerta_default SET (autovacuum_vacuum_scale_factor = 0.02, autovacuum_analyze_scale_factor = 0.02, autovacuum_vacuum_cost_limit = 400);
+
 -- ---------------------------------------------------------------------------
 -- EXTRACAO_EDITAL — cache 1:1 com edital, leitura quente (DB3)
 -- P-39: NÃO particionada (point-lookup 1:1 por edital_id; range não ajuda).
@@ -129,6 +145,15 @@ CREATE TABLE IF NOT EXISTS extracao_edital (
   confianca               NUMERIC NOT NULL,
   paginas                 INT     NOT NULL
 );
+
+-- TOAST + GIN full-text (P-41/RAD-191, arquitetura/05 §3/§6, docs/11 §5) — espelha
+-- modules/triagem/src/infra/migrations/002_extracao_edital_toast_gin.sql.
+ALTER TABLE extracao_edital SET (toast_tuple_target = 128);
+
+CREATE INDEX IF NOT EXISTS idx_extracao_edital_objeto_fts
+  ON extracao_edital
+  USING GIN (to_tsvector('portuguese', objeto ->> 'valor'))
+  WITH (fastupdate = on, gin_pending_list_limit = 2048);
 
 -- ---------------------------------------------------------------------------
 -- TRIAGEM — escrita por perfil; 1 por (tenant, edital, perfil) (DB3)

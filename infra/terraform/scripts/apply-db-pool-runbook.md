@@ -95,8 +95,17 @@ Se preferir o timeout **no connect** (sem tocar o driver), crie uma role por poo
 `var.pools` (cada secret = `{username: "<role>", password: ...}`). O módulo registra esse
 secret no `auth` do proxy do pool e amplia a policy de leitura de secret automaticamente.
 
+Roles + `ALTER ROLE` são **executáveis**, não só prosa —
+`infra/terraform/scripts/bootstrap-db-roles.sql` (RAD-191, idempotente, testado no
+Testcontainers de `tests/db-stress`):
+
+```bash
+psql "$DATABASE_URL_MASTER" -f infra/terraform/scripts/bootstrap-db-roles.sql
+```
+
+O script cria as 5 roles e roda:
+
 ```sql
--- roles criadas nas migrações (Bento/DB); só então o ALTER ROLE surte efeito via proxy:
 ALTER ROLE ingestao  SET statement_timeout = '30s'; ALTER ROLE ingestao SET lock_timeout = '3s';
 ALTER ROLE matching  SET statement_timeout = '10s';
 ALTER ROLE triagem   SET statement_timeout = '5s';  ALTER ROLE triagem  SET lock_timeout = '3s';
@@ -104,15 +113,27 @@ ALTER ROLE analitico SET statement_timeout = '60s';
 ALTER ROLE jobs      SET statement_timeout = '300s';
 ```
 
+Senha de cada role fica **fora do script** (nunca hardcoded) — ver o próprio arquivo para o
+comando de geração + onde registrar em `var.pools[<pool>].secret_arn`.
+
 > ⚠️ Sem o secret por pool (mecanismo B), TODO backend loga como master e os `ALTER ROLE`
 > **não surtem efeito** — use o mecanismo A. Não confie em `SET ROLE` pós-connect (pina).
 
-Autovacuum agressivo é **por-tabela** nas churn tables (migração), não global:
+Autovacuum agressivo é **por-tabela** nas tabelas quentes (migrações — RAD-191, aplica no
+unblock, testado no Testcontainers de `tests/db-stress`), não global:
 
-```sql
-ALTER TABLE edital SET (autovacuum_vacuum_scale_factor = 0.02);
-ALTER TABLE alerta SET (autovacuum_vacuum_scale_factor = 0.02);
-```
+- `modules/ingestao/src/infra/migrations/003_autovacuum_edital.sql` — `EDITAL`:
+  `autovacuum_vacuum_scale_factor`/`analyze_scale_factor = 0.02` + `fillfactor = 90`
+  (churn de upsert).
+- `modules/matching/src/infra/migrations/004_autovacuum_alerta.sql` — `ALERTA`: mesmos
+  scale factors (sem fillfactor — insert-only).
+- `modules/triagem/src/infra/migrations/002_extracao_edital_toast_gin.sql` —
+  `EXTRACAO_EDITAL`: `toast_tuple_target = 128` + índice GIN/tsvector do `objeto`
+  (`fastupdate`/`gin_pending_list_limit`, documento 11 §5).
+
+Ambas as migrações de `EDITAL`/`ALERTA` lidam com a tabela particionada (P-39): Postgres
+recusa storage parameters no pai particionado, então o `DO $$ ... $$` de cada migração
+aplica em cada partição folha.
 
 ## Guardrails anti-pin no driver (node-pg) — P-41 "pegadinha"
 
