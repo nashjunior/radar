@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AlertaId, TenantId } from '@radar/kernel';
+import { AlertaId, CriterioId, TenantId } from '@radar/kernel';
 import {
   EnviarDigestUseCase,
   type EnviarDigestInput,
@@ -15,7 +15,12 @@ import type {
   NotificacaoRepository,
   PreferenciaRepository,
 } from '../../application/ports.js';
-import type { AlertaResumoDTO, PreferenciaDTO } from '../../application/dtos.js';
+import type {
+  AlertaResumoDTO,
+  DigestPendentesDTO,
+  ExcedenteAgrupadoDTO,
+  PreferenciaDTO,
+} from '../../application/dtos.js';
 
 const TENANT = TenantId('t-001');
 const USUARIO = UsuarioId('u-001');
@@ -38,6 +43,29 @@ function makeAlerta(id: string, aderencia: number): AlertaResumoDTO {
     prazoProposta: new Date('2024-06-01T00:00:00Z'),
     aderencia,
     diasAtePrazo: 30,
+    criterioId: CriterioId(`criterio-${id}`),
+    criterioNome: `Critério ${id}`,
+  };
+}
+
+function makeExcedente(criterioNome: string, quantidade: number): ExcedenteAgrupadoDTO {
+  return {
+    criterioId: CriterioId(`criterio-${criterioNome}`),
+    criterioNome,
+    orgao: 'Prefeitura SP',
+    quantidade,
+  };
+}
+
+function makePendentes(overrides: Partial<DigestPendentesDTO> = {}): DigestPendentesDTO {
+  const selecionados = overrides.selecionados ?? [makeAlerta('a-001', 0.9)];
+  const excedentes = overrides.excedentes ?? [];
+  return {
+    selecionados,
+    excedentes,
+    totalPendentes:
+      overrides.totalPendentes ??
+      selecionados.length + excedentes.reduce((n, e) => n + e.quantidade, 0),
   };
 }
 
@@ -48,12 +76,12 @@ function makePref(frequencia: PreferenciaDTO['frequencia'] = 'DIARIA'): Preferen
 function makeDeps(
   opts: {
     preferencia?: PreferenciaDTO | null;
-    pendentes?: AlertaResumoDTO[];
+    pendentes?: DigestPendentesDTO;
     notifierFails?: boolean;
   } = {},
 ) {
   const pref = opts.preferencia !== undefined ? opts.preferencia : makePref();
-  const pendentes = opts.pendentes ?? [makeAlerta('a-001', 0.9)];
+  const pendentes = opts.pendentes ?? makePendentes();
 
   const preferencias: PreferenciaRepository = {
     porUsuario: vi.fn().mockResolvedValue(pref),
@@ -78,7 +106,10 @@ function makeDeps(
   return { preferencias, alertas, notificacoes, notifier, eventos, ids };
 }
 
-function makeUC(deps: ReturnType<typeof makeDeps>): EnviarDigestUseCase {
+function makeUC(
+  deps: ReturnType<typeof makeDeps>,
+  caps?: Record<'DIARIA' | 'SEMANAL', number>,
+): EnviarDigestUseCase {
   return new EnviarDigestUseCase(
     deps.alertas,
     deps.preferencias,
@@ -86,6 +117,7 @@ function makeUC(deps: ReturnType<typeof makeDeps>): EnviarDigestUseCase {
     deps.notifier,
     deps.eventos,
     deps.ids,
+    caps,
   );
 }
 
@@ -95,7 +127,7 @@ describe('EnviarDigestUseCase', () => {
       const deps = makeDeps({ preferencia: null });
       const dto = await makeUC(deps).executar(INPUT, noop);
 
-      expect(dto).toEqual({ enviados: 0, agrupados: 0 });
+      expect(dto).toEqual({ enviados: 0, agrupados: 0, total: 0 });
       expect(deps.notifier.enviar).not.toHaveBeenCalled();
     });
 
@@ -103,15 +135,15 @@ describe('EnviarDigestUseCase', () => {
       const deps = makeDeps({ preferencia: makePref('IMEDIATA') });
       const dto = await makeUC(deps).executar(INPUT, noop);
 
-      expect(dto).toEqual({ enviados: 0, agrupados: 0 });
+      expect(dto).toEqual({ enviados: 0, agrupados: 0, total: 0 });
       expect(deps.notifier.enviar).not.toHaveBeenCalled();
     });
 
     it('retorna zeros quando não há alertas pendentes no período', async () => {
-      const deps = makeDeps({ pendentes: [] });
+      const deps = makeDeps({ pendentes: makePendentes({ selecionados: [], excedentes: [], totalPendentes: 0 }) });
       const dto = await makeUC(deps).executar(INPUT, noop);
 
-      expect(dto).toEqual({ enviados: 0, agrupados: 0 });
+      expect(dto).toEqual({ enviados: 0, agrupados: 0, total: 0 });
       expect(deps.notifier.enviar).not.toHaveBeenCalled();
     });
   });
@@ -121,7 +153,7 @@ describe('EnviarDigestUseCase', () => {
       const deps = makeDeps();
       const dto = await makeUC(deps).executar(INPUT, noop);
 
-      expect(dto).toEqual({ enviados: 1, agrupados: 1 });
+      expect(dto).toEqual({ enviados: 1, agrupados: 0, total: 1 });
       expect(deps.notifier.enviar).toHaveBeenCalledOnce();
       expect(deps.notificacoes.salvar).toHaveBeenCalledOnce();
       const [notif] = (deps.notificacoes.salvar as ReturnType<typeof vi.fn>).mock.calls[0]! as [Notificacao];
@@ -131,52 +163,88 @@ describe('EnviarDigestUseCase', () => {
       expect(evento).toBeInstanceOf(NotificacaoEnviada);
       expect(evento.payload.tenantId).toBe(TENANT);
     });
+  });
 
-    it('reporta agrupados = total de pendentes e enviados = cap quando acima do cap', async () => {
-      const muitos = Array.from({ length: 25 }, (_, i) =>
-        makeAlerta(`a-${String(i).padStart(3, '0')}`, i / 25),
+  describe('cap por frequência (P-81: 10 diário / 25 semanal)', () => {
+    it('passa limite=10 ao repositório quando a preferência é DIARIA', async () => {
+      const deps = makeDeps({ preferencia: makePref('DIARIA') });
+      await makeUC(deps).executar(INPUT, noop);
+
+      expect(deps.alertas.pendentesDigest).toHaveBeenCalledWith(
+        { usuarioId: USUARIO, aPartirDe: INPUT.janela.inicio, limite: 10 },
+        noop,
       );
-      const deps = makeDeps({ pendentes: muitos });
+    });
+
+    it('passa limite=25 ao repositório quando a preferência é SEMANAL', async () => {
+      const deps = makeDeps({ preferencia: makePref('SEMANAL') });
+      await makeUC(deps).executar(INPUT, noop);
+
+      expect(deps.alertas.pendentesDigest).toHaveBeenCalledWith(
+        { usuarioId: USUARIO, aPartirDe: INPUT.janela.inicio, limite: 25 },
+        noop,
+      );
+    });
+
+    it('respeita caps customizados injetados no construtor', async () => {
+      const deps = makeDeps({ preferencia: makePref('SEMANAL') });
+      await makeUC(deps, { DIARIA: 5, SEMANAL: 12 }).executar(INPUT, noop);
+
+      expect(deps.alertas.pendentesDigest).toHaveBeenCalledWith(
+        { usuarioId: USUARIO, aPartirDe: INPUT.janela.inicio, limite: 12 },
+        noop,
+      );
+    });
+
+    it('reporta enviados = selecionados e agrupados = soma dos excedentes quando acima do cap', async () => {
+      const selecionados = Array.from({ length: 10 }, (_, i) => makeAlerta(`a-${i}`, 0.5));
+      const excedentes = [makeExcedente('Obras', 15)];
+      const deps = makeDeps({
+        pendentes: makePendentes({ selecionados, excedentes, totalPendentes: 25 }),
+      });
       const dto = await makeUC(deps).executar(INPUT, noop);
 
-      expect(dto.enviados).toBe(20);
-      expect(dto.agrupados).toBe(25);
+      expect(dto).toEqual({ enviados: 10, agrupados: 15, total: 25 });
     });
   });
 
-  describe('anti-fadiga — cap e ordenação', () => {
-    it('seleciona os 20 de maior aderência quando há mais de 20 alertas', async () => {
-      const pendentes = Array.from({ length: 25 }, (_, i) =>
-        makeAlerta(`a-${i}`, i * 0.04),
-      );
-      const deps = makeDeps({ pendentes });
+  describe('não reordena — usa a ordem devolvida pelo repositório (ordenação é responsabilidade do §3)', () => {
+    it('mantém a ordem de `selecionados` no corpo do e-mail', async () => {
+      const selecionados = [
+        makeAlerta('primeiro', 0.2),
+        makeAlerta('segundo', 0.9),
+        makeAlerta('terceiro', 0.5),
+      ];
+      const deps = makeDeps({ pendentes: makePendentes({ selecionados }) });
       await makeUC(deps).executar(INPUT, noop);
 
-      const mockEnviar = deps.notifier.enviar as ReturnType<typeof vi.fn>;
-      const [, , , opts] = mockEnviar.mock.calls[0]! as [
-        unknown, unknown, unknown, { corpo: string },
-      ];
-      // Os alertas de índice 24..5 têm maior aderência; o de menor (i=0) não deve aparecer
-      expect(opts?.corpo ?? (mockEnviar.mock.calls[0] as {corpo: string}[])[0]?.corpo ?? '').not.toContain('a-0');
+      const corpo = (deps.notifier.enviar as ReturnType<typeof vi.fn>).mock.calls[0]![0].corpo as string;
+      const posPrimeiro = corpo.indexOf('primeiro');
+      const posSegundo = corpo.indexOf('segundo');
+      const posTerceiro = corpo.indexOf('terceiro');
+      expect(posPrimeiro).toBeLessThan(posSegundo);
+      expect(posSegundo).toBeLessThan(posTerceiro);
+    });
+  });
+
+  describe('excedente agrupado por critério/órgão (P-81) — nunca item a item', () => {
+    it('inclui o excedente agregado no corpo, sem detalhar os itens individuais', async () => {
+      const excedentes = [makeExcedente('Materiais de escritório', 7), makeExcedente('Obras', 3)];
+      const deps = makeDeps({ pendentes: makePendentes({ excedentes, totalPendentes: 1 + 10 }) });
+      await makeUC(deps).executar(INPUT, noop);
+
+      const corpo = (deps.notifier.enviar as ReturnType<typeof vi.fn>).mock.calls[0]![0].corpo as string;
+      expect(corpo).toContain('7 em "Materiais de escritório"');
+      expect(corpo).toContain('3 em "Obras"');
+      expect(corpo).toContain('10 alerta(s) além do limite');
     });
 
-    it('ordena digest por aderência decrescente (o de maior aderência aparece primeiro)', async () => {
-      const pendentes = [
-        makeAlerta('baixo', 0.2),
-        makeAlerta('alto', 0.9),
-        makeAlerta('medio', 0.5),
-      ];
-      const deps = makeDeps({ pendentes });
+    it('não inclui rodapé de excedente quando não há excedente', async () => {
+      const deps = makeDeps({ pendentes: makePendentes({ excedentes: [] }) });
       await makeUC(deps).executar(INPUT, noop);
 
-      const callArgs = (deps.notifier.enviar as ReturnType<typeof vi.fn>).mock.calls[0]![0] as {corpo?: string} | {canal: unknown; destinatario: unknown; assunto: unknown; corpo: string; signal: AbortSignal};
-      const corpo = 'corpo' in callArgs ? callArgs.corpo : '';
-      // corpo é uma string com linhas — "alto" deve vir antes de "medio" e "baixo"
-      const posAlto = corpo.indexOf('alto');
-      const posMedio = corpo.indexOf('medio');
-      const posBaixo = corpo.indexOf('baixo');
-      expect(posAlto).toBeLessThan(posMedio);
-      expect(posMedio).toBeLessThan(posBaixo);
+      const corpo = (deps.notifier.enviar as ReturnType<typeof vi.fn>).mock.calls[0]![0].corpo as string;
+      expect(corpo).not.toContain('além do limite');
     });
   });
 
@@ -208,7 +276,7 @@ describe('EnviarDigestUseCase', () => {
       await makeUC(deps).executar(INPUT, ac.signal);
 
       expect(deps.alertas.pendentesDigest).toHaveBeenCalledWith(
-        { usuarioId: USUARIO, aPartirDe: INPUT.janela.inicio },
+        { usuarioId: USUARIO, aPartirDe: INPUT.janela.inicio, limite: 10 },
         ac.signal,
       );
     });

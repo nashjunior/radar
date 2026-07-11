@@ -1,5 +1,10 @@
 import type { AlertaId } from '@radar/kernel';
-import type { AlertaRepository, AlertaResumoDTO, PreferenciaDTO } from '@radar/notificacao';
+import type {
+  AlertaRepository,
+  AlertaResumoDTO,
+  DigestPendentesDTO,
+  PreferenciaDTO,
+} from '@radar/notificacao';
 import type { UsuarioId } from '@radar/notificacao';
 
 /**
@@ -19,9 +24,9 @@ export class InMemoryAlertaView implements AlertaRepository {
   }
 
   async pendentesDigest(
-    _params: { usuarioId: UsuarioId; aPartirDe: Date },
+    _params: { usuarioId: UsuarioId; aPartirDe: Date; limite: number },
     _signal: AbortSignal,
-  ): Promise<AlertaResumoDTO[]> {
-    return [];
+  ): Promise<DigestPendentesDTO> {
+    return { selecionados: [], excedentes: [], totalPendentes: 0 };
   }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AlertaId, ClienteFinalId, TenantId } from '@radar/kernel';
+import { AlertaId, ClienteFinalId, CriterioId, TenantId } from '@radar/kernel';
 import { NotificarAlertaUseCase } from '../../application/use-cases/notificar-alerta.js';
 import { CanalIndisponivelError } from '../../domain/errors/index.js';
 import type {
@@ -24,11 +24,22 @@ const alertaUrgente: AlertaResumoDTO = {
   prazoProposta: new Date('2026-07-08'),
   aderencia: 0.8,
   diasAtePrazo: 3,
+  criterioId: CriterioId('criterio-001'),
+  criterioNome: 'Serviços de TI',
 };
 
+/** Nem prazo (10 > 3) nem aderência (0.5 < 0.8) cruzam o limiar — não crítico sob a condição OU. */
 const alertaNaoUrgente: AlertaResumoDTO = {
   ...alertaUrgente,
   diasAtePrazo: 10,
+  aderencia: 0.5,
+};
+
+/** Prazo longe mas aderência alta — crítico só por causa da condição OU (P-81). */
+const alertaAltaAderenciaSemUrgencia: AlertaResumoDTO = {
+  ...alertaUrgente,
+  diasAtePrazo: 30,
+  aderencia: 0.8,
 };
 
 function criarDeps(overrides?: {
@@ -144,6 +155,32 @@ describe('NotificarAlertaUseCase', () => {
         frequencia: 'IMEDIATA',
       });
       await criarUC(deps).executar(inputBase, noop);
+
+      expect(deps.notifier.enviar).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('criticidade OU (P-81): prazo curto OU aderência alta', () => {
+    it('entrega imediatamente quando aderência é alta mesmo com prazo longe (condição OU)', async () => {
+      const deps = criarDeps({ alerta: alertaAltaAderenciaSemUrgencia });
+      await criarUC(deps).executar(inputBase, noop);
+
+      expect(deps.notifier.enviar).toHaveBeenCalledOnce();
+    });
+
+    it('respeita limiares customizados injetados no construtor', async () => {
+      const deps = criarDeps({ alerta: alertaNaoUrgente }); // 10 dias, aderência 0.5
+      const uc = new NotificarAlertaUseCase(
+        deps.alertas,
+        deps.preferencias,
+        deps.notificacoes,
+        deps.notifier,
+        deps.eventos,
+        deps.ids,
+        deps.clienteFinalGateway,
+        { diasAtePrazo: 15, aderencia: 0.9 }, // limiar de prazo mais frouxo que o padrão
+      );
+      await uc.executar(inputBase, noop);
 
       expect(deps.notifier.enviar).toHaveBeenCalledOnce();
     });

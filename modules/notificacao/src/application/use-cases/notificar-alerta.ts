@@ -1,6 +1,10 @@
 import type { AlertaId, ClienteFinalId, TenantId } from '@radar/kernel';
 import { Canal } from '../../domain/value-objects/canal.js';
-import { Criticidade } from '../../domain/value-objects/criticidade.js';
+import {
+  Criticidade,
+  LIMIARES_CRITICIDADE_PADRAO,
+  type LimiaresCriticidade,
+} from '../../domain/value-objects/criticidade.js';
 import { EnvioNotificacaoService } from '../services/envio-notificacao-service.js';
 import type {
   AlertaRepository,
@@ -36,6 +40,7 @@ export class NotificarAlertaUseCase {
     eventos: EventPublisher,
     ids: IdProvider,
     private readonly clienteFinalGateway: ClienteFinalGateway,
+    private readonly limiares: LimiaresCriticidade = LIMIARES_CRITICIDADE_PADRAO,
   ) {
     this.envio = new EnvioNotificacaoService(notificacoes, notifier, eventos, ids);
   }
@@ -53,7 +58,7 @@ export class NotificarAlertaUseCase {
 
     if (!alerta) return;
 
-    const criticidade = Criticidade.criar(alerta.diasAtePrazo);
+    const criticidade = Criticidade.deAlerta(alerta, this.limiares);
 
     if (!criticidade.exigeImediato && preferencia?.frequencia !== 'IMEDIATA') return;
 

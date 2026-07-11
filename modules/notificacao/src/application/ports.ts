@@ -2,7 +2,7 @@ import type { AlertaId, ClienteFinalId } from '@radar/kernel';
 import type { Canal } from '../domain/value-objects/canal.js';
 import type { Notificacao } from '../domain/entities/notificacao.js';
 import type { UsuarioId } from '../domain/entities/notificacao.js';
-import type { AlertaResumoDTO, ClienteFinalDTO, PreferenciaDTO } from './dtos.js';
+import type { AlertaResumoDTO, ClienteFinalDTO, DigestPendentesDTO, PreferenciaDTO } from './dtos.js';
 import type { DomainEvent } from './events.js';
 
 // ---------------------------------------------------------------------------
@@ -12,10 +12,22 @@ import type { DomainEvent } from './events.js';
 /** Visão somente-leitura dos alertas para Notificação. */
 export interface AlertaRepository {
   porId(id: AlertaId, signal: AbortSignal): Promise<AlertaResumoDTO | null>;
+
+  /**
+   * Alertas ainda não notificados do usuário na janela (P-81, docs/11 §4).
+   * Contrato:
+   *  - EXCLUI alertas que já geraram NOTIFICACAO ENVIADA — é o que faz o alerta crítico,
+   *    já entregue de imediato, não ocupar vaga no cap do digest;
+   *  - ordena por prazo (mais próximo primeiro) e, em empate, por aderência desc;
+   *  - `limite` é o cap da frequência, decidido pela application — o repositório só
+   *    respeita a borda (query limitada: fan-out de A04 S4 não pode virar um SELECT de
+   *    milhares de linhas por usuário/ciclo);
+   *  - o excedente volta AGREGADO por critério/órgão, nunca item a item.
+   */
   pendentesDigest(
-    params: { usuarioId: UsuarioId; aPartirDe: Date },
+    params: { usuarioId: UsuarioId; aPartirDe: Date; limite: number },
     signal: AbortSignal,
-  ): Promise<AlertaResumoDTO[]>;
+  ): Promise<DigestPendentesDTO>;
 }
 
 /** Lê e persiste preferências de notificação do usuário. */

@@ -154,6 +154,8 @@ function criarHarness() {
         prazoProposta: new Date('2026-07-10'),
         aderencia: alertaDTO.aderencia.valor,
         diasAtePrazo: 5,
+        criterioId: CriterioId('criterio-teste'),
+        criterioNome: 'Critério teste',
       });
     }
 
@@ -366,6 +368,8 @@ describe('CE-04 — idempotência de notificação', () => {
       prazoProposta: new Date('2026-07-10'),
       aderencia: primeiroAlerta.aderencia,
       diasAtePrazo: 5,
+      criterioId: CriterioId('criterio-teste'),
+      criterioNome: 'Critério teste',
     });
 
     const notifier2 = notifier; // mesmo notifier para contar envios

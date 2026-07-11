@@ -4,7 +4,7 @@
  * Eixo 1 — regras de negócio: invariantes dos VOs sob condições adversariais: NaN, Infinity,
  * valores-limite exatos e entradas que adapters de infra ou payloads externos podem injetar.
  *
- * Eixo 2 — critério de corte: limiares recall-alto (superaLimiar 0.3, ehAlta 0.7) e
+ * Eixo 2 — critério de corte: limiares recall-alto (superaLimiar 0.3, ehAlta 0.8 — P-81) e
  * comportamento de abrange() nos limites exatos da FaixaValor.
  */
 import { describe, expect, it } from 'vitest';
@@ -60,12 +60,12 @@ describe('AderenciaMatching — limites e entradas inválidas', () => {
     expect(AderenciaMatching.criar(0).superaLimiar).toBe(false);
   });
 
-  it('ehAlta = true exatamente em 0.7', () => {
-    expect(AderenciaMatching.criar(0.7).ehAlta).toBe(true);
+  it('ehAlta = true exatamente em 0.8 (P-81)', () => {
+    expect(AderenciaMatching.criar(0.8).ehAlta).toBe(true);
   });
 
-  it('ehAlta = false em 0.6999...', () => {
-    expect(AderenciaMatching.criar(0.6999999999999999).ehAlta).toBe(false);
+  it('ehAlta = false em 0.7999...', () => {
+    expect(AderenciaMatching.criar(0.7999999999999999).ehAlta).toBe(false);
   });
 });
 

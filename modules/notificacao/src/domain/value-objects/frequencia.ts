@@ -4,6 +4,12 @@ export type FrequenciaTipo = 'IMEDIATA' | 'DIARIA' | 'SEMANAL';
 
 const FREQUENCIAS_VALIDAS: FrequenciaTipo[] = ['IMEDIATA', 'DIARIA', 'SEMANAL'];
 
+/** Cap de itens no digest por frequência — decisão de Produto P-81 (docs/11 §4). */
+export const CAP_DIGEST: Record<'DIARIA' | 'SEMANAL', number> = {
+  DIARIA: 10,
+  SEMANAL: 25,
+};
+
 export class Frequencia {
   private constructor(readonly tipo: FrequenciaTipo) {}
 

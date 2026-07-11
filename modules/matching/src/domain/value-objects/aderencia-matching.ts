@@ -18,8 +18,9 @@ export class AderenciaMatching {
     return this.valor >= 0.3;
   }
 
+  /** "Alta aderência" = corte de P-81 (docs/11 §4, A14 §2.1) — usado no OU da criticidade do digest. */
   get ehAlta(): boolean {
-    return this.valor >= 0.7;
+    return this.valor >= 0.8;
   }
 
   equals(other: AderenciaMatching): boolean {

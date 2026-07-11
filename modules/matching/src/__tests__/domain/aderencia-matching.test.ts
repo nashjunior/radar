@@ -50,13 +50,13 @@ describe('AderenciaMatching', () => {
     });
   });
 
-  describe('ehAlta', () => {
-    it('retorna false abaixo de 0.7', () => {
-      expect(AderenciaMatching.criar(0.69).ehAlta).toBe(false);
+  describe('ehAlta (corte de P-81 — docs/11 §4)', () => {
+    it('retorna false abaixo de 0.8', () => {
+      expect(AderenciaMatching.criar(0.79).ehAlta).toBe(false);
     });
 
-    it('retorna true em 0.7', () => {
-      expect(AderenciaMatching.criar(0.7).ehAlta).toBe(true);
+    it('retorna true em 0.8', () => {
+      expect(AderenciaMatching.criar(0.8).ehAlta).toBe(true);
     });
   });
 });

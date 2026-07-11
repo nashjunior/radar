@@ -1,7 +1,8 @@
 import type { TenantId } from '@radar/kernel';
 import { UsuarioId } from '../../domain/entities/notificacao.js';
 import { Canal } from '../../domain/value-objects/canal.js';
-import type { DigestDTO } from '../dtos.js';
+import { CAP_DIGEST } from '../../domain/value-objects/frequencia.js';
+import type { AlertaResumoDTO, DigestDTO, ExcedenteAgrupadoDTO } from '../dtos.js';
 import { EnvioNotificacaoService } from '../services/envio-notificacao-service.js';
 import type {
   AlertaRepository,
@@ -11,9 +12,6 @@ import type {
   Notifier,
   PreferenciaRepository,
 } from '../ports.js';
-
-/** Cap de alertas por digest — [A VALIDAR] → P-81. */
-const CAP_ALERTAS_DIGEST = 20;
 
 export interface EnviarDigestInput {
   usuarioId: UsuarioId;
@@ -25,8 +23,11 @@ export interface EnviarDigestInput {
 /**
  * Agrupa alertas pendentes do período e envia um digest.
  * Trigger: scheduler (diário ou semanal).
- * Anti-fadiga: cap + ordenação por aderência decrescente (docs/11 §4).
+ * Anti-fadiga (P-81, docs/11 §4): cap por frequência, ordenação prazo→aderência (feita
+ * pelo repositório — contrato de `pendentesDigest`) e excedente agrupado por critério/órgão.
  * Usuários com frequência IMEDIATA recebem por alerta individual, não digest.
+ * Alertas críticos não chegam aqui: já foram entregues por `NotificarAlertaUseCase` e
+ * `pendentesDigest` só devolve o que ainda não foi notificado.
  */
 export class EnviarDigestUseCase {
   private readonly envio: EnvioNotificacaoService;
@@ -38,6 +39,7 @@ export class EnviarDigestUseCase {
     notifier: Notifier,
     eventos: EventPublisher,
     ids: IdProvider,
+    private readonly caps: Record<'DIARIA' | 'SEMANAL', number> = CAP_DIGEST,
   ) {
     this.envio = new EnvioNotificacaoService(notificacoes, notifier, eventos, ids);
   }
@@ -46,23 +48,21 @@ export class EnviarDigestUseCase {
     const preferencia = await this.preferencias.porUsuario(input.usuarioId, signal);
 
     if (!preferencia || preferencia.frequencia === 'IMEDIATA') {
-      return { enviados: 0, agrupados: 0 };
+      return { enviados: 0, agrupados: 0, total: 0 };
     }
 
-    const pendentes = await this.alertas.pendentesDigest(
-      { usuarioId: input.usuarioId, aPartirDe: input.janela.inicio },
+    const limite = this.caps[preferencia.frequencia];
+
+    const { selecionados, excedentes, totalPendentes } = await this.alertas.pendentesDigest(
+      { usuarioId: input.usuarioId, aPartirDe: input.janela.inicio, limite },
       signal,
     );
 
-    if (pendentes.length === 0) return { enviados: 0, agrupados: 0 };
-
-    const selecionados = pendentes
-      .sort((a, b) => b.aderencia - a.aderencia)
-      .slice(0, CAP_ALERTAS_DIGEST);
+    if (totalPendentes === 0) return { enviados: 0, agrupados: 0, total: 0 };
 
     const canal = Canal.criar(preferencia.canais[0] ?? 'EMAIL');
     const alertaAncora = selecionados[0];
-    if (!alertaAncora) return { enviados: 0, agrupados: 0 };
+    if (!alertaAncora) return { enviados: 0, agrupados: 0, total: 0 };
 
     await this.envio.enviarComRegistro(
       {
@@ -72,26 +72,36 @@ export class EnviarDigestUseCase {
         canal,
         destinatario: input.emailDestinatario,
         assunto: `${selecionados.length} novo(s) alerta(s) — Radar de Licitações`,
-        corpo: montarCorpoDigest(selecionados, pendentes.length),
+        corpo: montarCorpoDigest(selecionados, excedentes),
       },
       signal,
     );
 
-    return { enviados: selecionados.length, agrupados: pendentes.length };
+    return {
+      enviados: selecionados.length,
+      agrupados: excedentes.reduce((n, e) => n + e.quantidade, 0),
+      total: totalPendentes,
+    };
   }
 }
 
 function montarCorpoDigest(
-  alertas: Array<{ objeto: string; orgao: string; prazoProposta: Date | null; aderencia: number }>,
-  total: number,
+  alertas: AlertaResumoDTO[],
+  excedentes: ExcedenteAgrupadoDTO[],
 ): string {
   const linhas = alertas.map(
     a =>
       `• ${a.objeto} · ${a.orgao} · Prazo: ${a.prazoProposta ? a.prazoProposta.toLocaleDateString('pt-BR') : 'a definir'} · Aderência: ${(a.aderencia * 100).toFixed(0)}%`,
   );
-  const rodape =
-    total > alertas.length
-      ? `\n(+ ${total - alertas.length} alerta(s) não exibido(s) — acesse o painel para ver todos)`
-      : '';
-  return linhas.join('\n') + rodape;
+
+  if (excedentes.length === 0) return linhas.join('\n');
+
+  const total = excedentes.reduce((n, e) => n + e.quantidade, 0);
+  const grupos = excedentes.map(e => `• ${e.quantidade} em "${e.criterioNome}" · ${e.orgao}`);
+
+  return [
+    ...linhas,
+    `\n+ ${total} alerta(s) além do limite desta edição — agrupados abaixo, todos disponíveis no painel:`,
+    ...grupos,
+  ].join('\n');
 }

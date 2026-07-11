@@ -1,19 +1,32 @@
-import type { CanalTipo } from './canal.js';
+/**
+ * Decisão de Produto P-81 (docs/11 §4): um alerta é CRÍTICO se o prazo final estiver
+ * em até `diasAtePrazo` dias corridos OU se a aderência for ≥ `aderencia`. Os limiares
+ * são config injetada no composition root (infra/config/politica-anti-fadiga.ts) — o
+ * default abaixo é o valor de P-81, não uma constante de negócio implícita no código.
+ */
+export interface LimiaresCriticidade {
+  diasAtePrazo: number;
+  aderencia: number;
+}
+
+export const LIMIARES_CRITICIDADE_PADRAO: LimiaresCriticidade = {
+  diasAtePrazo: 3,
+  aderencia: 0.8,
+};
 
 /**
- * Criticidade calculada a partir da proximidade do prazo da proposta (docs/11 §4).
- * Limiar de dias é [A VALIDAR] → P-81.
+ * Criticidade calculada a partir do prazo da proposta OU da aderência do alerta (P-81, docs/11 §4).
  */
 export class Criticidade {
   private constructor(readonly urgente: boolean) {}
 
-  /** diasAtePrazo = número de dias corridos até o prazo da proposta. */
-  static criar(diasAtePrazo: number): Criticidade {
-    return new Criticidade(diasAtePrazo <= 3);
-  }
-
-  get canalForcado(): CanalTipo {
-    return 'EMAIL';
+  static deAlerta(
+    alerta: { diasAtePrazo: number; aderencia: number },
+    limiares: LimiaresCriticidade = LIMIARES_CRITICIDADE_PADRAO,
+  ): Criticidade {
+    const prazoCurto = alerta.diasAtePrazo <= limiares.diasAtePrazo;
+    const altaAderencia = alerta.aderencia >= limiares.aderencia;
+    return new Criticidade(prazoCurto || altaAderencia);
   }
 
   get exigeImediato(): boolean {
