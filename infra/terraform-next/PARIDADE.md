@@ -174,3 +174,31 @@ resolvidos, não só de endereços. Quando o runner credenciado (RAD-134) rodar
 `tofu plan -detailed-exitcode` com o lock pinado em 5.100.0, o resultado esperado é **exit 0**
 nos 3 envs; qualquer `exit 2` seria skew de provider (ver seção acima), não quebra de contrato.
 O swap continua **gated** só nesse `plan` objetivo + creds.
+
+### Validação `tofu validate` real (2026-07-11, Artur — RAD-182)
+
+Fecho o gap que o pré-flight acima sinalizou (*"a camada que o `tofu validate` cobriria —
+indisponível: sem tooling"*): **instalei OpenTofu v1.12.3 e rodei o `tofu validate` de
+verdade**, com o provider real `hashicorp/aws v5.100.0` (o pin do lock). Sem credencial:
+`tofu init -backend=false` (não toca o backend S3) + `tofu validate`.
+
+| Alvo | Resultado |
+|---|---|
+| `terraform-next/stacks/staging` | ✅ `Success! The configuration is valid.` |
+| `terraform-next/stacks/dev`     | ✅ `Success! The configuration is valid.` |
+| `terraform-next/stacks/prod`    | ✅ `Success! The configuration is valid.` |
+| `tofu fmt -check -recursive` (todo o `-next`) | ✅ limpo (0 arquivos a reformatar) |
+| `terraform/stacks/staging` (atual — controle) | ✅ valid → **paridade de validade** confirmada |
+
+O que o `validate` real adiciona sobre o pré-flight estático: exercita o **schema do
+provider** (tipos de atributo, blocos obrigatórios, expressões) que o parser grep/Python não
+alcança. Passar nos 3 envs com o provider pinado prova que o rewrite não tem erro de
+sintaxe/tipo/referência — **nenhum erro "validate-catchable" está esperando o apply**.
+Lockfiles `hashicorp/aws 5.100.0` gerados e versionados nos 3 stacks do `-next` (cumpre o
+pin exigido pelo gate). Os `.terraform/` (cache de provider, centenas de MB) foram removidos
+pós-run; ficam só os `.terraform.lock.hcl` (versionados por design).
+
+**Ainda gated (inalterado):** resta só o `tofu plan -detailed-exitcode` (exit 0) nos 3 envs,
+que precisa de **creds AWS reais + backend S3** — frente RAD-134 (interação
+`interaction:RAD-134:aws-account-decision`, owner Nash). `validate` ✅ + paridade estática ✅
+⇒ o `plan` credenciado é o **único** passo restante antes do swap atômico.
