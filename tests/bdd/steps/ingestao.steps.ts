@@ -36,6 +36,8 @@ const CNPJ_VALIDO = '11222333000181';
 function contratacaoBase(numeroControlePncp: string): ContratacaoData {
   return {
     numeroControlePncp,
+    anoCompra: 2024,
+    sequencialCompra: 1,
     modalidadeCodigo: 6,
     modalidadeNome: 'Concorrência',
     faseAtual: 'Publicado',

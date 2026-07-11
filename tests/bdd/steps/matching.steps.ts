@@ -6,7 +6,7 @@ import {
   CriterioDeMonitoramento,
   PalavrasChave,
 } from '@radar/matching';
-import { PostgresCriterioRepository, PostgresAlertaRepository, CryptoAlertaIdProvider } from '@radar/matching/infra';
+import { PostgresCriterioRepository, PostgresAlertaRepository, CryptoAlertaIdProvider, FilaAlertaMemoria, ConsumidorAlertaBatch } from '@radar/matching/infra';
 import type {
   AlertaDTO,
   CriterioComScore,
@@ -119,7 +119,11 @@ class BddCriterioRepository implements CriterioRepository {
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function buildUseCase(): Promise<CasarEditalComCriteriosUseCase> {
+async function buildUseCase(): Promise<{
+  uc: CasarEditalComCriteriosUseCase;
+  fila: FilaAlertaMemoria;
+  alertaRepo: AlertaRepository;
+}> {
   const { db } = getFixture();
   const signal = new AbortController().signal;
 
@@ -133,17 +137,12 @@ async function buildUseCase(): Promise<CasarEditalComCriteriosUseCase> {
   criterioRepo.setForScoring(ctx.criterios);
 
   const alertaRepo = new PostgresAlertaRepository(db);
-
-  const publisher: EventPublisher = {
-    publicar: async (ev) => { ctx.eventosPublicados.push(ev); },
-  };
-
+  const fila = new FilaAlertaMemoria();
   const alertaIds: AlertaIdProvider = new CryptoAlertaIdProvider();
 
-  // P-97: edital passado diretamente no input — sem leitura cross-contexto
-  return new CasarEditalComCriteriosUseCase(
-    criterioRepo, alertaRepo, publisher, alertaIds,
-  );
+  // P-41/RAD-179: enfileira alertas para ConsumidorAlertaBatch — não persiste diretamente
+  const uc = new CasarEditalComCriteriosUseCase(criterioRepo, fila, alertaIds);
+  return { uc, fila, alertaRepo };
 }
 
 function criarCriterio(clienteId: string, tenantId: string, palavras: string[]): CriterioDeMonitoramento {
@@ -200,11 +199,17 @@ Given(
 When(
   'o sistema executa o casamento do edital com os critérios',
   async function () {
-    const uc = await buildUseCase();
-    ctx.alertasRetornados = await uc.executar(
-      { edital: ctx.edital },
-      new AbortController().signal,
-    );
+    const signal = new AbortController().signal;
+    const { uc, fila, alertaRepo } = await buildUseCase();
+
+    ctx.alertasRetornados = await uc.executar({ edital: ctx.edital }, signal);
+
+    // P-41/RAD-179: ConsumidorAlertaBatch drena a fila, persiste em batch e publica eventos
+    const publisher: EventPublisher = {
+      publicar: async (ev) => { ctx.eventosPublicados.push(ev); },
+    };
+    const consumidor = new ConsumidorAlertaBatch(fila, alertaRepo, publisher);
+    await consumidor.processarLote(signal);
   },
 );
 

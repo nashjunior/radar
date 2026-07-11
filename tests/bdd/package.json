@@ -4,15 +4,17 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "pretest": "pnpm --filter @radar/ingestao --filter @radar/matching --filter @radar/triagem build",
-    "test": "node --import tsx/esm node_modules/@cucumber/cucumber/bin/cucumber.js --import support/hooks.ts --import steps/ingestao.steps.ts --import steps/matching.steps.ts --import steps/triagem.steps.ts",
+    "pretest": "pnpm --filter @radar/ingestao --filter @radar/matching --filter @radar/triagem --filter @radar/notificacao build",
+    "test": "node --import tsx/esm node_modules/@cucumber/cucumber/bin/cucumber.js --import support/hooks.ts --import steps/ingestao.steps.ts --import steps/matching.steps.ts --import steps/triagem.steps.ts --import steps/notificacao.steps.ts",
     "test:matching": "node --import tsx/esm node_modules/@cucumber/cucumber/bin/cucumber.js --import support/hooks.ts --import steps/matching.steps.ts features/matching/**/*.feature",
     "test:ingestao": "node --import tsx/esm node_modules/@cucumber/cucumber/bin/cucumber.js --import support/hooks.ts --import steps/ingestao.steps.ts features/ingestao/**/*.feature",
-    "test:triagem": "node --import tsx/esm node_modules/@cucumber/cucumber/bin/cucumber.js --import support/hooks.ts --import steps/triagem.steps.ts features/triagem/**/*.feature"
+    "test:triagem": "node --import tsx/esm node_modules/@cucumber/cucumber/bin/cucumber.js --import support/hooks.ts --import steps/triagem.steps.ts features/triagem/**/*.feature",
+    "test:notificacao": "node --import tsx/esm node_modules/@cucumber/cucumber/bin/cucumber.js --import support/hooks.ts --import steps/notificacao.steps.ts features/notificacao/**/*.feature"
   },
   "dependencies": {
     "@radar/ingestao": "workspace:*",
     "@radar/matching": "workspace:*",
+    "@radar/notificacao": "workspace:*",
     "@radar/triagem": "workspace:*",
     "@radar/kernel": "workspace:*"
   },

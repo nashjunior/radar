@@ -13,6 +13,8 @@
     "@radar/kernel": "workspace:*"
   },
   "devDependencies": {
+    "@aws-sdk/client-sqs": "^3.600.0",
+    "@testcontainers/localstack": "^10.0.0",
     "@testcontainers/postgresql": "^10.0.0",
     "pg": "^8.13.3",
     "@types/pg": "^8.11.10",
