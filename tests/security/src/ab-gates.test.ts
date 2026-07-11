@@ -243,6 +243,7 @@ describe('Gate A07 · AB1/P-51 — matriz de autorização por objeto', () => {
   it('ALERTA escrever: RegistrarFeedbackAlertaUseCase nega alerta de outro cliente e não muta', async () => {
     const repo = {
       salvar: vi.fn(),
+      salvarEmLote: vi.fn(),
       porId: vi.fn().mockResolvedValue(alerta(CLIENTE_B)),
       atualizarFeedback: vi.fn(),
       listarPorTenant: vi.fn(),
