@@ -1,9 +1,7 @@
 import type { AlertaId, ClienteFinalId, TenantId } from '@radar/kernel';
-import { CanalIndisponivelError } from '../../domain/errors/index.js';
-import { Notificacao, NotificacaoId } from '../../domain/entities/notificacao.js';
 import { Canal } from '../../domain/value-objects/canal.js';
 import { Criticidade } from '../../domain/value-objects/criticidade.js';
-import { NotificacaoEnviada } from '../events.js';
+import { EnvioNotificacaoService } from '../services/envio-notificacao-service.js';
 import type {
   AlertaRepository,
   ClienteFinalGateway,
@@ -28,15 +26,19 @@ export interface NotificarAlertaInput {
  * Idempotente: `jaNotificado` impede reprocessamento de mensagem duplicada.
  */
 export class NotificarAlertaUseCase {
+  private readonly envio: EnvioNotificacaoService;
+
   constructor(
     private readonly alertas: AlertaRepository,
     private readonly preferencias: PreferenciaRepository,
     private readonly notificacoes: NotificacaoRepository,
-    private readonly notifier: Notifier,
-    private readonly eventos: EventPublisher,
-    private readonly ids: IdProvider,
+    notifier: Notifier,
+    eventos: EventPublisher,
+    ids: IdProvider,
     private readonly clienteFinalGateway: ClienteFinalGateway,
-  ) {}
+  ) {
+    this.envio = new EnvioNotificacaoService(notificacoes, notifier, eventos, ids);
+  }
 
   async executar(input: NotificarAlertaInput, signal: AbortSignal): Promise<void> {
     const clienteFinal = await this.clienteFinalGateway.porId(input.clienteFinalId, signal);
@@ -56,38 +58,17 @@ export class NotificarAlertaUseCase {
     if (!criticidade.exigeImediato && preferencia?.frequencia !== 'IMEDIATA') return;
 
     const canal = Canal.criar(preferencia?.canais[0] ?? 'EMAIL');
-    let notificacao = Notificacao.criar({
-      id: NotificacaoId(this.ids.gerar()),
-      tenantId: input.tenantId,
-      usuarioId: clienteFinal.usuarioId,
-      alertaId: input.alertaId,
-      canal,
-    });
 
-    try {
-      await this.notifier.enviar({
+    await this.envio.enviarComRegistro(
+      {
+        tenantId: input.tenantId,
+        usuarioId: clienteFinal.usuarioId,
+        alertaId: input.alertaId,
         canal,
         destinatario: clienteFinal.email,
         assunto: `Novo alerta: ${alerta.objeto}`,
         corpo: montarCorpoAlerta(alerta),
-        signal,
-      });
-      notificacao = notificacao.marcarEnviada();
-    } catch {
-      notificacao = notificacao.marcarFalhou();
-      throw new CanalIndisponivelError(canal.tipo);
-    } finally {
-      await this.notificacoes.salvar(notificacao, signal);
-    }
-
-    await this.eventos.publicar(
-      new NotificacaoEnviada({
-        notificacaoId: notificacao.id,
-        tenantId: notificacao.tenantId,
-        usuarioId: notificacao.usuarioId,
-        alertaId: notificacao.alertaId,
-        canal: notificacao.canal.tipo,
-      }),
+      },
       signal,
     );
   }
