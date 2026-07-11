@@ -1,15 +1,14 @@
+import { Edital } from '../../domain/entities/edital.js';
 import {
   FonteIndisponivelError,
   SchemaDriftError,
 } from '../../domain/errors/index.js';
 import type { ReconciliacaoDTO } from '../dtos.js';
-import { paraEventoEditalIngerido } from '../mappers.js';
-import { NormalizarEPersistirEditalService } from '../services/normalizar-e-persistir-edital-service.js';
+import { EditalIngerido } from '../events.js';
 import type {
   EditalRepository,
   EventPublisher,
   PncpGateway,
-  ProvenienciaRepository,
 } from '../ports.js';
 
 export interface ReconciliarCatalogoInput {
@@ -22,23 +21,13 @@ export interface ReconciliarCatalogoInput {
  *
  * Para cada edital local na janela, compara com o PNCP e reingeere se divergir.
  * Divergência entre reconciliação e incremental é sinal de anomalia.
- *
- * Correção RAD-184: o reingest agora registra proveniência (docs/05 §5 — "cada registro
- * sabe de onde veio, quando e sob qual base legal") via `NormalizarEPersistirEditalService`,
- * igual aos outros 2 fluxos de ingestão. Antes desta correção, a reconciliação fazia upsert
- * sem gravar proveniência — gap identificado no sweep de duplicação (RAD-183/RAD-184).
  */
 export class ReconciliarCatalogoUseCase {
-  private readonly normalizarEPersistir: NormalizarEPersistirEditalService;
-
   constructor(
     private readonly pncpGateway: PncpGateway,
     private readonly editais: EditalRepository,
-    proveniencias: ProvenienciaRepository,
     private readonly eventos: EventPublisher,
-  ) {
-    this.normalizarEPersistir = new NormalizarEPersistirEditalService(editais, proveniencias);
-  }
+  ) {}
 
   async executar(
     input: ReconciliarCatalogoInput,
@@ -68,13 +57,37 @@ export class ReconciliarCatalogoUseCase {
 
           if (!divergiu) continue;
 
-          const editalAtualizado = await this.normalizarEPersistir.persistir(
-            editalLocal.id,
-            dadoAtual,
+          const editalAtualizado = Edital.criar({
+            id: editalLocal.id,
+            ...dadoAtual,
+            proveniencia: {
+              fonte: 'PNCP',
+              baseLegal: 'Lei 14.133/2021, art. 174',
+              coletadoEm: new Date(),
+            },
+          });
+
+          await this.editais.upsertPorNumeroControle(editalAtualizado, signal);
+
+          await this.eventos.publicar(
+            new EditalIngerido({
+              editalId: editalAtualizado.id,
+              numeroControlePncp: editalAtualizado.numeroControlePncp.valor,
+              modalidadeCodigo: editalAtualizado.modalidade.codigo,
+              faseAtual: editalAtualizado.faseAtual,
+              dataAtualizacao: editalAtualizado.dataAtualizacao,
+              objeto: editalAtualizado.objeto,
+              orgaoUf: editalAtualizado.orgao.uf,
+              valorEstimado: editalAtualizado.valorEstimado?.valor ?? null,
+              dataPublicacao: editalAtualizado.dataPublicacao,
+              proveniencia: {
+                fonte: editalAtualizado.proveniencia.fonte,
+                baseLegal: editalAtualizado.proveniencia.baseLegal,
+                dataColeta: editalAtualizado.proveniencia.coletadoEm.toISOString(),
+              },
+            }),
             signal,
           );
-
-          await this.eventos.publicar(paraEventoEditalIngerido(editalAtualizado), signal);
 
           reingeridos++;
         } catch (err) {

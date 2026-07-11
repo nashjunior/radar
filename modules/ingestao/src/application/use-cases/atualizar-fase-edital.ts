@@ -3,7 +3,8 @@ import {
   FonteIndisponivelError,
 } from '../../domain/errors/index.js';
 import type { EditalDTO } from '../dtos.js';
-import { editalParaDTO, paraEventoFaseMudou } from '../mappers.js';
+import { EditalFaseMudou } from '../events.js';
+import { editalParaDTO } from '../mappers.js';
 import type {
   EditalRepository,
   EventPublisher,
@@ -58,7 +59,16 @@ export class AtualizarFaseEditalUseCase {
 
     await this.editais.upsertPorNumeroControle(editalAtualizado, signal);
 
-    await this.eventos.publicar(paraEventoFaseMudou(editalAtual, editalAtualizado), signal);
+    await this.eventos.publicar(
+      new EditalFaseMudou({
+        editalId: editalAtualizado.id,
+        numeroControlePncp: editalAtualizado.numeroControlePncp.valor,
+        faseAnterior: editalAtual.faseAtual,
+        faseAtual: editalAtualizado.faseAtual,
+        dataAtualizacao: editalAtualizado.dataAtualizacao,
+      }),
+      signal,
+    );
 
     return editalParaDTO(editalAtualizado);
   }
