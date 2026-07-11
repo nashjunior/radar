@@ -1,8 +1,8 @@
-import { AcessoNegadoError } from '@radar/kernel';
 import type { ClienteFinalId, EditalId, PerfilId, TenantId } from '@radar/kernel';
 import type { ExtracaoEdital } from '../../domain/extracao-edital.js';
 import type { Triagem } from '../../domain/triagem.js';
 import type { CampoExtraido } from '../../domain/value-objects/campo-extraido.js';
+import { carregarTriagemAutorizada } from '../carregar-triagem-autorizada.js';
 import type { CampoAnaliseDTO, TriagemEnvelopeDTO, TriagemLeituraDTO } from '../dtos.js';
 import type { ExtracaoRepository, TriagemRepository } from '../ports.js';
 
@@ -32,22 +32,14 @@ export class ConsultarTriagemUseCase {
     input: ConsultarTriagemInput,
     signal: AbortSignal,
   ): Promise<TriagemEnvelopeDTO | null> {
-    const triagem = await this.triagens.porEditalEPerfil(
-      input.tenantId,
-      input.clienteFinalId,
-      input.editalId,
-      input.perfilId,
+    // Autorização POR OBJETO (P-51 / AB1) — verifica antes de retornar qualquer status.
+    const triagem = await carregarTriagemAutorizada(
+      this.triagens,
+      input,
+      () => null, // nunca_solicitada → BFF 404
       signal,
     );
-    if (triagem === null) return null; // nunca_solicitada → BFF 404
-
-    // Autorização POR OBJETO (P-51 / AB1) — verifica antes de retornar qualquer status.
-    if (
-      triagem.tenantId !== input.tenantId ||
-      triagem.clienteFinalId !== input.clienteFinalId
-    ) {
-      throw new AcessoNegadoError();
-    }
+    if (triagem === null) return null;
 
     // Estados sem dados: retorna só o status.
     if (

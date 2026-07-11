@@ -1,6 +1,8 @@
 import type { EditalId } from '@radar/kernel';
+import { avaliarElegibilidadeExtracao } from '../../domain/elegibilidade-extracao.js';
 import type { EntradaExtracaoDTO } from '../dtos.js';
 import type { ExtracaoRepository, LlmLoteGateway, ObjectStorage } from '../ports.js';
+import { prepararEntradaExtracao } from '../preparar-entrada-extracao.js';
 
 /**
  * Um edital a extrair no lote — já HIDRATADO (texto/anexos/páginas). A hidratação a partir de
@@ -52,28 +54,22 @@ export class ExtrairEditaisEmLoteUseCase {
     const entradas: EntradaExtracaoDTO[] = [];
 
     for (const item of itens) {
-      // Cache-hit por edital (P-45): não re-chama o LLM. Idempotente sob reprocesso de `edital.ingerido`.
+      // Idempotente sob reprocesso de `edital.ingerido` (P-45).
       const existente = await this.extracoes.porEdital(item.editalId, signal);
-      if (existente !== null) {
+      const elegibilidade = avaliarElegibilidadeExtracao(
+        existente,
+        item.texto,
+        item.temTextoSelecionavel,
+      );
+      if (elegibilidade.tipo === 'cache_hit') {
         cacheHits++;
         continue;
       }
-      // Sem texto após OCR → leitura manual (docs/10 §6): fora do lote, sem gastar tokens.
-      if (!item.temTextoSelecionavel && item.texto.trim().length === 0) {
-        ignorados++;
+      if (elegibilidade.tipo === 'sem_texto') {
+        ignorados++; // leitura manual (docs/10 §6): fora do lote, sem gastar tokens
         continue;
       }
-      // Contexto MÍNIMO (P-54): só o edital e anexos. Resolve o texto dos anexos (Ingestão baixou).
-      const anexos = await Promise.all(
-        item.anexosRefs.map((ref) => this.storage.obterTextoAnexo(ref, signal)),
-      );
-      entradas.push({
-        editalId: item.editalId,
-        texto: item.texto,
-        temTextoSelecionavel: item.temTextoSelecionavel,
-        anexos,
-        paginas: item.paginas,
-      });
+      entradas.push(await prepararEntradaExtracao(item, this.storage, signal));
     }
 
     if (entradas.length === 0) {

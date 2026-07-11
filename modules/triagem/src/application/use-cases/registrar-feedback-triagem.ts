@@ -1,5 +1,5 @@
-import { AcessoNegadoError } from '@radar/kernel';
 import type { ClienteFinalId, EditalId, PerfilId, TenantId } from '@radar/kernel';
+import { carregarTriagemAutorizada } from '../carregar-triagem-autorizada.js';
 import { TriagemAceita, TriagemContestada, TriagemDecisao } from '../events.js';
 import type { EventPublisher, TriagemRepository } from '../ports.js';
 import { TriagemNaoEncontradaError } from '../../domain/errors/index.js';
@@ -35,14 +35,14 @@ export class RegistrarFeedbackTriagemUseCase {
   ) {}
 
   async executar(input: RegistrarFeedbackTriagemInput, signal: AbortSignal): Promise<void> {
-    const triagem = await this.triagens.porEditalEPerfil(
-      input.tenantId, input.clienteFinalId, input.editalId, input.perfilId, signal,
+    await carregarTriagemAutorizada(
+      this.triagens,
+      input,
+      () => {
+        throw new TriagemNaoEncontradaError(input.editalId, input.perfilId);
+      },
+      signal,
     );
-
-    if (!triagem) throw new TriagemNaoEncontradaError(input.editalId, input.perfilId);
-    if (triagem.tenantId !== input.tenantId || triagem.clienteFinalId !== input.clienteFinalId) {
-      throw new AcessoNegadoError();
-    }
 
     const base = {
       tenantId: input.tenantId,

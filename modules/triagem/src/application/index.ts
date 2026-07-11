@@ -52,3 +52,7 @@ export type { TriarEditalInput } from './use-cases/triar-edital.js';
 export { LIMIAR_CONFIANCA_PADRAO } from './politica-confianca.js';
 export { RegistrarFeedbackTriagemUseCase, TriagemNaoEncontradaError } from './use-cases/registrar-feedback-triagem.js';
 export type { RegistrarFeedbackTriagemInput } from './use-cases/registrar-feedback-triagem.js';
+export { prepararEntradaExtracao } from './preparar-entrada-extracao.js';
+export type { ItemExtracao } from './preparar-entrada-extracao.js';
+export { carregarTriagemAutorizada } from './carregar-triagem-autorizada.js';
+export type { TriagemAutorizadaInput } from './carregar-triagem-autorizada.js';

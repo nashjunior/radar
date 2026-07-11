@@ -1,5 +1,7 @@
 export { ExtracaoEdital } from './extracao-edital.js';
 export type { MontarExtracaoProps } from './extracao-edital.js';
+export { avaliarElegibilidadeExtracao } from './elegibilidade-extracao.js';
+export type { ElegibilidadeExtracao } from './elegibilidade-extracao.js';
 export { PerfilHabilitacao } from './perfil-habilitacao.js';
 export type { PerfilHabilitacaoProps } from './perfil-habilitacao.js';
 export { Triagem } from './triagem.js';
