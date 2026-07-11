@@ -29,8 +29,13 @@ module "vpc" {
   source             = "../../modules/vpc"
   project            = "radar"
   env                = "dev"
+  region             = var.aws_region
   network_cidr       = "10.0.0.0/16"
   availability_zones = ["${var.aws_region}a", "${var.aws_region}b"]
+
+  # Um gateway de saída só (RAD-199): fora de prod, a queda da AZ dele custa indisponibilidade
+  # de ambiente de teste, não de cliente — e cada gateway extra é ~US$ 32/mês parado.
+  egress_gateway_count = 1
 }
 
 module "database" {
@@ -160,4 +165,85 @@ module "identity" {
   callback_urls           = var.cognito_callback_urls
   logout_urls             = var.cognito_logout_urls
   advanced_security_mode  = var.cognito_advanced_security_mode
+}
+
+
+# --- Tier sempre-ligado: registro → borda → serviço (RAD-199) --------------------------
+
+module "registry" {
+  source               = "../../modules/registry"
+  project              = "radar"
+  env                  = "dev"
+  repository_name      = "api"
+  encryption_key_ref   = var.kms_key_arn
+  image_tag_mutability = "MUTABLE" # re-push da mesma tag no ciclo de desenvolvimento
+}
+
+module "waf" {
+  source            = "../../modules/waf"
+  project           = "radar"
+  env               = "dev"
+  rate_limit_per_ip = 5000
+}
+
+module "edge" {
+  source            = "../../modules/edge"
+  project           = "radar"
+  env               = "dev"
+  network_id        = module.vpc.network_id
+  network_cidr      = module.vpc.network_cidr
+  public_subnet_ids = module.vpc.public_subnet_ids
+  certificate_ref   = var.tls_certificate_arn # nulo = HTTP puro; só o módulo de prod exige TLS
+  web_acl_ref       = module.waf.web_acl_ref
+}
+
+# Tier sempre-ligado (BFF + triagem-pool na mesma task, P-96). Ver stack prod para o racional
+# de min/max e do wiring da borda.
+module "compute" {
+  source             = "../../modules/compute"
+  project            = "radar"
+  env                = "dev"
+  region             = var.aws_region
+  network_id         = module.vpc.network_id
+  private_subnet_ids = module.vpc.private_subnet_ids
+
+  container_image_uri = module.registry.repository_uri
+  image_tag           = var.api_image_tag
+
+  cpu          = 512
+  memory       = 1024
+  min_capacity = 1
+  max_capacity = 2
+
+  database_url_secret_ref     = module.secrets.database_url_secret_ref
+  field_crypto_key_secret_ref = module.secrets.field_crypto_key_secret_ref
+  extra_secret_refs           = { ANTHROPIC_API_KEY = module.secrets.llm_api_key_secret_ref }
+
+  pooler_firewall_group_ref = module.db_proxy.firewall_group_ref
+  encryption_key_ref        = var.kms_key_arn
+  queue_refs = [
+    module.queue_ingestao.queue_ref,
+    module.queue_alertas_gravar.queue_ref,
+    module.queue_alertas.queue_ref,
+  ]
+
+  target_group_ref           = module.edge.target_group_ref
+  edge_firewall_group_ref    = module.edge.firewall_group_ref
+  request_scaling_target_ref = module.edge.request_scaling_target_ref
+
+  # O target group sozinho não basta: criar serviço com balanceador exige que o TG já esteja
+  # ASSOCIADO a um listener, e o grafo não enxerga essa aresta (o serviço só referencia o TG).
+  # Sem isto o apply corre o risco de morrer em `InvalidParameterException: The target group
+  # does not have an associated load balancer`.
+  depends_on = [module.edge]
+
+  environment = {
+    AUTH_MODE            = "cognito"
+    COGNITO_REGION       = var.aws_region
+    COGNITO_USER_POOL_ID = module.identity.user_pool_id
+    COGNITO_CLIENT_ID    = module.identity.app_client_id
+    COGNITO_TENANT_CLAIM = module.identity.tenant_claim
+    API_CORS_ORIGINS     = join(",", var.api_cors_origins)
+    WORKERS_ENABLED      = "true"
+  }
 }

@@ -78,7 +78,7 @@ resource "aws_iam_role_policy" "worker" {
 # SG dos workers — egress 5432 somente ao SG do proxy (nunca ao banco direto, P-41).
 resource "aws_security_group" "worker" {
   name        = "${var.project}-${var.env}-worker-sg"
-  description = "Workers serverless — egress somente ao pool gerenciado"
+  description = "Workers serverless: egress somente ao pool gerenciado"
   vpc_id      = var.network_id
 
   egress {

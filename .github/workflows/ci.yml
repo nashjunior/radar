@@ -304,7 +304,7 @@ jobs:
         id: build_image
         run: |
           if [ -f "apps/api/Dockerfile" ]; then
-            docker build -t radar/api:ci apps/api/
+            docker build -f apps/api/Dockerfile -t radar/api:ci .
             echo "skip=false" >> "$GITHUB_OUTPUT"
           else
             echo "Dockerfile não encontrado em apps/api — pulando build"

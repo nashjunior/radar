@@ -84,11 +84,11 @@ resource "aws_iam_role_policy" "proxy" {
 # SG do proxy: clientes da VPC (workers/seam serverless/Fargate) → 5432 do proxy.
 resource "aws_security_group" "proxy" {
   name        = "${var.project}-${var.env}-rdsproxy-sg"
-  description = "Acesso ao RDS Proxy — somente da VPC interna"
+  description = "Acesso ao RDS Proxy: somente da VPC interna"
   vpc_id      = var.network_id
 
   ingress {
-    description = "Postgres via proxy — clientes internos da VPC"
+    description = "Postgres via proxy: clientes internos da VPC"
     from_port   = 5432
     to_port     = 5432
     protocol    = "tcp"
@@ -114,7 +114,7 @@ resource "aws_vpc_security_group_ingress_rule" "db_from_proxy" {
   from_port                    = 5432
   to_port                      = 5432
   ip_protocol                  = "tcp"
-  description                  = "RDS Proxy → banco (P-41: só o proxy alcança o cluster)"
+  description                  = "RDS Proxy para o banco (P-41: so o proxy alcanca o cluster)"
 
   tags = local.tags
 }

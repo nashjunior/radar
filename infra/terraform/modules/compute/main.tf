@@ -19,6 +19,17 @@ locals {
     environment = var.env
     managed_by  = "terraform"
   }
+
+  # NODE_ENV é contrato do RUNTIME (Node/libs) e do fail-closed de auth (P-91: `AUTH_MODE=dev`
+  # é proibido em `NODE_ENV=production`) — não é o nome do ambiente. Passar "prod" aqui, como
+  # estava, deixaria o Node em modo development E desarmaria o guarda de P-91, calado.
+  node_env = var.env == "dev" ? "development" : "production"
+
+  # Todos os segredos que a EXECUTION role precisa buscar no cofre para montar a task.
+  secret_refs = concat(
+    [var.database_url_secret_ref, var.field_crypto_key_secret_ref],
+    values(var.extra_secret_refs),
+  )
 }
 
 resource "aws_ecs_cluster" "this" {
@@ -41,23 +52,34 @@ resource "aws_ecs_task_definition" "api" {
   execution_role_arn       = aws_iam_role.ecs_execution.arn
   task_role_arn            = aws_iam_role.ecs_task.arn
 
+  runtime_platform {
+    operating_system_family = "LINUX"
+    cpu_architecture        = var.cpu_architecture
+  }
+
   container_definitions = jsonencode([
     {
       name      = "api"
       image     = "${var.container_image_uri}:${var.image_tag}"
       essential = true
 
-      portMappings = [{ containerPort = 3000, protocol = "tcp" }]
+      portMappings = [{ containerPort = var.container_port, protocol = "tcp" }]
 
-      environment = [
-        { name = "NODE_ENV", value = var.env },
-        { name = "PORT", value = "3000" },
-      ]
+      environment = concat(
+        [
+          { name = "NODE_ENV", value = local.node_env },
+          { name = "PORT", value = tostring(var.container_port) },
+        ],
+        [for k in sort(keys(var.environment)) : { name = k, value = var.environment[k] }],
+      )
 
-      secrets = [
-        { name = "DATABASE_URL", valueFrom = var.database_url_secret_ref },
-        { name = "FIELD_CRYPTO_KEY", valueFrom = var.field_crypto_key_secret_ref },
-      ]
+      secrets = concat(
+        [
+          { name = "DATABASE_URL", valueFrom = var.database_url_secret_ref },
+          { name = "FIELD_CRYPTO_KEY", valueFrom = var.field_crypto_key_secret_ref },
+        ],
+        [for k in sort(keys(var.extra_secret_refs)) : { name = k, valueFrom = var.extra_secret_refs[k] }],
+      )
 
       logConfiguration = {
         logDriver = "awslogs"
@@ -85,11 +107,15 @@ resource "aws_iam_role" "ecs_execution" {
     }]
   })
 
-  managed_policy_arns = [
-    "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
-  ]
-
   tags = local.tags
+}
+
+# ECR pull + CloudWatch Logs. Dá isso e NADA MAIS — segredo e fila vêm das policies abaixo.
+# (Era `managed_policy_arns` inline; o argumento está deprecado no provider e o aviso só
+# apareceu agora, quando o módulo passou a ser instanciado de fato.)
+resource "aws_iam_role_policy_attachment" "ecs_execution_base" {
+  role       = aws_iam_role.ecs_execution.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
 resource "aws_iam_role" "ecs_task" {
@@ -133,15 +159,22 @@ resource "aws_iam_role_policy" "ecs_execution_secrets" {
       {
         Effect   = "Allow"
         Action   = ["secretsmanager:GetSecretValue"]
-        Resource = [var.database_url_secret_ref, var.field_crypto_key_secret_ref]
+        Resource = local.secret_refs
       },
       {
         Effect   = "Allow"
         Action   = ["kms:Decrypt"]
         Resource = [var.encryption_key_ref]
-        # Só via Secrets Manager — a execution role não decifra nada mais com esta chave.
+        # A MESMA chave protege o cofre E as camadas da imagem no registro (módulo `registry`).
+        # Sem o `ViaService` de ECR aqui, o pull da imagem cifrada por CMK falha — e falha do
+        # jeito pior: `apply` sai 0 e o serviço fica com 0 task sã.
         Condition = {
-          StringEquals = { "kms:ViaService" = "secretsmanager.${var.region}.amazonaws.com" }
+          StringEquals = {
+            "kms:ViaService" = [
+              "secretsmanager.${var.region}.amazonaws.com",
+              "ecr.${var.region}.amazonaws.com",
+            ]
+          }
         }
       },
     ]
@@ -193,13 +226,14 @@ resource "aws_iam_role_policy" "ecs_task_queues" {
 # escala o `DesiredCount` DE UM SERVIÇO — sem serviço, `aws_appautoscaling_target` não tem
 # onde grudar. Então o serviço vem junto: é o alvo, não um extra.
 #
-# Sem `load_balancer` enquanto a borda não existir (P-55) — o serviço sobe e processa fila
-# (a task role abaixo lhe dá SQS), mas não recebe HTTP.
+# Sem `load_balancer`, o serviço sobe e processa fila (a task role abaixo lhe dá SQS) mas não
+# recebe HTTP. Com a borda de RAD-199 (`edge`), o stack passa `target_group_ref` e o serviço
+# passa a servir também.
 #
-# ⚠️ O módulo NÃO está instanciado em nenhum stack, de propósito: as sub-redes privadas ainda
-# não têm rota de saída (sem NAT, sem VPC endpoint), então a task não puxaria a imagem do ECR
-# nem leria o segredo — e o `apply` sairia 0 mesmo assim, com 0 task sã. Os pré-requisitos
-# (egress, imagem/ECR, borda) estão em RAD-199; é lá que este módulo é wireado.
+# Os três pré-requisitos que mantinham este módulo fora dos stacks fecharam em RAD-199:
+# saída da sub-rede privada (`vpc.egress_gateway_count`), imagem/registro (`registry` +
+# `apps/api/Dockerfile`) e borda (`edge`, P-55 = ALB). Antes disso, instanciar aqui criaria um
+# serviço cujas tasks nunca sobem — com `apply` saindo 0.
 
 resource "aws_security_group" "tasks" {
   name        = "${var.project}-${var.env}-tasks-sg"
@@ -207,6 +241,19 @@ resource "aws_security_group" "tasks" {
   vpc_id      = var.network_id
 
   tags = local.tags
+}
+
+# Único ingresso da task: a borda, na porta do container. SG→SG — nem CIDR da rede, nem
+# internet. A task continua sem IP público (guardrail PRESERVAR, A08 §5).
+resource "aws_vpc_security_group_ingress_rule" "tasks_from_edge" {
+  count = var.edge_firewall_group_ref == null ? 0 : 1
+
+  security_group_id            = aws_security_group.tasks.id
+  ip_protocol                  = "tcp"
+  from_port                    = var.container_port
+  to_port                      = var.container_port
+  referenced_security_group_id = var.edge_firewall_group_ref
+  description                  = "HTTP somente da borda (P-55)"
 }
 
 # 5432 SÓ para o SG do pooler (SG→SG, não CIDR): a task não alcança o cluster direto nem
@@ -230,7 +277,7 @@ resource "aws_vpc_security_group_egress_rule" "tasks_https" {
   from_port         = 443
   to_port           = 443
   cidr_ipv4         = "0.0.0.0/0"
-  description       = "HTTPS de saída — ECR/Secrets/CloudWatch/PNCP/LLM (apertar com P-58)"
+  description       = "HTTPS de saida: ECR/Secrets/CloudWatch/PNCP/LLM (apertar com P-58)"
 }
 
 resource "aws_ecs_service" "api" {
@@ -249,6 +296,10 @@ resource "aws_ecs_service" "api" {
     assign_public_ip = false # A08 §5: sub-rede privada, sem IP público
   }
 
+  # Sem isto, o `apply` termina verde antes de a primeira task ficar sã — e uma imagem ausente
+  # ou um segredo sem versão viram "0 task sã" descoberto no console, dias depois.
+  wait_for_steady_state = var.wait_for_steady_state
+
   # Deploy ruim volta sozinho em vez de deixar o tier sempre-ligado no chão.
   deployment_circuit_breaker {
     enable   = true
@@ -260,7 +311,7 @@ resource "aws_ecs_service" "api" {
     content {
       target_group_arn = load_balancer.value
       container_name   = "api"
-      container_port   = 3000
+      container_port   = var.container_port
     }
   }
 

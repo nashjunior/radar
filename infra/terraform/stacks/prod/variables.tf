@@ -55,3 +55,24 @@ variable "ops_alarm_sns_topic_arn" {
   type        = string
   default     = ""
 }
+
+# --- Tier sempre-ligado (RAD-199) ------------------------------------------------------
+
+# SEM default de propósito: em prod o repositório é IMMUTABLE e o deploy referencia o SHA do
+# commit. `latest` como default convidaria a task def a apontar pra um ponteiro móvel.
+variable "api_image_tag" {
+  description = "Tag da imagem do tier sempre-ligado (CI publica taguada pelo SHA do commit)"
+  type        = string
+}
+
+variable "tls_certificate_arn" {
+  description = "Certificado TLS da borda. Obrigatório em prod (precondition no módulo `edge`) — depende de domínio+ACM, mesma frente de RAD-134."
+  type        = string
+  default     = null
+}
+
+variable "api_cors_origins" {
+  description = "Origens permitidas pelo CORS da API (RAD-160). Vazio = nenhuma origem cruzada aceita (fail-closed)."
+  type        = list(string)
+  default     = []
+}

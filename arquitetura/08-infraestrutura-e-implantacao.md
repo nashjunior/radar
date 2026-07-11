@@ -82,7 +82,7 @@ flowchart TB
     MAIL[[E-mail]]
     subgraph Nuvem[Nuvem · região Brasil]
       CDN[CDN + estático · Web App]
-      GW[API Gateway / WAF]
+      GW[Borda · balanceador + WAF]
       IDP[[IdP · Cognito]]
       subgraph Privada[Sub-rede privada · sem acesso público]
         API[API/BFF · container]
@@ -90,7 +90,9 @@ flowchart TB
         WRK[Matching/Notificação · serverless]
         TRI[Triagem IA · container pool]
       end
+      NAT[Saída da rede privada]
       subgraph Gerenciado[Serviços gerenciados]
+        REG[(Registro de imagem)]
         DB[(Postgres + pool)]
         Q[[Fila]]
         OBJ[(Object storage)]
@@ -100,8 +102,10 @@ flowchart TB
     U --> CDN
     U -->|login OIDC| IDP
     U -->|Bearer JWT| GW
-    GW -->|valida JWT + injeta tenant do claim| API
-    ING -->|egress allowlist| PNCP
+    GW -->|WAF + rate-limit por IP| API
+    REG -.->|imagem| API
+    ING -->|saída única · egress allowlist| NAT
+    NAT --> PNCP
     ING --> DB
     ING --> OBJ
     ING --> Q
@@ -109,11 +113,16 @@ flowchart TB
     Q --> TRI
     API --> DB
     API --> SEC
-    TRI -->|egress allowlist| LLM
+    TRI -->|saída única · egress allowlist| NAT
+    NAT --> LLM
     WRK --> MAIL
 ```
 
-Pontos de segurança embutidos: workers e banco em **sub-rede privada** (sem IP público); **egress allowlist** nas saídas para PNCP e LLM (defesa de SSRF, P-58); WAF/gateway na borda (P-55). **Autenticação na borda (P-08):** o cliente faz login no **IdP (Cognito)** e apresenta um **JWT OIDC**; o GW valida assinatura/expiração e o BFF deriva `tenantId` (e `clienteFinalId` no Next) de **claim verificado do token** — nunca de header controlado pelo cliente. Requisição sem token válido é rejeitada na borda; o `x-tenant-id` que o BFF lê hoje é **placeholder de desenvolvimento** e não é fonte de autoridade em produção. Fecha a dimensão de autenticação de P-51 (anti-BOLA).
+Pontos de segurança embutidos: workers e banco em **sub-rede privada** (sem IP público); **egress allowlist** nas saídas para PNCP e LLM (defesa de SSRF, P-58); **WAF na borda** (P-55). **Autenticação (P-08):** o cliente faz login no **IdP (Cognito)** e apresenta um **JWT OIDC**; a assinatura/expiração é validada **no BFF** (`jose`; config fail-closed no boot, P-91) e o `tenantId` (e `clienteFinalId` no Next) vem de **claim verificado do token** — nunca de header controlado pelo cliente. Requisição sem token válido leva 401 antes de qualquer regra de negócio; o `x-tenant-id` que o BFF lê em modo dev é **placeholder** e não é fonte de autoridade em produção. Fecha a dimensão de autenticação de P-51 (anti-BOLA).
+
+**A borda é um balanceador (ALB), não um API Gateway — P-55 decidida (RAD-199).** O serviço vive em sub-rede privada, e gateway com integração privada exigiria **VPC Link + balanceador atrás dele de qualquer jeito** (custo somado, não alternativa); além disso, o **WAF não anexa em HTTP API v2** — sobraria REST API (mais caro por requisição) + VPC Link + NLB para chegar onde o ALB chega sozinho. O que o gateway teria de único — *authorizer* JWT nativo e *usage plan* por API key — o Radar não usa: o JWT é validado **na aplicação** (acima) e o **rate-limit por tenant depende do claim já verificado**, coisa que nem gateway nem WAF fazem. O WAF entrega o bulkhead **grosso, por IP** (antes da app); o teto **por tenant** é da aplicação. Reabre se entrar monetização por API key, throttling por plano ou API pública a terceiros.
+
+**Saída da sub-rede privada (RAD-199).** A privada tem **NAT** — e não apenas VPC endpoints: quem faz o polling do PNCP (`pncp.gov.br`) e a chamada ao LLM é o próprio tier sempre-ligado, e **destino público não tem PrivateLink**. Um *gateway endpoint* de object storage entra junto (é grátis, e as camadas de imagem do registro vêm de lá); *interface endpoints* (ECR, Secrets, Logs, SQS, KMS) seguem possíveis **como otimização sobre o NAT**, jamais como substituto — não fecham a saída pública e por isso **não substituem a allowlist de egress** (P-58, garantida hoje no código pelo `SsrfGuard`). A saída é **unidirecional**: o NAT vive na sub-rede pública e não abre rota de entrada; a task segue **sem IP público**. Em prod, **um NAT por AZ** (a queda da AZ do NAT único pararia ingestão, triagem e boot de task nova nas três); fora de prod, um só.
 
 ## 6. Ambientes, IaC e CI/CD
 

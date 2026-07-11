@@ -34,7 +34,7 @@ resource "aws_db_subnet_group" "this" {
 # de migração/break-glass adiciona sua própria regra temporária à parte.
 resource "aws_security_group" "db" {
   name        = "${var.project}-${var.env}-db-sg"
-  description = "Acesso ao banco — somente via RDS Proxy (P-41)"
+  description = "Acesso ao banco: somente via RDS Proxy (P-41)"
   vpc_id      = var.network_id
 
   tags = local.tags
@@ -44,7 +44,7 @@ resource "aws_vpc_security_group_egress_rule" "db_all" {
   security_group_id = aws_security_group.db.id
   ip_protocol       = "-1"
   cidr_ipv4         = "0.0.0.0/0"
-  description       = "Egress do banco (respostas / replicação gerenciada)"
+  description       = "Egress do banco (respostas / replicacao gerenciada)"
 }
 
 # Parameter group instância — pisos do pool (P-41, arq/05 §6).

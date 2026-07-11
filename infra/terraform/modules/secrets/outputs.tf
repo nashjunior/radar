@@ -15,6 +15,11 @@ output "db_credentials_secret_ref" {
   value       = aws_secretsmanager_secret.db_credentials.arn
 }
 
+output "llm_api_key_secret_ref" {
+  description = "Handle do segredo ANTHROPIC_API_KEY do worker de triagem (P-66). AWS: Secrets Manager ARN"
+  value       = aws_secretsmanager_secret.llm_api_key.arn
+}
+
 output "field_crypto_key_secret_ref" {
   description = "Handle do segredo FIELD_CRYPTO_KEY (AES-256-GCM, P-59). AWS: Secrets Manager ARN"
   value       = aws_secretsmanager_secret.field_crypto_key.arn

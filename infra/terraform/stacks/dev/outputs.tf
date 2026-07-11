@@ -60,3 +60,21 @@ output "queue_urls" {
     alertas_gerados   = module.queue_alertas.queue_url
   }
 }
+
+
+# --- Tier sempre-ligado (RAD-199) ------------------------------------------------------
+
+output "api_public_hostname" {
+  description = "Hostname público da borda — destino do DNS e origem do front (VITE_API_URL)"
+  value       = module.edge.public_hostname
+}
+
+output "api_image_repository_uri" {
+  description = "Repositório da imagem do tier sempre-ligado — destino do `docker push` do CI"
+  value       = module.registry.repository_uri
+}
+
+output "egress_public_ips" {
+  description = "IPs públicos de saída da sub-rede privada (P-58)"
+  value       = module.vpc.egress_gateway_ips
+}

@@ -77,6 +77,33 @@ resource "aws_secretsmanager_secret" "pncp_api_key" {
   tags = local.tags
 }
 
+# Chave da API do LLM. O tier sempre-ligado é BFF **+ triagem-pool** (P-96): sem esta chave,
+# `iniciarWorkers()` devolve null e METADE do tier fica inerte — de novo, sem o apply falhar.
+# Some quando P-66 aterrissar (Bedrock autentica por IAM/SigV4, sem chave); o segredo é a
+# ponte enquanto o adapter é `AnthropicSdkClient` direto.
+resource "aws_secretsmanager_secret" "llm_api_key" {
+  name        = "/${var.project}/${var.env}/anthropic-api-key"
+  description = "ANTHROPIC_API_KEY do worker de triagem (P-66: vira IAM quando migrar p/ Bedrock)"
+  kms_key_id  = var.encryption_key_ref
+
+  recovery_window_in_days = var.env == "prod" ? 30 : 7
+
+  tags = local.tags
+}
+
+# Versão placeholder. NÃO é decoração: o ECS busca o segredo pela EXECUTION role ao montar a
+# task, e segredo sem versão AWSCURRENT dá `ResourceInitializationError: unable to pull
+# secrets` — a task morre no boot e o `apply` sai 0. O valor real entra por fora (console/CLI,
+# ver runbook) e o `ignore_changes` impede o Terraform de sobrescrevê-lo.
+resource "aws_secretsmanager_secret_version" "llm_api_key" {
+  secret_id     = aws_secretsmanager_secret.llm_api_key.id
+  secret_string = "PLACEHOLDER"
+
+  lifecycle {
+    ignore_changes = [secret_string]
+  }
+}
+
 resource "aws_secretsmanager_secret" "field_crypto_key" {
   name        = "/${var.project}/${var.env}/field-crypto-key"
   description = "Chave AES-256-GCM em base64 para FIELD_CRYPTO_KEY (${var.project}-${var.env})"
@@ -85,4 +112,15 @@ resource "aws_secretsmanager_secret" "field_crypto_key" {
   recovery_window_in_days = var.env == "prod" ? 30 : 7
 
   tags = local.tags
+}
+
+# Mesma armadilha do llm_api_key: era inerte enquanto o compute não estava instanciado
+# (RAD-199) e vira `unable to pull secrets` no primeiro apply do serviço.
+resource "aws_secretsmanager_secret_version" "field_crypto_key" {
+  secret_id     = aws_secretsmanager_secret.field_crypto_key.id
+  secret_string = "PLACEHOLDER"
+
+  lifecycle {
+    ignore_changes = [secret_string]
+  }
 }

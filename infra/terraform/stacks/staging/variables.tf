@@ -50,3 +50,24 @@ variable "enable_serverless_workers" {
   type        = bool
   default     = false
 }
+
+
+# --- Tier sempre-ligado (RAD-199) ------------------------------------------------------
+
+variable "api_image_tag" {
+  description = "Tag da imagem do tier sempre-ligado (repositório MUTABLE aqui: re-push da mesma tag é permitido)"
+  type        = string
+  default     = "latest"
+}
+
+variable "tls_certificate_arn" {
+  description = "Certificado TLS da borda. Nulo = borda em HTTP puro — aceitável fora de prod, onde a precondition do módulo `edge` barra."
+  type        = string
+  default     = null
+}
+
+variable "api_cors_origins" {
+  description = "Origens permitidas pelo CORS da API (RAD-160). Vazio = nenhuma origem cruzada aceita (fail-closed)."
+  type        = list(string)
+  default     = []
+}

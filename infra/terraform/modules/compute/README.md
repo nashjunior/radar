@@ -50,21 +50,26 @@ ECS/Fargate-bound.
   target group aqui, exige o *resource label* `app/<lb>/<id>/targetgroup/<tg>/<id>`. É a
   única variável do módulo cujo valor não é um handle opaco, e por isso está documentada.
 
-## Pré-requisitos (por que este módulo AINDA NÃO está wireado em nenhum stack)
+## Os três pré-requisitos — fechados em RAD-199
 
-O módulo está escrito e validado, mas **de propósito não é instanciado** — instanciá-lo hoje
-criaria um serviço cujas tasks nunca sobem, e o `apply` sairia **0** assim mesmo (ECS não
-falha o apply quando a task morre no boot; o serviço só fica com 0 task sã). Falta:
+O módulo ficou fora dos stacks de propósito até RAD-199: instanciá-lo antes criaria um serviço
+cujas tasks nunca sobem, e o `apply` sairia **0** assim mesmo (ECS não falha o apply quando a
+task morre no boot — o serviço só fica com 0 task sã). O que faltava, e onde ficou:
 
-1. **Rota de saída da sub-rede privada.** O módulo `vpc` cria as sub-redes privadas mas não
-   cria NAT nem VPC endpoint, e não associa route table — elas caem na main route table
-   (local-only). Sem isso a task não puxa a imagem do ECR nem lê o segredo no Secrets
-   Manager. (Vale também para o RDS Proxy, que busca credencial no Secrets Manager.)
-2. **Imagem do container.** Não há Dockerfile no repo nem repositório ECR na IaC;
-   `container_image_uri` não teria o que apontar.
-3. **Borda (ingress).** Não existe ALB/API Gateway na IaC e a decisão é **P-55** (aberta;
-   A08 §5 desenha "API Gateway / WAF"). Sem borda o serviço processa fila mas não serve HTTP
-   — e a política de escala por requisição (`request_scaling_target_ref`) fica inativa.
+1. **Rota de saída da sub-rede privada** → `vpc.egress_gateway_count` (NAT + route table
+   privada + gateway endpoint de object storage). Sem saída, a task não puxa imagem nem lê
+   segredo. NAT é obrigatório: PNCP e LLM são destinos **públicos** (A08 §5).
+2. **Imagem do container** → módulo `registry` (ECR, scan on push, tag imutável em prod) +
+   `apps/api/Dockerfile` (build do monorepo, runtime não-root).
+3. **Borda (ingress)** → módulo `edge` (**P-55 decidida: ALB + WAF**). Dá o `target_group_ref`,
+   o `edge_firewall_group_ref` (ingresso SG→SG) e o `request_scaling_target_ref` que ativa a
+   terceira política de escala.
 
-Esses três pré-requisitos são **RAD-199**, que é quem wirea este módulo. Autoscaling por
-CPU/memória e as policies de IAM já estão prontas aqui e passam a valer no mesmo apply.
+## O que o stack precisa passar para a task SUBIR (e não morrer calada)
+
+- `environment` — `AUTH_MODE=cognito` + `COGNITO_*`. `resolverConfigAuth` é **fail-closed**
+  (P-91): sem isso o processo **aborta no boot**, e o apply sai 0 do mesmo jeito.
+- `extra_secret_refs` — `ANTHROPIC_API_KEY`. Sem ela, `iniciarWorkers()` devolve `null` e a
+  metade **triagem-pool** do tier fica inerte (o BFF sobe; o worker, não).
+- `NODE_ENV` é derivado aqui (`dev` → `development`, resto → `production`) — é contrato do
+  runtime e do guarda de P-91, **não** o nome do ambiente.

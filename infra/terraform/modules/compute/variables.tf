@@ -43,6 +43,12 @@ variable "image_tag" {
   default     = "latest"
 }
 
+variable "container_port" {
+  description = "Porta HTTP do container (apps/api lê `PORT`). Mesma que a borda usa como alvo."
+  type        = number
+  default     = 3000
+}
+
 variable "database_url_secret_ref" {
   description = "Handle do segredo DATABASE_URL (HOST = endpoint do proxy P-41). AWS: Secrets Manager ARN"
   type        = string
@@ -51,6 +57,24 @@ variable "database_url_secret_ref" {
 variable "field_crypto_key_secret_ref" {
   description = "Handle do segredo FIELD_CRYPTO_KEY (AES-256-GCM, P-59). AWS: Secrets Manager ARN"
   type        = string
+}
+
+# Passagem CEGA: o módulo não sabe o que são COGNITO_*/AUTH_MODE/API_CORS_ORIGINS — quem
+# compõe é o stack. Sem isto, a task subiria e ABORTARIA no boot: `resolverConfigAuth` é
+# fail-closed (P-91) e exige config de Cognito em NODE_ENV=production.
+variable "environment" {
+  description = "Variáveis de ambiente NÃO-SECRETAS do container (o stack compõe; o módulo não interpreta)"
+  type        = map(string)
+  default     = {}
+}
+
+# Idem para segredo: nome da env => handle do cofre. Injetado por `valueFrom` (o valor NUNCA
+# entra na task def, que é legível por quem tem `ecs:DescribeTaskDefinition`) e a policy da
+# execution role é escopada nestes ARNs.
+variable "extra_secret_refs" {
+  description = "Segredos adicionais do container: nome da env => handle do cofre (ex.: ANTHROPIC_API_KEY). AWS: Secrets Manager ARNs"
+  type        = map(string)
+  default     = {}
 }
 
 # --- Rede do serviço (awsvpc) ---------------------------------------------------------
@@ -139,13 +163,12 @@ variable "scale_in_cooldown_seconds" {
   default     = 300
 }
 
-# SEAM da terceira métrica (requisições). ALBRequestCountPerTarget exige um target group de
-# ALB, e o Radar AINDA NÃO TEM BORDA: não há ALB/API Gateway em lugar nenhum da IaC e a
-# decisão ALB-vs-API-GW é P-55 (aberta; A08 §5 desenha "API Gateway / WAF"). Não inventamos
-# essa decisão aqui. Quando a borda existir, o stack passa o resource label e a política de
-# requisições entra sem tocar em CPU/memória. Nulo => a política não é criada.
+# Terceira métrica (requisições). O seam nasceu NULO em RAD-192 porque não havia borda e
+# P-55 (ALB vs. API Gateway) estava aberta. **Fechada em RAD-199: ALB** — o handle agora vem
+# do módulo `edge` (o resource label composto que o CloudWatch exige). Nulo segue válido:
+# serviço sem borda processa fila e não serve HTTP.
 variable "request_scaling_target_ref" {
-  description = "Handle do alvo de escala por requisição. Provider-bound: AWS exige o resource label app/<lb>/<id>/targetgroup/<tg>/<id>. Nulo = sem política de requisições (borda indefinida, P-55)."
+  description = "Handle do alvo de escala por requisição (módulo `edge`). Provider-bound: AWS exige o resource label app/<lb>/<id>/targetgroup/<tg>/<id>. Nulo = sem política de requisições."
   type        = string
   default     = null
 }
@@ -157,7 +180,37 @@ variable "requests_per_target_target" {
 }
 
 variable "target_group_ref" {
-  description = "Handle do target group que recebe as tasks. Nulo = serviço sem balanceador (sem borda ainda, P-55). AWS: ALB target group ARN"
+  description = "Handle do target group que recebe as tasks (módulo `edge`). Nulo = serviço sem balanceador — processa fila, não serve HTTP. AWS: ALB target group ARN"
   type        = string
   default     = null
+}
+
+# Par apertado do egress escopado da borda: SG→SG. Só a borda alcança a porta do container —
+# nem "qualquer coisa na rede", nem a internet. Nulo = task sem ingresso nenhum (só sai).
+variable "edge_firewall_group_ref" {
+  description = "Handle do firewall da borda — única origem de ingresso na porta do container. AWS: Security Group id"
+  type        = string
+  default     = null
+}
+
+# A falha silenciosa que este módulo mais convida: `apply` verde com 0 task sã. Com isto o
+# Terraform ESPERA o serviço estabilizar e FALHA ALTO se a task não subir (imagem ausente no
+# registro, segredo sem versão, pull negado). Custo: o apply demora o tempo do deploy.
+variable "wait_for_steady_state" {
+  description = "Falhar o apply se o serviço não estabilizar (em vez de sair 0 com 0 task sã)"
+  type        = bool
+  default     = true
+}
+
+# Fargate default = X86_64. O time constrói em darwin/arm64: imagem arm64 + task X86_64 =
+# `image Manifest does not contain descriptor matching platform` — e, de novo, apply 0.
+# O CI (Linux x86) publica X86_64; quem construir local usa `--platform linux/amd64`.
+variable "cpu_architecture" {
+  description = "Arquitetura da imagem do container: X86_64 | ARM64. Precisa casar com o que o CI publica."
+  type        = string
+  default     = "X86_64"
+  validation {
+    condition     = contains(["X86_64", "ARM64"], var.cpu_architecture)
+    error_message = "cpu_architecture deve ser X86_64 ou ARM64."
+  }
 }
