@@ -11,7 +11,7 @@ interface SidebarProps {
 const NAV_ITEMS: { route: Route; icon: string; label: string }[] = [
   { route: 'dashboard',  icon: '📊', label: 'Dashboard' },
   { route: 'alertas',    icon: '🔔', label: 'Alertas' },
-  { route: 'perfil',     icon: '📋', label: 'Perfil de Habilitação' },
+  { route: 'triagem',    icon: '🔍', label: 'Triagem' },
   { route: 'configurar', icon: '⚙️', label: 'Configurar Radar' },
 ];
 
@@ -45,7 +45,7 @@ export function Sidebar({ current, onNavigate }: SidebarProps) {
             key={route}
             icon={icon}
             label={label}
-            active={current === route || (current === 'triagem' && route === 'alertas')}
+            active={current === route}
             onClick={() => onNavigate(route)}
           />
         ))}

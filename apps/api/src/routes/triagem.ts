@@ -10,7 +10,10 @@
  *
  * AbortSignal derivado do request propaga cancelamento ao use case.
  *
- * Refs: docs/98 P-86, arquitetura/17 §4.3/§5.3, apps/web/infra/api/triagem-http-gateway.ts
+ * RBAC (P-52, docs/05 §4): TRIAGEM ler (GET); TRIAGEM criar (solicitar);
+ * TRIAGEM decidir (aceitar/contestar/decisao).
+ *
+ * Refs: docs/98 P-86, arquitetura/17 §4.3/§5.3, apps/web/infra/api/triagem-http-gateway.ts, P-52
  */
 
 import { Hono } from 'hono';
@@ -25,12 +28,14 @@ import { responderErro } from '../errors.js';
 import { autenticarMiddleware } from '../middleware/tenant.js';
 import { rateLimitPorTenantMiddleware } from '../security.js';
 import type { PerfilAtivoGateway } from '../ports/perfil-ativo-gateway.js';
+import type { AutorizarMiddleware } from '../middleware/autorizacao.js';
 
 export interface TriagemContainer {
   consultarTriagem: ConsultarTriagemUseCase;
   solicitarTriagem: SolicitarTriagemUseCase;
   registrarFeedback: RegistrarFeedbackTriagemUseCase;
   perfilAtivo: PerfilAtivoGateway;
+  autorizar: AutorizarMiddleware;
 }
 
 /**
@@ -79,7 +84,8 @@ export function criarTriagemRouter(container: TriagemContainer): Hono {
   router.use('/*', autenticarMiddleware);
   router.use('/*', rateLimitPorTenantMiddleware);
 
-  router.get('/:editalId', async (c) => {
+  // GET /:editalId — RBAC: TRIAGEM ler
+  router.get('/:editalId', container.autorizar('TRIAGEM', 'ler'), async (c) => {
     const editalIdRaw = c.req.param('editalId');
     const tenantId = c.get('tenantId');
     const signal = c.req.raw.signal;
@@ -125,8 +131,8 @@ export function criarTriagemRouter(container: TriagemContainer): Hono {
     }
   });
 
-  // POST /:editalId/solicitar — US-07 pull trigger (RAD-80)
-  router.post('/:editalId/solicitar', async (c) => {
+  // POST /:editalId/solicitar — US-07 pull trigger (RAD-80) — RBAC: TRIAGEM criar
+  router.post('/:editalId/solicitar', container.autorizar('TRIAGEM', 'criar'), async (c) => {
     const editalIdRaw = c.req.param('editalId');
     const tenantId = c.get('tenantId');
     const signal = c.req.raw.signal;
@@ -154,8 +160,8 @@ export function criarTriagemRouter(container: TriagemContainer): Hono {
     }
   });
 
-  // POST /:editalId/aceitar — UTI1: usuário aceita a análise (RAD-81)
-  router.post('/:editalId/aceitar', async (c) => {
+  // POST /:editalId/aceitar — UTI1: usuário aceita a análise (RAD-81) — RBAC: TRIAGEM decidir
+  router.post('/:editalId/aceitar', container.autorizar('TRIAGEM', 'decidir'), async (c) => {
     const tenantId = c.get('tenantId');
     const signal = c.req.raw.signal;
 
@@ -178,8 +184,8 @@ export function criarTriagemRouter(container: TriagemContainer): Hono {
     }
   });
 
-  // POST /:editalId/contestar — UTI1: usuário contesta a análise (RAD-81)
-  router.post('/:editalId/contestar', async (c) => {
+  // POST /:editalId/contestar — UTI1: usuário contesta a análise (RAD-81) — RBAC: TRIAGEM decidir
+  router.post('/:editalId/contestar', container.autorizar('TRIAGEM', 'decidir'), async (c) => {
     const tenantId = c.get('tenantId');
     const signal = c.req.raw.signal;
 
@@ -213,8 +219,8 @@ export function criarTriagemRouter(container: TriagemContainer): Hono {
     }
   });
 
-  // POST /:editalId/decisao — UTI2: usuário registra decisão go/no-go (RAD-81)
-  router.post('/:editalId/decisao', async (c) => {
+  // POST /:editalId/decisao — UTI2: usuário registra decisão go/no-go (RAD-81) — RBAC: TRIAGEM decidir
+  router.post('/:editalId/decisao', container.autorizar('TRIAGEM', 'decidir'), async (c) => {
     const tenantId = c.get('tenantId');
     const signal = c.req.raw.signal;
 

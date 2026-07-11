@@ -10,6 +10,7 @@ export function NavItem({ label, icon, active = false, onClick }: NavItemProps) 
   return (
     <button
       onClick={onClick}
+      aria-current={active ? 'page' : undefined}
       style={{
         display: 'flex',
         alignItems: 'center',

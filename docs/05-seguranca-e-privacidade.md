@@ -51,6 +51,30 @@ Esta é a **linha de base decidida** (baseline) dos controles de segurança do p
 
 **Trust-gating de anexos (controle novo, Pré-lançamento — P-103/RAD-124).** Anexo/PDF do PNCP é binário não confiável (§2): entra em **landing/quarentena**, passa por **scan AV/malware assíncrono dirigido por evento** (padrão worker — **nunca** dentro de `gravar()/armazenar()`) e só então é promovido a **limpo** ou **rejeitado/isolado**. Triagem, OCR, front e download **só consomem objeto limpo** — a leitura de consumo recusa pendente/rejeitado (fail-closed) e resolve por objeto de domínio, nunca por `storageKey` arbitrário do cliente. Cada transição de confiança emite evento auditável (reencosta em AB13/P-61 até o audit log real ficar em pé). É controle **somado e ortogonal**: não substitui o anti-SSRF (P-58) nem a defesa de prompt-injection na IA (A11) — o PDF segue dado não confiável para o LLM mesmo depois de "limpo"; e é independente do eixo **temperatura** (retenção/cost-tiering, P-30). Prova em **AB14** ([A07](../arquitetura/07-teste-de-seguranca.md) §§2,5); implementação na Ingestão em **P-104**.
 
+**RBAC por papel (P-52 — decisão Produto+Segurança).** RBAC define **quem pode tentar** uma ação; autorização por objeto (P-51/AB1) confirma **se aquele usuário tem posse/escopo** sobre o `tenantId`/`clienteFinalId` do recurso. Os dois controles são obrigatórios e cumulativos: se o papel não permite, nega; se o objeto não pertence ao escopo do usuário, nega; usuário sem papel válido nega por padrão. Papéis são atribuídos no contexto **Identidade & Organização** (documento 13, §5) e a checagem operacional ocorre na borda/use case de autorização (documento 14, §6).
+
+| Papel | Escopo | Pode ler | Pode escrever/decidir | Não pode |
+|-------|--------|----------|------------------------|----------|
+| **Admin consultoria** | `tenantId` e todos os `clienteFinalId` explicitamente vinculados ao tenant/contrato | Critérios, alertas, triagens, perfil de habilitação, preferências, usuários/papéis do próprio tenant e trilhas operacionais necessárias | Gerenciar usuários e papéis; criar/editar critérios; solicitar/consultar triagem; registrar decisão/feedback; editar perfil de habilitação; ajustar preferências do escopo | Atravessar tenant; acessar `clienteFinalId` fora do vínculo; alterar audit log; burlar verificação de titular |
+| **Operador** | `tenantId` e `clienteFinalId` atribuídos | Oportunidades, alertas, triagens, critérios e perfil de habilitação do escopo atribuído | Criar/editar critérios; registrar feedback; solicitar/consultar triagem; registrar decisão operacional; editar perfil de habilitação; ajustar preferências próprias | Administrar usuários/papéis; ler audit log amplo; atuar fora dos `clienteFinalId` atribuídos; atender solicitação de titular |
+| **Cliente-final read-only** | Próprio `clienteFinalId` | Alertas, triagens, critérios publicados para si e perfil de habilitação em leitura | Ajustar apenas preferências próprias de notificação/conta | Criar/editar critérios; alterar perfil de habilitação; administrar usuários/papéis; registrar decisão em nome da consultoria; acessar dados de outro cliente-final |
+| **DPO/Compliance interno** | Escopo operacional necessário para conformidade, sempre registrado em auditoria | Solicitações de titular e audit log necessário ao atendimento/comprovação | Atender solicitação de titular após identidade verificada; registrar decisão/fundamento do atendimento; aplicar bloqueio/anonimização/eliminação conforme política | Alterar estratégia comercial do cliente; usar solicitação LGPD para contornar AB1; administrar papéis salvo acúmulo formal com Admin |
+
+Matriz mínima de permissões por recurso × ação:
+
+| Recurso / ação | Admin consultoria | Operador | Cliente-final read-only | DPO/Compliance interno |
+|----------------|-------------------|----------|-------------------------|-------------------------|
+| `USUARIO` / `PAPEL` — gerenciar | Sim, no próprio tenant | Não | Não | Não, salvo acúmulo formal com Admin |
+| `CRITERIO_MONITORAMENTO` — ler/criar/editar | Sim, por escopo | Sim, por escopo atribuído | Ler apenas os critérios expostos ao próprio `clienteFinalId` | Não |
+| `ALERTA` — ler e registrar feedback | Sim, por escopo | Sim, por escopo atribuído | Ler apenas | Não, salvo necessidade auditável de conformidade |
+| `TRIAGEM` — solicitar, consultar e registrar decisão | Sim, por escopo | Sim, por escopo atribuído | Ler apenas | Não, salvo necessidade auditável de conformidade |
+| `PERFIL_HABILITACAO` — ler/editar | Sim, por escopo | Sim, por escopo atribuído | Ler apenas | Não, salvo atendimento de titular com identidade verificada |
+| `PREFERENCIA_NOTIFICACAO` — editar | Sim, no escopo administrado | Sim, próprias | Sim, próprias | Não |
+| `AUDIT_LOG` — consultar | Escopo operacional restrito | Não | Não | Sim, mínimo necessário e sempre auditado |
+| `SOLICITACAO_TITULAR` — atender | Abrir/acompanhar quando aplicável | Não | Não pelo produto; canal DPO-mediado | Sim, após identidade verificada |
+
+AB2 passa a ser a prova testável desta decisão: operador não vira admin; read-only não escreve; sem papel não acessa; papel em um `clienteFinalId` não atravessa outro; `AUDIT_LOG` e `SOLICITACAO_TITULAR` permanecem restritos a DPO/Compliance/Admin conforme necessidade, com trilha de auditoria e identidade verificada quando envolver direito de titular.
+
 ## 5. Privacidade por design (LGPD na prática)
 
 Os controles técnicos que materializam as obrigações do documento 02:
@@ -111,4 +135,4 @@ Regra de classificação: quando um registro combinar mais de uma classe, preval
 
 A classe **crítica** é a razão de a segurança ser requisito de sobrevivência (§1): no cenário multi-cliente, ela concentra a inteligência competitiva de concorrentes numa mesma instância. Nenhum acesso a dado desta classe ocorre sem trilha de auditoria (§3, princípio 4). No MVP, mesmo com uma empresa por conta, a implementação já deve usar autorização por objeto para evitar vazamento cross-tenant; no *Next*, o mesmo controle se estende ao recorte por cliente-final.
 
-Pendências relacionadas permanecem separadas: implementação operacional da retenção/arquivamento (P-30/P-39/RAD-101), RBAC detalhado (P-52), DPA/suboperadores e residência do LLM (P-54/P-66) e criptografia em nível de campo para a classe crítica (P-59).
+Pendências relacionadas permanecem separadas: implementação operacional da retenção/arquivamento (P-30/P-39/RAD-101), DPA/suboperadores e residência do LLM (P-54/P-66) e criptografia em nível de campo para a classe crítica (P-59). O RBAC detalhado está decidido em §4/P-52 e sua implementação segue como checagem de papel somada à autorização por objeto.

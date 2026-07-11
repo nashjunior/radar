@@ -21,7 +21,12 @@ import {
   DefinirCriterioMonitoramentoUseCase,
   RegistrarFeedbackAlertaUseCase,
 } from '@radar/matching';
-import { ConsultarPerfilHabilitacaoUseCase, GerenciarPerfilHabilitacaoUseCase } from '@radar/identidade';
+import {
+  AutorizarAcessoUseCase,
+  ConsultarPerfilHabilitacaoUseCase,
+  GerenciarPerfilHabilitacaoUseCase,
+  ResolverContextoAutorizacaoUseCase,
+} from '@radar/identidade';
 import { DefinirPreferenciasNotificacaoUseCase } from '@radar/notificacao';
 import { CryptoCriterioIdProvider } from '@radar/matching/infra';
 import { healthRouter } from './routes/health.js';
@@ -30,10 +35,13 @@ import { criarTriagemRouter } from './routes/triagem.js';
 import { criarMatchingRouter } from './routes/matching.js';
 import { criarIdentidadeRouter } from './routes/identidade.js';
 import { criarNotificacaoRouter } from './routes/notificacao.js';
+import { criarMeRouter } from './routes/me.js';
 import { responderErro } from './errors.js';
 import { criarLoggerHttpSeguro, redigirParaLog } from './logging.js';
 import { corsMiddleware, csrfMiddleware, securityHeadersMiddleware } from './security.js';
+import { criarAutorizarMiddlewareFactory } from './middleware/autorizacao.js';
 import { PerfilAtivoConfigAdapter } from './infra/perfil-ativo-config-adapter.js';
+import { PermissaoConfigAdapter } from './infra/permissao-config-adapter.js';
 import { triagemStub, extracaoStub } from './infra/triagem-stub.js';
 import { perfilRepositoryStub, perfilIdProviderStub } from './infra/identidade-stub.js';
 import { preferenciaStub } from './infra/notificacao-stub.js';
@@ -51,6 +59,10 @@ import {
 /** Seed de tenants — obrigatório em runtime para que o endpoint responda 200. */
 const tenantSeed = process.env['TENANT_SEED'] ?? '{}';
 const perfilAtivo = PerfilAtivoConfigAdapter.fromJson(tenantSeed);
+
+/** Seed de atribuição de papel (P-52) — obrigatório em runtime para que RBAC autorize alguém. */
+const permissaoSeed = process.env['PERMISSAO_SEED'] ?? '{}';
+const permissaoRepository = PermissaoConfigAdapter.fromJson(permissaoSeed);
 
 export function criarApp(): Hono {
   const consultarTriagem = new ConsultarTriagemUseCase(triagemStub, extracaoStub);
@@ -81,6 +93,10 @@ export function criarApp(): Hono {
   const consultarAlertas = new ConsultarAlertasTenantUseCase(alertaStub, editalCatalogoStub);
   const consultarMetricas = new ConsultarMetricasMatchingUseCase(metricaStub);
 
+  const resolverContexto = new ResolverContextoAutorizacaoUseCase(permissaoRepository);
+  const autorizarAcesso = new AutorizarAcessoUseCase();
+  const autorizar = criarAutorizarMiddlewareFactory({ resolverContexto, autorizarAcesso });
+
   const app = new Hono();
 
   app.use('*', securityHeadersMiddleware);
@@ -92,11 +108,12 @@ export function criarApp(): Hono {
   app.route('/health', healthRouter);
 
   // API principal — tenant obrigatório
-  app.route('/api/alertas', criarAlertasRouter({ consultarAlertas }));
-  app.route('/api/triagem', criarTriagemRouter({ consultarTriagem, solicitarTriagem, registrarFeedback: registrarFeedbackTriagem, perfilAtivo }));
-  app.route('/api/matching', criarMatchingRouter({ definirCriterio, registrarFeedback: registrarFeedbackAlerta, consultarMetricas, perfilAtivo }));
-  app.route('/api/identidade', criarIdentidadeRouter({ gerenciarPerfil, consultarPerfil, perfilAtivo }));
-  app.route('/api/notificacao', criarNotificacaoRouter({ definirPreferencias }));
+  app.route('/api/me', criarMeRouter({ resolverContexto }));
+  app.route('/api/alertas', criarAlertasRouter({ consultarAlertas, autorizar }));
+  app.route('/api/triagem', criarTriagemRouter({ consultarTriagem, solicitarTriagem, registrarFeedback: registrarFeedbackTriagem, perfilAtivo, autorizar }));
+  app.route('/api/matching', criarMatchingRouter({ definirCriterio, registrarFeedback: registrarFeedbackAlerta, consultarMetricas, perfilAtivo, autorizar }));
+  app.route('/api/identidade', criarIdentidadeRouter({ gerenciarPerfil, consultarPerfil, perfilAtivo, autorizar }));
+  app.route('/api/notificacao', criarNotificacaoRouter({ definirPreferencias, autorizar }));
 
   // Catch-all 404
   app.notFound((c) => c.json({ code: 'NAO_ENCONTRADO', mensagem: 'Rota não encontrada.' }, 404));

@@ -8,7 +8,9 @@
  *   usa o tenantId como scope; cross-tenant é impossível.
  *   Retorna 200 AlertaDTO[] (vazio quando não há alertas).
  *
- * Refs: docs/14 §2 (US-05), P-51, arquitetura/17 §5.3, RAD-115 (proveniência).
+ * RBAC (P-52): ALERTA ler — docs/05 §4.
+ *
+ * Refs: docs/14 §2 (US-05), P-51, P-52, arquitetura/17 §5.3, RAD-115 (proveniência).
  */
 
 import { Hono } from 'hono';
@@ -16,9 +18,11 @@ import type { ConsultarAlertasTenantUseCase } from '@radar/matching';
 import { responderErro } from '../errors.js';
 import { autenticarMiddleware } from '../middleware/tenant.js';
 import { rateLimitPorTenantMiddleware } from '../security.js';
+import type { AutorizarMiddleware } from '../middleware/autorizacao.js';
 
 export interface AlertasContainer {
   consultarAlertas: ConsultarAlertasTenantUseCase;
+  autorizar: AutorizarMiddleware;
 }
 
 export function criarAlertasRouter(container: AlertasContainer): Hono {
@@ -27,8 +31,8 @@ export function criarAlertasRouter(container: AlertasContainer): Hono {
   router.use('/*', autenticarMiddleware);
   router.use('/*', rateLimitPorTenantMiddleware);
 
-  // GET / — US-05 ConsultarAlertasTenant
-  router.get('/', async (c) => {
+  // GET / — US-05 ConsultarAlertasTenant — RBAC: ALERTA ler
+  router.get('/', container.autorizar('ALERTA', 'ler'), async (c) => {
     const tenantId = c.get('tenantId');
     const signal = c.req.raw.signal;
 

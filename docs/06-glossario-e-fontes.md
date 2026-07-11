@@ -6,6 +6,8 @@
 
 **Edital** — Documento que rege uma licitação: objeto, requisitos de habilitação, prazos, critério de julgamento e condições.
 
+**Alerta de prazo crítico** — Alerta imediato de edital que casa com os critérios do usuário e cujo prazo final conhecido está em até 3 dias corridos. Não espera digest e tem regra dura de zero alertas perdidos.
+
 **PNCP (Portal Nacional de Contratações Públicas)** — Sítio oficial de divulgação centralizada e obrigatória dos atos exigidos pela Lei 14.133/2021 (art. 174). Fonte âncora do produto.
 
 **Modalidade** — Forma do procedimento licitatório. Na Lei 14.133: pregão, concorrência, concurso, leilão e diálogo competitivo.

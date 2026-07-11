@@ -2,6 +2,19 @@ import type { EditalId, PerfilId, TenantId } from '@radar/kernel';
 import type { TriagemViewModel } from '@/domain/triagem-view-model';
 import type { EditalDetalhe } from '@/domain/edital-detalhe';
 import type { AlertaCardItem } from '@/domain/alerta-card';
+import type { SessaoUsuario } from '@/domain/sessao';
+
+// ---------------------------------------------------------------------------
+// Sessão (P-52 · RAD-213 — GET /api/me)
+// ---------------------------------------------------------------------------
+
+/**
+ * Port de sessão — GET /api/me.
+ * Implementado por SessaoHttpGateway (prod) ou SessaoStubGateway (dev/test).
+ */
+export interface SessaoGateway {
+  obter(signal: AbortSignal): Promise<SessaoUsuario>;
+}
 
 /**
  * Port de saída: repositório de triagens (implementado pela infra/).

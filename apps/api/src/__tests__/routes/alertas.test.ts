@@ -43,11 +43,16 @@ const ALERTA_COM_PROVENIENCIA = {
   proveniencia: { fonte: 'PNCP', baseLegal: 'Lei 14.133/2021', dataColeta: '2026-07-09T00:00:00.000Z' },
 };
 
+// RBAC (P-52) real é coberto em rbac.test.ts — aqui o gate é sempre-permite (bypassed)
+const autorizarPermissivo: AlertasContainer['autorizar'] =
+  () => (async (_c: Context, next: () => Promise<void>) => next()) as MiddlewareHandler;
+
 function buildApp(overrides?: Partial<AlertasContainer>): Hono {
   const container: AlertasContainer = {
     consultarAlertas: {
       executar: vi.fn().mockResolvedValue([]),
     } as unknown as ConsultarAlertasTenantUseCase,
+    autorizar: autorizarPermissivo,
     ...overrides,
   };
 

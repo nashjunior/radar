@@ -64,7 +64,8 @@ O MVP só vai a usuários externos quando **todos** forem verdade:
 
 - [ ] Cobertura do PNCP comprovada: ≥ 99% dos editais publicados no período de controle são capturados (documentos 08 e 12).
 - [ ] Frescor dentro do alvo: p95 do tempo publicação PNCP → alerta ≤ 30 minutos (documentos 08 e 12).
-- [ ] Precisão mínima do matching atingida: ≥ 60% dos alertas avaliados por contas ativas são marcados como relevantes, sem reduzir a postura de recall alto (documentos 08 e 11).
+- [ ] SLOs de experiência de P-36 observáveis e dentro do orçamento: entrega imediata p95 ≤ 5 minutos, triagem p95 ≤ 3 minutos, caminho crítico ingestão → alerta ≥ 99,5%/mês, e **zero alerta de prazo crítico perdido** (documento 08, §4.1).
+- [ ] Matching dentro da barra do MVP: recall de matching ≥ 90% no conjunto de controle, precisão ≥ 60% dos alertas avaliados como relevantes por contas ativas, e fadiga abaixo do guardrail (documentos 08 e 11).
 - [ ] Barra de qualidade da triagem atingida no *gold set* (documento 10): recall de campos críticos — prazo, objeto, habilitação — acima da meta, e **zero alucinação em campos numéricos**.
 - [ ] Base legal registrada, LIA aprovado e minimização aplicada na ingestão (documentos 02, §4 e 05, §5).
 - [ ] Encarregado/DPO, canal público, ROPA, Política de Privacidade/Termos de Uso e contratos de tratamento com suboperadores prontos para go-live (documentos 02, §9; 05, §5; P-03/P-57).

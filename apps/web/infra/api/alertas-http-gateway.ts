@@ -1,7 +1,7 @@
 /** Gateway HTTP para GET /api/alertas. */
 import type { AlertasApiGateway } from '@/application/ports';
 import type { AlertaCardItem } from '@/domain/alerta-card';
-import { SessaoExpiradaError, AcessoNegadoError } from '@/application/errors';
+import { fetchApi } from './http-client';
 
 interface AlertaDTO {
   id: string;
@@ -23,22 +23,9 @@ export class AlertasHttpGateway implements AlertasApiGateway {
     private readonly getToken: () => Promise<string | null>,
   ) {}
 
-  private async headers(): Promise<Record<string, string>> {
-    const token = await this.getToken();
-    return token ? { Authorization: `Bearer ${token}` } : {};
-  }
-
   async listar(signal: AbortSignal): Promise<AlertaCardItem[]> {
-    const res = await fetch(`${this.baseUrl}/api/alertas`, {
-      headers: await this.headers(),
-      signal,
-    });
-
-    if (res.status === 401) throw new SessaoExpiradaError();
-    if (res.status === 403) throw new AcessoNegadoError();
-    if (!res.ok) throw new Error(`[AlertasHttpGateway] HTTP ${res.status}`);
-
-    const dtos = (await res.json()) as AlertaDTO[];
+    const res = await fetchApi(`${this.baseUrl}/api/alertas`, this.getToken, { signal });
+    const dtos = (await res!.json()) as AlertaDTO[];
     return dtos.map(dtoParaCardItem);
   }
 }

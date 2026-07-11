@@ -46,11 +46,25 @@ Empurrar a North Star sem estes limites cria dano — logo, cada um é um teto/p
 
 | Guardrail | Por que existe | Limite |
 |-----------|----------------|--------|
-| **Fadiga de alerta** | Recall alto pode afogar o usuário em falsos positivos | alertas irrelevantes / conta / semana abaixo de X `[A VALIDAR]` (documento 11, §2) |
+| **Fadiga de alerta** | Recall alto pode afogar o usuário em falsos positivos | ≤ 10 alertas marcados como não relevantes / conta ativa / semana, fora da janela inicial de calibração de 14 dias (documento 11, §2) |
 | **Alucinação em campos numéricos** | Um prazo ou valor errado na triagem gera decisão errada | **zero** — regra dura (documento 10, §5) |
 | **Custo de IA por edital** | Triagem por IA não pode inviabilizar a unidade econômica | teto por edital processado `[A VALIDAR]` (documentos 09, 10) |
 | **Vazamento cross-tenant** | Exposição de estratégia competitiva é risco de sobrevivência | **zero** — regra dura (documento 05, §2) |
 | **Incidentes LGPD** | Falha de conformidade é risco legal e reputacional | zero incidentes reportáveis (documento 02) |
+
+### 4.1. SLOs de experiência e error budget (P-36)
+
+SLOs de experiência medem o que a conta ativa sente no MVP. A janela padrão de apuração é mensal; para **alerta de prazo crítico**, a apuração é por ocorrência. Estes SLOs não substituem os guardrails jurídicos/de segurança nem o plano de comunicação em degradação (P-37).
+
+| Experiência | Medição | SLO MVP | Error budget / ação |
+|-------------|---------|---------|---------------------|
+| **Frescor do alerta padrão** | p95 do tempo entre publicação no PNCP e `alerta.gerado` | ≤ 30 min | Até 5% dos alertas elegíveis/mês podem exceder 30 min; estourou o budget, novas cargas/features que piorem frescor param até correção. |
+| **Entrega imediata** | p95 do tempo entre `alerta.gerado` e `notificacao.enviada` para alertas imediatos | ≤ 5 min | Até 5% dos alertas imediatos por alta aderência podem exceder 5 min; alerta de prazo crítico não usa este budget. |
+| **Alerta de prazo crítico** | Edital PNCP capturado, casado com critério do usuário, com prazo final conhecido em até 3 dias corridos (P-81) | **100% geram alerta imediato; 0 perdidos** | **Error budget = 0.** Qualquer perda bloqueia release externo ou expansão de contas até RCA, correção e replay/reconciliação comprovados. |
+| **Triagem solicitada** | p95 entre `triagem.solicitada` e `triagem.concluida` ou fallback de leitura assistida | ≤ 3 min | Até 5% das triagens/mês podem exceder; sob pressão, degrada triagem antes de sacrificar ingestão/matching/alerta. |
+| **Caminho crítico ingestão → alerta** | Disponibilidade mensal do caminho que captura PNCP, casa critérios e gera alerta | ≥ 99,5%/mês | Budget mensal de 0,5% de indisponibilidade; não compensa perda de alerta de prazo crítico. |
+
+Para P-36, "perdido" significa: um alerta de prazo crítico elegível não gerou `alerta.gerado` e `notificacao.enviada` antes do prazo final, ou foi retido em digest quando deveria ser imediato. Alertas imediatos por **alta aderência** (P-81) mantêm o SLO de entrega imediata, mas não recebem o orçamento zero reservado ao prazo crítico.
 
 ## 5. Métricas de negócio (a partir do *Next*)
 

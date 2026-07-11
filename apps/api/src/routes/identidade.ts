@@ -9,6 +9,8 @@
  *      403 → tenant divergente no perfil existente
  *      400 → corpo inválido
  *      404 → tenant desconhecido (perfil ativo não encontrado)
+ *
+ * RBAC (P-52, docs/05 §4): PERFIL_HABILITACAO ler (GET); PERFIL_HABILITACAO editar (PUT).
  */
 
 import { Hono } from 'hono';
@@ -18,11 +20,13 @@ import { responderErro } from '../errors.js';
 import { autenticarMiddleware } from '../middleware/tenant.js';
 import { rateLimitPorTenantMiddleware } from '../security.js';
 import type { PerfilAtivoGateway } from '../ports/perfil-ativo-gateway.js';
+import type { AutorizarMiddleware } from '../middleware/autorizacao.js';
 
 export interface IdentidadeContainer {
   gerenciarPerfil: GerenciarPerfilHabilitacaoUseCase;
   consultarPerfil: ConsultarPerfilHabilitacaoUseCase;
   perfilAtivo: PerfilAtivoGateway;
+  autorizar: AutorizarMiddleware;
 }
 
 const PerfilBodySchema = z.object({
@@ -38,8 +42,8 @@ export function criarIdentidadeRouter(container: IdentidadeContainer): Hono {
   router.use('/*', autenticarMiddleware);
   router.use('/*', rateLimitPorTenantMiddleware);
 
-  // GET /api/identidade/perfil — leitura do perfil do cliente final autenticado (P-101)
-  router.get('/perfil', async (c) => {
+  // GET /api/identidade/perfil — leitura do perfil do cliente final autenticado (P-101) — RBAC: PERFIL_HABILITACAO ler
+  router.get('/perfil', container.autorizar('PERFIL_HABILITACAO', 'ler'), async (c) => {
     const tenantId = c.get('tenantId');
     const signal = c.req.raw.signal;
 
@@ -59,8 +63,8 @@ export function criarIdentidadeRouter(container: IdentidadeContainer): Hono {
     }
   });
 
-  // PUT /api/identidade/perfil — upsert das dimensões de habilitação (RAD-109)
-  router.put('/perfil', async (c) => {
+  // PUT /api/identidade/perfil — upsert das dimensões de habilitação (RAD-109) — RBAC: PERFIL_HABILITACAO editar
+  router.put('/perfil', container.autorizar('PERFIL_HABILITACAO', 'editar'), async (c) => {
     const tenantId = c.get('tenantId');
     const signal = c.req.raw.signal;
 

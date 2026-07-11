@@ -1,6 +1,9 @@
 /** @figma nodeId=8:49 fileKey=SAbjXOQO4gFAH4syq7VdQf */
 import { Badge } from './Badge';
 
+/** Badge de estado do alerta — exibido à esquerda da modalidade. */
+export type EditalStatus = 'novo' | 'hoje' | 'pncp' | 'revisado';
+
 export interface EditalCardData {
   id: string;
   modalidade: string;
@@ -9,6 +12,8 @@ export interface EditalCardData {
   valor: string;
   prazo: string;
   aderencia: number;
+  /** Estado do alerta para badge de status (Novo, Hoje, PNCP, Revisado). */
+  status?: EditalStatus;
   /** Linha de proveniência (RAD-115/RAD-147) — exibida no rodapé do card quando presente. */
   proveniencia?: { fonte: string; dataColeta: string; baseLegal: string };
 }
@@ -27,18 +32,27 @@ function aderenciaColor(pct: number): string {
   return 'var(--radar-color-text-muted)';
 }
 
+const STATUS_BADGE: Record<EditalStatus, { type: 'info' | 'sucesso' | 'alerta' | 'neutro'; label: string }> = {
+  novo:     { type: 'sucesso', label: 'Novo' },
+  hoje:     { type: 'alerta',  label: 'Hoje' },
+  pncp:     { type: 'info',    label: 'PNCP' },
+  revisado: { type: 'neutro',  label: 'Revisado' },
+};
+
 export function CardEdital({ data, state = 'default', onClick }: CardEditalProps) {
   const selected = state === 'selected';
+  const statusBadge = data.status ? STATUS_BADGE[data.status] : null;
   return (
     <div
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
+      aria-pressed={selected || undefined}
       onClick={onClick}
       onKeyDown={onClick ? (e) => e.key === 'Enter' && onClick() : undefined}
       style={{
         display: 'flex',
         alignItems: 'stretch',
-        height: 104,
+        minHeight: 88,
         borderRadius: 'var(--radar-radius-md)',
         background: 'var(--radar-color-bg-surface)',
         border: `1px solid ${selected ? 'var(--radar-color-action-primary)' : 'var(--radar-color-border-default)'}`,
@@ -48,8 +62,9 @@ export function CardEdital({ data, state = 'default', onClick }: CardEditalProps
         overflow: 'hidden',
       }}
     >
-      <div style={{ flex: 1, padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 'var(--radar-space-2)' }}>
+      <div style={{ flex: 1, padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: 'var(--radar-space-2)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--radar-space-2)' }}>
+          {statusBadge && <Badge type={statusBadge.type} size="sm">{statusBadge.label}</Badge>}
           <Badge type="info" size="sm">{data.modalidade}</Badge>
         </div>
         <p style={{ margin: 0, fontWeight: 500, fontSize: 'var(--radar-font-size-sm)', color: 'var(--radar-color-text-default)', lineHeight: 1.4 }}>

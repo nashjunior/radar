@@ -38,10 +38,16 @@ import {
   SolicitacaoId,
 } from '@radar/governanca';
 import {
+  AtribuicaoPapel,
+  AutorizarAcessoUseCase,
   ConsultarPerfilHabilitacaoUseCase,
   GerenciarPerfilHabilitacaoUseCase,
   PerfilHabilitacao as PerfilIdentidade,
+  ResolverContextoAutorizacaoUseCase,
+  UsuarioId as UsuarioIdIdentidade,
+  podeExecutar,
 } from '@radar/identidade';
+import type { PermissaoRepository } from '@radar/identidade';
 import { DefinirPreferenciasNotificacaoUseCase, UsuarioId } from '@radar/notificacao';
 import {
   AnexoAprovado,
@@ -497,5 +503,102 @@ describe('Gate A07 · AB14 — trust-gating de anexos', () => {
 
     expect(scanner.escanear).toHaveBeenCalledWith('landing/tenant-a/edital.pdf', signal);
     expect(eventos.publicar.mock.calls[0]![0]).toBeInstanceOf(AnexoAprovado);
+  });
+});
+
+describe('Gate A07 · AB2 — RBAC por papel (P-52, docs/05 §4, RAD-212)', () => {
+  const USUARIO_OPERADOR = UsuarioIdIdentidade('usuario-operador');
+  const USUARIO_ADMIN = UsuarioIdIdentidade('usuario-admin');
+
+  function permissaoRepositoryFake(atribuicoes: readonly AtribuicaoPapel[]): PermissaoRepository {
+    const mapa = new Map(atribuicoes.map((a) => [a.usuarioId as string, a]));
+    return {
+      async buscarPorUsuario(usuarioId, opts) {
+        opts.signal.throwIfAborted();
+        return mapa.get(usuarioId) ?? null;
+      },
+    };
+  }
+
+  it('operador não vira admin: matriz nega USUARIO_PAPEL/gerenciar a OPERADOR e permite a ADMIN_CONSULTORIA', () => {
+    expect(podeExecutar('OPERADOR', 'USUARIO_PAPEL', 'gerenciar')).toBe(false);
+    expect(podeExecutar('ADMIN_CONSULTORIA', 'USUARIO_PAPEL', 'gerenciar')).toBe(true);
+  });
+
+  it('read-only não escreve: AutorizarAcessoUseCase nega CLIENTE_FINAL_READONLY em CRITERIO_MONITORAMENTO/criar', async () => {
+    const uc = new AutorizarAcessoUseCase();
+    const contexto = {
+      usuarioId: UsuarioIdIdentidade('usuario-readonly'),
+      tenantId: TENANT_A,
+      papel: 'CLIENTE_FINAL_READONLY' as const,
+      clienteFinalIds: [CLIENTE_A],
+    };
+
+    await expect(
+      uc.executar({ contexto, recurso: 'CRITERIO_MONITORAMENTO', acao: 'criar' }, signal),
+    ).rejects.toThrow(AcessoNegadoError);
+  });
+
+  it('token válido sem papel nega: ResolverContextoAutorizacaoUseCase sem atribuição no PermissaoRepository', async () => {
+    const permissoes = permissaoRepositoryFake([]);
+    const uc = new ResolverContextoAutorizacaoUseCase(permissoes);
+
+    await expect(
+      uc.executar({ usuarioId: USUARIO_OPERADOR, tenantId: TENANT_A }, signal),
+    ).rejects.toThrow(AcessoNegadoError);
+  });
+
+  it('token de tenant divergente nega: atribuição de outro tenant não vale para o claim verificado', async () => {
+    const atribuicaoOutroTenant = AtribuicaoPapel.criar({
+      usuarioId: USUARIO_OPERADOR,
+      tenantId: TENANT_B,
+      papel: 'OPERADOR',
+      clienteFinalIds: [CLIENTE_A],
+    });
+    const permissoes = permissaoRepositoryFake([atribuicaoOutroTenant]);
+    const uc = new ResolverContextoAutorizacaoUseCase(permissoes);
+
+    await expect(
+      uc.executar({ usuarioId: USUARIO_OPERADOR, tenantId: TENANT_A }, signal),
+    ).rejects.toThrow(AcessoNegadoError);
+  });
+
+  it('papel em um clienteFinalId não alcança outro: OPERADOR nega fora do escopo, ADMIN_CONSULTORIA atravessa o tenant', async () => {
+    const uc = new AutorizarAcessoUseCase();
+
+    await expect(
+      uc.executar(
+        {
+          contexto: { usuarioId: USUARIO_OPERADOR, tenantId: TENANT_A, papel: 'OPERADOR', clienteFinalIds: [CLIENTE_A] },
+          recurso: 'TRIAGEM',
+          acao: 'ler',
+          clienteFinalId: CLIENTE_B,
+        },
+        signal,
+      ),
+    ).rejects.toThrow(AcessoNegadoError);
+
+    await expect(
+      uc.executar(
+        {
+          contexto: { usuarioId: USUARIO_ADMIN, tenantId: TENANT_A, papel: 'ADMIN_CONSULTORIA', clienteFinalIds: [CLIENTE_A] },
+          recurso: 'TRIAGEM',
+          acao: 'ler',
+          clienteFinalId: CLIENTE_B,
+        },
+        signal,
+      ),
+    ).resolves.toBeUndefined();
+  });
+
+  it('AUDIT_LOG e SOLICITACAO_TITULAR restritos a DPO_COMPLIANCE/ADMIN_CONSULTORIA — OPERADOR e CLIENTE_FINAL_READONLY negados', () => {
+    expect(podeExecutar('DPO_COMPLIANCE', 'AUDIT_LOG', 'ler')).toBe(true);
+    expect(podeExecutar('ADMIN_CONSULTORIA', 'AUDIT_LOG', 'ler')).toBe(true);
+    expect(podeExecutar('OPERADOR', 'AUDIT_LOG', 'ler')).toBe(false);
+    expect(podeExecutar('CLIENTE_FINAL_READONLY', 'AUDIT_LOG', 'ler')).toBe(false);
+
+    expect(podeExecutar('DPO_COMPLIANCE', 'SOLICITACAO_TITULAR', 'decidir')).toBe(true);
+    expect(podeExecutar('OPERADOR', 'SOLICITACAO_TITULAR', 'decidir')).toBe(false);
+    expect(podeExecutar('CLIENTE_FINAL_READONLY', 'SOLICITACAO_TITULAR', 'decidir')).toBe(false);
   });
 });

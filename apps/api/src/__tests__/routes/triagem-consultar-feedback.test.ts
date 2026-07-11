@@ -54,6 +54,10 @@ const RESULTADO_CONCLUIDA = {
   checklist: [{ ok: true, texto: 'Habilitação fiscal' }],
 };
 
+// RBAC (P-52) real é coberto em rbac.test.ts — aqui o gate é sempre-permite (bypassed)
+const autorizarPermissivo: TriagemContainer['autorizar'] =
+  () => (async (_c: Context, next: () => Promise<void>) => next()) as MiddlewareHandler;
+
 function buildApp(overrides?: Partial<TriagemContainer>): Hono {
   const container: TriagemContainer = {
     consultarTriagem: {
@@ -68,6 +72,7 @@ function buildApp(overrides?: Partial<TriagemContainer>): Hono {
     perfilAtivo: {
       resolverParaTenant: vi.fn().mockResolvedValue(PERFIL),
     },
+    autorizar: autorizarPermissivo,
     ...overrides,
   };
 

@@ -14,7 +14,9 @@ O valor do monitoramento é o produto de três alavancas — se qualquer uma zer
 
 Os dois erros do matching não custam igual. **Perder um edital relevante (falso negativo) é pior que um alerta a mais (falso positivo)**, porque o valor central prometido é "não perder oportunidade" (documento 01, §1). Logo:
 
-**Decisão:** tunar o matching para **recall alto**, e usar a triagem (documento 10) e o feedback do usuário (documento 03, §3) como as camadas que filtram os falsos positivos. `[A VALIDAR — limiares]`
+**Decisão:** tunar o matching para **recall alto**, e usar a triagem (documento 10) e o feedback do usuário (documento 03, §3) como as camadas que filtram os falsos positivos.
+
+**Limiar MVP:** no conjunto de controle de editais PNCP relevantes ao ICP, o matching precisa alertar pelo menos **90%** dos editais que deveriam casar com algum critério ativo (**recall de matching ≥ 90%**) e manter **precisão ≥ 60%** dos alertas avaliados como relevantes por contas ativas (documento 08, §3). Abaixo de 60% de precisão por duas semanas consecutivas, a ação padrão é ajustar ranking, agrupamento, digest e onboarding — não reduzir recall — salvo se o novo corte continuar provando recall ≥ 90%.
 
 Há um teto: recall alto demais afoga o usuário e dispara o **guardrail de fadiga de alerta** (documento 08, §4). O contrapeso não é baixar o recall, e sim **rankear e agrupar** melhor (§4) — mostrar tudo o que importa, na ordem certa, sem spammar.
 
@@ -38,10 +40,11 @@ Ideia-chave: no início, o produto **pede mais** (feedback) e **assume mais** (s
 
 Volume sem controle mata produtos de monitoramento. Controles de produto:
 
-- **Criticidade define o canal:** prazo curto ou alta aderência → alerta imediato; o resto → **digest** (diário/semanal, configurável).
+- **Criticidade define o canal:** prazo final em até **3 dias corridos** ou alta aderência (**score ≥ 0,80**) → alerta imediato; o resto → **digest**.
 - **Agrupamento:** editais semelhantes num só alerta, não N e-mails.
-- **Frequência configurável** por usuário, com um teto padrão sensato.
+- **Frequência configurável** por usuário, com padrão diário; digest diário envia no máximo **10 itens** e digest semanal no máximo **25 itens** por usuário, sempre ordenados por prazo e aderência.
 - **Priorização visível:** o alerta chega ordenado por aderência, não por ordem de chegada.
+- **Excedente sem spam:** itens acima do cap são agrupados por critério/órgão e ficam acessíveis no produto; não viram e-mails individuais. Alertas críticos não esperam o digest nem contam para o cap.
 
 ## 5. Motor de matching
 
@@ -87,7 +90,7 @@ O risco de dependência de fontes (documento 01, §8) exige tratamento operacion
 
 ## 8. Pendências
 
-- Fixar limiares de recall/precisão e a política de digest/fadiga (§§2, 4). `[A VALIDAR]`
+- Recalibrar limiares de recall/precisão, criticidade e cap de digest após o piloto MVP, usando feedback real por segmento (§§2, 4).
 - Definir a lista priorizada de fontes além do PNCP para o *Next* (§6, documento 07). `[A VALIDAR]`
 - Especificar o onboarding de cold-start e os critérios sugeridos por segmento (§3). `[A VALIDAR]`
 

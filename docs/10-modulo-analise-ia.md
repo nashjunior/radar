@@ -117,6 +117,34 @@ Cada edital no gold set carrega um rótulo estruturado. O campo `is_critico` def
 4. **Reprovação automática** se qualquer regra dura falhar: recall crítico < 95%, alucinação numérica > 0, ou faithfulness < 98%.
 5. **Relatório por categoria** — resultados quebrados por modalidade × formato para identificar onde o pipeline degrada (§6).
 
+### 5.4 Protocolo de rotulagem do gold set (P-84)
+
+#### Quem rotula
+
+- **Anotador primário:** especialista de produto (Produto) com conhecimento do domínio de licitações — interpreta o edital e preenche o esquema de rótulo (§5.2).
+- **Anotador de revisão:** engenheiro de IA (Eng/Iara) — revisa a anotação quanto a consistência com o esquema e cobertura dos campos críticos.
+- **Árbitro:** tech lead (Artur) — resolve qualquer discordância que persista após a revisão.
+
+A separação de papéis evita viés de confirmação: o primário não sabe o que o modelo extraiu; a revisão valida o protocolo, não a saída da IA.
+
+#### Critério de desempate entre anotadores
+
+1. Comparar as anotações campo a campo antes de consultar o edital novamente.
+2. Discordâncias em campos **não-críticos**: o anotador primário prevalece, com nota de justificativa.
+3. Discordâncias em campos **críticos** (`is_critico: true`): obrigatório consultar o texto-fonte; prevalece a anotação ancorada no trecho exato (`citacao` preenchida). Se ambas tiverem citação, o árbitro decide.
+4. Qualquer campo onde nenhum anotador consegue ancorar uma citação verificável é marcado `indeterminado` e excluído do cálculo de recall para aquele edital.
+
+#### Cadência de atualização
+
+| Momento | Ação |
+|---|---|
+| **Pré-lançamento** | Rotular os ≥ 50 editais iniciais (cobertura obrigatória de §5.1) antes do Gate 4 (CI). |
+| **A cada sprint que alterar prompt ou modelo** | Re-verificar editais do eixo afetado; acrescentar ao menos 3 editais novos se recall degradar. |
+| **Trimestral** | Revisar rótulos de editais cujo formato foi atualizado pelo órgão publicador; descartar os desatualizados e repor. |
+| **Ao resolver P-93/P-94/P-95** | Rerotular os editais de cada faixa de dificuldade impactada e recalibrar o limiar (P-19). |
+
+O gold set é um artefato versionado em `data/gold-set/` (um arquivo JSON por edital, conforme o esquema de §5.2). Cada edição gera uma entrada no CHANGELOG do diretório com data, responsáveis e motivo.
+
 ## 6. Modos de falha e fallback
 
 Degradar com transparência é melhor que errar com confiança:

@@ -7,7 +7,7 @@ import type { EditalId, PerfilId, TenantId } from '@radar/kernel';
 import { EditalId as mkEditalId, PerfilId as mkPerfilId } from '@radar/kernel';
 import type { TriagemGateway } from '@/application/ports';
 import type { TriagemViewModel } from '@/domain/triagem-view-model';
-import { SessaoExpiradaError } from '@/application/errors';
+import { fetchApi } from './http-client';
 
 export class TriagemHttpGateway implements TriagemGateway {
   constructor(
@@ -19,19 +19,12 @@ export class TriagemHttpGateway implements TriagemGateway {
     input: { tenantId: TenantId; editalId: EditalId; perfilId: PerfilId },
     signal: AbortSignal,
   ): Promise<TriagemViewModel | null> {
-    const token = await this.getToken();
-    const headers: Record<string, string> = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-
-    const res = await fetch(
+    const res = await fetchApi(
       `${this.baseUrl}/api/triagem/${encodeURIComponent(input.editalId)}`,
-      { headers, signal },
+      this.getToken,
+      { signal, on403: 'null', on404: 'null' },
     );
-
-    if (res.status === 401) throw new SessaoExpiradaError();
-    if (res.status === 404) return null;
-    if (res.status === 403) return null;
-    if (!res.ok) throw new Error(`[TriagemHttpGateway] HTTP ${res.status}`);
+    if (!res) return null;
 
     const data = (await res.json()) as {
       status: 'processando' | 'concluida' | 'incompleta' | 'falha_ocr' | 'recusada';
@@ -66,36 +59,22 @@ export class TriagemHttpGateway implements TriagemGateway {
     input: { tenantId: TenantId; editalId: EditalId; perfilId: PerfilId },
     signal: AbortSignal,
   ): Promise<{ editalId: EditalId; estado: 'processando' }> {
-    const token = await this.getToken();
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-
-    const res = await fetch(
+    const res = await fetchApi(
       `${this.baseUrl}/api/triagem/${encodeURIComponent(input.editalId)}/solicitar`,
-      { method: 'POST', headers, signal },
+      this.getToken,
+      { method: 'POST', json: true, signal },
     );
-
-    if (res.status === 401) throw new SessaoExpiradaError();
-    if (!res.ok) throw new Error(`[TriagemHttpGateway.solicitar] HTTP ${res.status}`);
-
-    const data = (await res.json()) as { editalId: string; estado: 'processando' };
+    const data = (await res!.json()) as { editalId: string; estado: 'processando' };
     return { editalId: mkEditalId(data.editalId), estado: 'processando' };
   }
 
   private async postFeedback(path: string, body: unknown, signal: AbortSignal): Promise<void> {
-    const token = await this.getToken();
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-
-    const res = await fetch(`${this.baseUrl}${path}`, {
+    await fetchApi(`${this.baseUrl}${path}`, this.getToken, {
       method: 'POST',
-      headers,
+      json: true,
       body: JSON.stringify(body),
       signal,
     });
-
-    if (res.status === 401) throw new SessaoExpiradaError();
-    if (!res.ok) throw new Error(`[TriagemHttpGateway] ${path} HTTP ${res.status}`);
   }
 
   async aceitar(input: { tenantId: TenantId; editalId: EditalId; perfilId: PerfilId }, signal: AbortSignal): Promise<void> {

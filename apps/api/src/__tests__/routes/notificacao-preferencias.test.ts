@@ -30,6 +30,10 @@ import type { DefinirPreferenciasNotificacaoUseCase } from '@radar/notificacao';
 
 const BODY_VALIDO = { canais: ['EMAIL'], frequencia: 'DIARIA' };
 
+// RBAC (P-52) real é coberto em rbac.test.ts — aqui o gate é sempre-permite (bypassed)
+const autorizarPermissivo: NotificacaoContainer['autorizar'] =
+  () => (async (_c: Context, next: () => Promise<void>) => next()) as MiddlewareHandler;
+
 function buildApp(overrides?: Partial<NotificacaoContainer>): Hono {
   const container: NotificacaoContainer = {
     definirPreferencias: {
@@ -39,6 +43,7 @@ function buildApp(overrides?: Partial<NotificacaoContainer>): Hono {
         frequencia: 'DIARIA',
       }),
     } as unknown as DefinirPreferenciasNotificacaoUseCase,
+    autorizar: autorizarPermissivo,
     ...overrides,
   };
 

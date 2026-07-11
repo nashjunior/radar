@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Button, Badge } from '@/ui/components';
 import { Textarea } from '@/ui/components/Textarea.js';
 import { usePerfilHabilitacao } from '@/ui/hooks/use-perfil-habilitacao.js';
+import { useSessao } from '@/ui/hooks/use-sessao';
 import type { PerfilHabilitacaoDTO } from '@/application/ports.js';
 
 type PerfilTab = 'juridica' | 'fiscal' | 'tecnica' | 'economica';
@@ -59,6 +60,8 @@ const TABS: TabConfig[] = [
 export function PerfilHabilitacaoPage() {
   const [tab, setTab] = useState<PerfilTab>('juridica');
   const { campos, carregarEstado, salvarEstado, setCampos, salvar } = usePerfilHabilitacao();
+  const { pode } = useSessao();
+  const podeEditarPerfil = pode('PERFIL_HABILITACAO', 'escrever');
 
   const tabConfig = TABS.find((t) => t.key === tab)!;
   const salvando = salvarEstado.status === 'salvando';
@@ -148,7 +151,7 @@ export function PerfilHabilitacaoPage() {
               value={campos[tabConfig.campo]}
               onChange={(e) => handleChange(e.target.value)}
               placeholder={tabConfig.placeholder}
-              disabled={salvando}
+              disabled={salvando || !podeEditarPerfil}
             />
 
             {/* Separador Pós-MVP */}
@@ -222,9 +225,11 @@ export function PerfilHabilitacaoPage() {
             </div>
           )}
 
-          <Button variant="primary" onClick={() => void salvar()} disabled={salvando}>
-            {salvando ? 'Salvando...' : 'Salvar documentos'}
-          </Button>
+          {podeEditarPerfil && (
+            <Button variant="primary" onClick={() => void salvar()} disabled={salvando}>
+              {salvando ? 'Salvando...' : 'Salvar documentos'}
+            </Button>
+          )}
         </>
       )}
     </div>

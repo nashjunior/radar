@@ -15,6 +15,7 @@ const ISSUER = 'https://cognito-idp.sa-east-1.amazonaws.com/sa-east-1_TEST';
 const CLIENT_ID = 'test-client-id';
 const TENANT_CLAIM = 'custom:tenantId';
 const TENANT_ID = 'tenant-abc';
+const SUB = 'usuario-sub-1';
 const KID = 'test-key-1';
 
 let privateKey: GenerateKeyPairResult['privateKey'];
@@ -40,7 +41,7 @@ function buildApp() {
     clientId: CLIENT_ID,
     tenantClaim: TENANT_CLAIM,
   }));
-  app.get('/ping', (c) => c.json({ tenantId: c.get('tenantId') }));
+  app.get('/ping', (c) => c.json({ tenantId: c.get('tenantId'), usuarioId: c.get('usuarioId') }));
   return app;
 }
 
@@ -48,6 +49,7 @@ function validToken(overrides: Record<string, unknown> = {}, expiresIn = '1h') {
   return new SignJWT({
     [TENANT_CLAIM]: TENANT_ID,
     token_use: 'id',
+    sub: SUB,
     ...overrides,
   })
     .setProtectedHeader({ alg: 'RS256', kid: KID })
@@ -84,8 +86,9 @@ describe('autenticarMiddleware — cognito mode (AB3)', () => {
       headers: { authorization: `Bearer ${token}` },
     });
     expect(res.status).toBe(200);
-    const body = await res.json() as { tenantId: string };
+    const body = await res.json() as { tenantId: string; usuarioId: string };
     expect(body.tenantId).toBe(TENANT_ID);
+    expect(body.usuarioId).toBe(SUB);
   });
 
   it('401 TOKEN_INVALIDO quando token expirado', async () => {
@@ -177,6 +180,28 @@ describe('autenticarMiddleware — cognito mode (AB3)', () => {
     expect(body.code).toBe('TENANT_AUSENTE_NO_TOKEN');
   });
 
+  it('401 SUB_AUSENTE_NO_TOKEN quando claim sub ausente (RBAC/P-52)', async () => {
+    const app = buildApp();
+    const token = await validToken({ sub: undefined });
+    const res = await app.request('/ping', {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(401);
+    const body = await res.json() as { code: string };
+    expect(body.code).toBe('SUB_AUSENTE_NO_TOKEN');
+  });
+
+  it('401 SUB_AUSENTE_NO_TOKEN quando claim sub é string vazia (RBAC/P-52)', async () => {
+    const app = buildApp();
+    const token = await validToken({ sub: '   ' });
+    const res = await app.request('/ping', {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(401);
+    const body = await res.json() as { code: string };
+    expect(body.code).toBe('SUB_AUSENTE_NO_TOKEN');
+  });
+
   it('401 quando x-tenant-id está presente mas token ausente (sem fallback de header)', async () => {
     const app = buildApp();
     const res = await app.request('/ping', {
@@ -202,11 +227,31 @@ describe('autenticarMiddleware — dev mode', () => {
       clientId: CLIENT_ID,
       tenantClaim: TENANT_CLAIM,
     }));
-    app.get('/ping', (c) => c.json({ tenantId: c.get('tenantId') }));
+    app.get('/ping', (c) => c.json({ tenantId: c.get('tenantId'), usuarioId: c.get('usuarioId') }));
     return app;
   }
 
   it('200 com HS256 dev token válido', async () => {
+    const { SignJWT: SignJWTLocal } = await import('jose');
+    const { createSecretKey: nodeCreateSecretKey } = await import('node:crypto');
+    const key = nodeCreateSecretKey(Buffer.from(DEV_SECRET, 'utf-8'));
+    const token = await new SignJWTLocal({ [TENANT_CLAIM]: 'tenant-dev', sub: SUB })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setExpirationTime('1h')
+      .setIssuedAt()
+      .sign(key);
+
+    const app = buildDevApp();
+    const res = await app.request('/ping', {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { tenantId: string; usuarioId: string };
+    expect(body.tenantId).toBe('tenant-dev');
+    expect(body.usuarioId).toBe(SUB);
+  });
+
+  it('401 SUB_AUSENTE_NO_TOKEN em dev mode quando sub ausente', async () => {
     const { SignJWT: SignJWTLocal } = await import('jose');
     const { createSecretKey: nodeCreateSecretKey } = await import('node:crypto');
     const key = nodeCreateSecretKey(Buffer.from(DEV_SECRET, 'utf-8'));
@@ -220,8 +265,8 @@ describe('autenticarMiddleware — dev mode', () => {
     const res = await app.request('/ping', {
       headers: { authorization: `Bearer ${token}` },
     });
-    expect(res.status).toBe(200);
-    const body = await res.json() as { tenantId: string };
-    expect(body.tenantId).toBe('tenant-dev');
+    expect(res.status).toBe(401);
+    const body = await res.json() as { code: string };
+    expect(body.code).toBe('SUB_AUSENTE_NO_TOKEN');
   });
 });

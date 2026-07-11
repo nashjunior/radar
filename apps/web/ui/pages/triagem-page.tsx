@@ -3,6 +3,7 @@ import { Badge, Button } from '@/ui/components';
 import { useTriagem } from '@/ui/hooks/use-triagem';
 import { useEdital } from '@/ui/hooks/use-edital';
 import { useFeedbackTriagem } from '@/ui/hooks/use-feedback-triagem';
+import { useSessao } from '@/ui/hooks/use-sessao';
 import { aderenciaLabel } from '@/domain/triagem-view-model';
 import { formatarDataColeta } from '@/domain/edital-detalhe';
 import type { CampoAnaliseIA, ChecklistItem } from '@/domain/triagem-view-model';
@@ -16,6 +17,8 @@ export function TriagemPage({ editalId, onBack }: TriagemPageProps) {
   const triagem = useTriagem({ editalId: editalId ?? '' });
   const edital = useEdital(editalId ?? '');
   const feedback = useFeedbackTriagem({ editalId: editalId ?? '' });
+  const { pode } = useSessao();
+  const podeDecidirTriagem = pode('TRIAGEM', 'escrever');
 
   if (!editalId) {
     return (
@@ -210,53 +213,67 @@ export function TriagemPage({ editalId, onBack }: TriagemPageProps) {
           </ul>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--radar-space-3)' }}>
-            {feedback.decisaoEstado.status === 'sucesso' ? (
-              <div style={{ textAlign: 'center', fontSize: 'var(--radar-font-size-sm)', color: 'var(--radar-color-feedback-sucesso-fg)', padding: 'var(--radar-space-3)', background: 'var(--radar-color-feedback-sucesso-bg)', borderRadius: 'var(--radar-radius-md)' }}>
-                Decisão registrada com sucesso.
-              </div>
-            ) : (
+            {podeDecidirTriagem ? (
               <>
-                <Button
-                  variant="primary"
-                  style={{ width: '100%' }}
-                  disabled={feedback.decisaoEstado.status === 'loading'}
-                  onClick={() => void feedback.registrarDecisao(true)}
-                >
-                  {feedback.decisaoEstado.status === 'loading' ? 'Registrando...' : 'Participar — enviar para Gestão'}
-                </Button>
-                <Button
-                  variant="secondary"
-                  style={{ width: '100%' }}
-                  disabled={feedback.decisaoEstado.status === 'loading'}
-                  onClick={() => void feedback.registrarDecisao(false)}
-                >
-                  Não participar — arquivar
-                </Button>
+                {feedback.decisaoEstado.status === 'sucesso' ? (
+                  <div style={{ textAlign: 'center', fontSize: 'var(--radar-font-size-sm)', color: 'var(--radar-color-feedback-sucesso-fg)', padding: 'var(--radar-space-3)', background: 'var(--radar-color-feedback-sucesso-bg)', borderRadius: 'var(--radar-radius-md)' }}>
+                    Decisão registrada com sucesso.
+                  </div>
+                ) : (
+                  <>
+                    <Button
+                      variant="primary"
+                      style={{ width: '100%' }}
+                      disabled={feedback.decisaoEstado.status === 'loading'}
+                      onClick={() => void feedback.registrarDecisao(true)}
+                    >
+                      {feedback.decisaoEstado.status === 'loading' ? 'Registrando...' : '✓ Participar — enviar para Gestão'}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      style={{ width: '100%' }}
+                      disabled={feedback.decisaoEstado.status === 'loading'}
+                      onClick={() => void feedback.registrarDecisao(false)}
+                    >
+                      ✕ Não participar — arquivar
+                    </Button>
+                    <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--radar-color-text-muted)', textAlign: 'center' }}>
+                      Sugestão da IA: {data.recomendacao === 'go' ? 'participar' : 'não participar'} · a decisão final é sua
+                    </p>
+                  </>
+                )}
+                {feedback.decisaoEstado.status === 'erro' && (
+                  <div style={{ fontSize: '0.75rem', color: 'var(--radar-color-feedback-erro-fg)' }}>
+                    {feedback.decisaoEstado.mensagem}
+                  </div>
+                )}
+                <div style={{ borderTop: '1px solid var(--radar-color-border-default)', paddingTop: 'var(--radar-space-3)', marginTop: 'var(--radar-space-1)' }}>
+                  {feedback.contestarEstado.status === 'sucesso' ? (
+                    <span style={{ fontSize: '0.75rem', color: 'var(--radar-color-text-muted)' }}>Contestação enviada.</span>
+                  ) : (
+                    <button
+                      onClick={() => void feedback.contestar()}
+                      disabled={feedback.contestarEstado.status === 'loading'}
+                      style={{ background: 'none', border: 'none', cursor: feedback.contestarEstado.status === 'loading' ? 'wait' : 'pointer', color: 'var(--radar-color-action-primary)', fontSize: '0.75rem', padding: 0, fontFamily: 'var(--radar-font-sans)' }}
+                    >
+                      {feedback.contestarEstado.status === 'loading' ? 'Enviando...' : 'Esta análise não está correta? Contestar'}
+                    </button>
+                  )}
+                  {feedback.contestarEstado.status === 'erro' && (
+                    <div style={{ fontSize: '0.75rem', color: 'var(--radar-color-feedback-erro-fg)', marginTop: 4 }}>
+                      {feedback.contestarEstado.mensagem}
+                    </div>
+                  )}
+                </div>
               </>
-            )}
-            {feedback.decisaoEstado.status === 'erro' && (
-              <div style={{ fontSize: '0.75rem', color: 'var(--radar-color-feedback-erro-fg)' }}>
-                {feedback.decisaoEstado.mensagem}
+            ) : (
+              <div
+                role="status"
+                style={{ fontSize: 'var(--radar-font-size-sm)', color: 'var(--radar-color-text-muted)', textAlign: 'center', padding: 'var(--radar-space-3)' }}
+              >
+                Visualização em leitura — sem permissão para registrar decisão.
               </div>
             )}
-            <div style={{ borderTop: '1px solid var(--radar-color-border-default)', paddingTop: 'var(--radar-space-3)', marginTop: 'var(--radar-space-1)' }}>
-              {feedback.contestarEstado.status === 'sucesso' ? (
-                <span style={{ fontSize: '0.75rem', color: 'var(--radar-color-text-muted)' }}>Contestação enviada.</span>
-              ) : (
-                <button
-                  onClick={() => void feedback.contestar()}
-                  disabled={feedback.contestarEstado.status === 'loading'}
-                  style={{ background: 'none', border: 'none', cursor: feedback.contestarEstado.status === 'loading' ? 'wait' : 'pointer', color: 'var(--radar-color-action-primary)', fontSize: '0.75rem', padding: 0, fontFamily: 'var(--radar-font-sans)' }}
-                >
-                  {feedback.contestarEstado.status === 'loading' ? 'Enviando...' : 'Esta análise não está correta? Contestar'}
-                </button>
-              )}
-              {feedback.contestarEstado.status === 'erro' && (
-                <div style={{ fontSize: '0.75rem', color: 'var(--radar-color-feedback-erro-fg)', marginTop: 4 }}>
-                  {feedback.contestarEstado.mensagem}
-                </div>
-              )}
-            </div>
           </div>
         </div>
       </div>

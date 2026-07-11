@@ -2,6 +2,7 @@ import { StrictMode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ThemeProvider } from '@/ui/providers/theme-provider';
 import { AuthProvider, useAuth } from '@/ui/providers/auth-provider';
+import { SessaoProvider, useSessaoEstado } from '@/ui/providers/sessao-provider';
 import { UseCasesContext } from '@/ui/providers/use-cases-provider';
 import { authGateway, useCases } from '@/infra/container';
 import { AppLayout } from '@/ui/layout/AppLayout';
@@ -30,7 +31,7 @@ function App() {
 
   return (
     <AppLayout current={route} onNavigate={navigateTo}>
-      {route === 'dashboard'  && <DashboardPage onTriagem={openTriagem} />}
+      {route === 'dashboard'  && <DashboardPage onTriagem={openTriagem} onVerAlertas={() => navigateTo('alertas')} />}
       {route === 'alertas'    && <AlertasPage onTriagem={openTriagem} />}
       {route === 'triagem'    && <TriagemPage editalId={triagemId} onBack={() => setRoute('alertas')} />}
       {route === 'configurar' && <ConfigurarPage />}
@@ -39,26 +40,48 @@ function App() {
   );
 }
 
+const loadingStyle: React.CSSProperties = {
+  minHeight: '100vh',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  background: 'var(--radar-color-bg-canvas)',
+  color: 'var(--radar-color-text-muted)',
+  fontFamily: 'var(--radar-font-sans)',
+  fontSize: 'var(--radar-font-size-sm)',
+};
+
+function SessaoGate({ children }: { children: React.ReactNode }) {
+  const { estado } = useSessaoEstado();
+
+  if (estado.status === 'carregando') {
+    return <div style={loadingStyle}>Carregando...</div>;
+  }
+
+  if (estado.status === 'sem_permissao') {
+    return (
+      <div style={{ ...loadingStyle, color: 'var(--radar-color-feedback-erro-fg)' }}>
+        Sem permissão para acessar este sistema.
+      </div>
+    );
+  }
+
+  if (estado.status === 'erro') {
+    return (
+      <div style={{ ...loadingStyle, color: 'var(--radar-color-feedback-erro-fg)' }}>
+        Não foi possível carregar sua sessão: {estado.mensagem}
+      </div>
+    );
+  }
+
+  return <>{children}</>;
+}
+
 function AppGate() {
   const { estado } = useAuth();
 
   if (estado.status === 'carregando') {
-    return (
-      <div
-        style={{
-          minHeight: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: 'var(--radar-color-bg-canvas)',
-          color: 'var(--radar-color-text-muted)',
-          fontFamily: 'var(--radar-font-sans)',
-          fontSize: 'var(--radar-font-size-sm)',
-        }}
-      >
-        Carregando...
-      </div>
-    );
+    return <div style={loadingStyle}>Carregando...</div>;
   }
 
   if (estado.status === 'nao_autenticado') {
@@ -67,7 +90,11 @@ function AppGate() {
 
   return (
     <UseCasesContext.Provider value={useCases}>
-      <App />
+      <SessaoProvider obterSessaoUseCase={useCases.obterSessao}>
+        <SessaoGate>
+          <App />
+        </SessaoGate>
+      </SessaoProvider>
     </UseCasesContext.Provider>
   );
 }

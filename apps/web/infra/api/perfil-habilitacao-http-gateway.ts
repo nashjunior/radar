@@ -1,5 +1,5 @@
 import type { PerfilHabilitacaoGateway, PerfilHabilitacaoDTO } from '@/application/ports';
-import { SessaoExpiradaError, AcessoNegadoError } from '@/application/errors';
+import { fetchApi } from './http-client';
 
 /** Shape retornado por GET/PUT /api/identidade/perfil no BFF. */
 interface PerfilApiDTO {
@@ -36,38 +36,21 @@ export class PerfilHabilitacaoHttpGateway implements PerfilHabilitacaoGateway {
     private readonly getToken: () => Promise<string | null>,
   ) {}
 
-  private async headers(): Promise<Record<string, string>> {
-    const token = await this.getToken();
-    return token
-      ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
-      : { 'Content-Type': 'application/json' };
-  }
-
   async consultar(signal: AbortSignal): Promise<PerfilHabilitacaoDTO | null> {
-    const res = await fetch(`${this.baseUrl}/api/identidade/perfil`, {
-      method: 'GET',
-      headers: await this.headers(),
+    const res = await fetchApi(`${this.baseUrl}/api/identidade/perfil`, this.getToken, {
       signal,
+      on404: 'null',
     });
-
-    if (res.status === 401) throw new SessaoExpiradaError();
-    if (res.status === 403) throw new AcessoNegadoError();
-    if (res.status === 404) return null;
-    if (!res.ok) throw new Error(`[PerfilHabilitacaoHttpGateway] HTTP ${res.status}`);
-
+    if (!res) return null;
     return apiParaFront((await res.json()) as PerfilApiDTO);
   }
 
   async salvar(input: PerfilHabilitacaoDTO, signal: AbortSignal): Promise<void> {
-    const res = await fetch(`${this.baseUrl}/api/identidade/perfil`, {
+    await fetchApi(`${this.baseUrl}/api/identidade/perfil`, this.getToken, {
       method: 'PUT',
-      headers: await this.headers(),
+      json: true,
       body: JSON.stringify(frontParaApi(input)),
       signal,
     });
-
-    if (res.status === 401) throw new SessaoExpiradaError();
-    if (res.status === 403) throw new AcessoNegadoError();
-    if (!res.ok) throw new Error(`[PerfilHabilitacaoHttpGateway] HTTP ${res.status}`);
   }
 }

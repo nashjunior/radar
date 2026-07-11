@@ -7,7 +7,9 @@
  *   Autorização por objeto (P-51): chamadorId === usuarioId — verificada no use case.
  *   Retorna 200 PreferenciaDTO.
  *
- * Refs: docs/14 §4 (US-10), modules/notificacao, P-51.
+ * RBAC (P-52, docs/05 §4): PREFERENCIA_NOTIFICACAO editar.
+ *
+ * Refs: docs/14 §4 (US-10), modules/notificacao, P-51, P-52.
  */
 
 import { Hono } from 'hono';
@@ -17,9 +19,11 @@ import { UsuarioId } from '@radar/notificacao';
 import { responderErro } from '../errors.js';
 import { autenticarMiddleware } from '../middleware/tenant.js';
 import { rateLimitPorTenantMiddleware } from '../security.js';
+import type { AutorizarMiddleware } from '../middleware/autorizacao.js';
 
 export interface NotificacaoContainer {
   definirPreferencias: DefinirPreferenciasNotificacaoUseCase;
+  autorizar: AutorizarMiddleware;
 }
 
 const PreferenciasBodySchema = z.object({
@@ -33,8 +37,8 @@ export function criarNotificacaoRouter(container: NotificacaoContainer): Hono {
   router.use('/*', autenticarMiddleware);
   router.use('/*', rateLimitPorTenantMiddleware);
 
-  // PUT /preferencias — US-10 DefinirPreferenciasNotificacao
-  router.put('/preferencias', async (c) => {
+  // PUT /preferencias — US-10 DefinirPreferenciasNotificacao — RBAC: PREFERENCIA_NOTIFICACAO editar
+  router.put('/preferencias', container.autorizar('PREFERENCIA_NOTIFICACAO', 'editar'), async (c) => {
     const tenantId = c.get('tenantId');
     const signal = c.req.raw.signal;
 

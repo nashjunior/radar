@@ -16,8 +16,12 @@
  *   RAD-78: Expõe precisão (P-14) e ativação (docs/08 §3) do tenant autenticado.
  *   Gate P-21: somente leitura — nenhum limiar de matching é alterado.
  *
+ * RBAC (P-52, docs/05 §4): CRITERIO_MONITORAMENTO criar (POST /criterios);
+ * ALERTA decidir (PATCH feedback); ALERTA ler (GET /metricas — precisão é
+ * derivada do feedback de alerta, P-14).
+ *
  * Refs: RAD-77, RAD-78, docs/14 §2 (US-04/US-06), arquitetura/17 §5.3 (authz por objeto),
- *       modules/matching/src/application/use-cases/*, P-51.
+ *       modules/matching/src/application/use-cases/*, P-51, P-52.
  */
 
 import { Hono } from 'hono';
@@ -32,12 +36,14 @@ import { responderErro } from '../errors.js';
 import { autenticarMiddleware } from '../middleware/tenant.js';
 import { rateLimitPorTenantMiddleware } from '../security.js';
 import type { PerfilAtivoGateway } from '../ports/perfil-ativo-gateway.js';
+import type { AutorizarMiddleware } from '../middleware/autorizacao.js';
 
 export interface MatchingContainer {
   definirCriterio: DefinirCriterioMonitoramentoUseCase;
   registrarFeedback: RegistrarFeedbackAlertaUseCase;
   consultarMetricas: ConsultarMetricasMatchingUseCase;
   perfilAtivo: PerfilAtivoGateway;
+  autorizar: AutorizarMiddleware;
 }
 
 const DefinirCriterioBodySchema = z.object({
@@ -57,8 +63,8 @@ export function criarMatchingRouter(container: MatchingContainer): Hono {
   router.use('/*', autenticarMiddleware);
   router.use('/*', rateLimitPorTenantMiddleware);
 
-  // POST /criterios — US-04 DefinirCritérioMonitoramento
-  router.post('/criterios', async (c) => {
+  // POST /criterios — US-04 DefinirCritérioMonitoramento — RBAC: CRITERIO_MONITORAMENTO criar
+  router.post('/criterios', container.autorizar('CRITERIO_MONITORAMENTO', 'criar'), async (c) => {
     const tenantId = c.get('tenantId');
     const signal = c.req.raw.signal;
 
@@ -91,8 +97,8 @@ export function criarMatchingRouter(container: MatchingContainer): Hono {
     }
   });
 
-  // GET /metricas — RAD-78 ConsultarMetricasMatching
-  router.get('/metricas', async (c) => {
+  // GET /metricas — RAD-78 ConsultarMetricasMatching — RBAC: ALERTA ler
+  router.get('/metricas', container.autorizar('ALERTA', 'ler'), async (c) => {
     const tenantId = c.get('tenantId');
     const signal = c.req.raw.signal;
     const janelaParam = c.req.query('janelaEmDias');
@@ -113,8 +119,8 @@ export function criarMatchingRouter(container: MatchingContainer): Hono {
     }
   });
 
-  // PATCH /alertas/:alertaId/feedback — US-06 RegistrarFeedbackAlerta
-  router.patch('/alertas/:alertaId/feedback', async (c) => {
+  // PATCH /alertas/:alertaId/feedback — US-06 RegistrarFeedbackAlerta — RBAC: ALERTA decidir
+  router.patch('/alertas/:alertaId/feedback', container.autorizar('ALERTA', 'decidir'), async (c) => {
     const alertaIdRaw = c.req.param('alertaId');
     const tenantId = c.get('tenantId');
     const signal = c.req.raw.signal;

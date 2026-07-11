@@ -41,7 +41,6 @@ export type {
   BatchResultItem,
   MessageBatchesClient,
 } from './adapters/anthropic-batch-llm-gateway.js';
-export { paraHttpStatus } from './adapters/error-mapping.js';
 export { PerfilHabilitacaoAdapter } from './adapters/perfil-habilitacao-adapter.js';
 export type { PerfilSource, PerfilSourceData } from './adapters/perfil-habilitacao-adapter.js';
 export { PostgresExtracaoRepository } from './adapters/postgres-extracao-repository.js';

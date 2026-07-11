@@ -35,6 +35,10 @@ import type {
 const EDITAL = 'edital-abc';
 const SIGNAL = new AbortController().signal;
 
+// RBAC (P-52) real é coberto em rbac.test.ts — aqui o gate é sempre-permite (bypassed)
+const autorizarPermissivo: TriagemContainer['autorizar'] =
+  () => (async (_c: Context, next: () => Promise<void>) => next()) as MiddlewareHandler;
+
 function buildApp(overrides?: Partial<TriagemContainer>): Hono {
   const container: TriagemContainer = {
     consultarTriagem: { executar: vi.fn().mockResolvedValue(null) } as unknown as ConsultarTriagemUseCase,
@@ -46,6 +50,7 @@ function buildApp(overrides?: Partial<TriagemContainer>): Hono {
         clienteFinalId: 'cliente-1',
       }),
     },
+    autorizar: autorizarPermissivo,
     ...overrides,
   };
 

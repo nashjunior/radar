@@ -69,6 +69,10 @@ const perfilAtivoNulo: PerfilAtivoGateway = {
   resolverParaTenant: vi.fn().mockResolvedValue(null),
 };
 
+// RBAC (P-52) real é coberto em rbac.test.ts — aqui o gate é sempre-permite (bypassed)
+const autorizarPermissivo: MatchingContainer['autorizar'] =
+  () => (async (_c: Context, next: () => Promise<void>) => next()) as MiddlewareHandler;
+
 function buildApp(overrides?: Partial<MatchingContainer>): Hono {
   const container: MatchingContainer = {
     definirCriterio: {
@@ -81,6 +85,7 @@ function buildApp(overrides?: Partial<MatchingContainer>): Hono {
       executar: vi.fn().mockResolvedValue(METRICAS_DTO),
     } as unknown as ConsultarMetricasMatchingUseCase,
     perfilAtivo: perfilAtivoOk,
+    autorizar: autorizarPermissivo,
     ...overrides,
   };
 

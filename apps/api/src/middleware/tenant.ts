@@ -12,7 +12,12 @@
  * Invariante AB3: no modo cognito, somente token_use=id é aceito. O front envia
  * id_token (contém custom:tenantId); access_token não carrega a claim.
  *
- * Refs: A08 §3 (Cognito como IdP), A08 §5 (topologia), docs/05 §4, P-08, P-91.
+ * Invariante RBAC (P-52, docs/14 §6): o `sub` do token verificado é extraído
+ * como `usuarioId` — identidade do usuário para o PermissaoRepository. Papel
+ * e escopo de clienteFinalId NUNCA vêm do token (são dado de domínio de
+ * Identidade & Organização, resolvidos na borda por autorizacao.ts).
+ *
+ * Refs: A08 §3 (Cognito como IdP), A08 §5 (topologia), docs/05 §4, docs/14 §6, P-08, P-91, P-52.
  */
 
 import { createMiddleware } from 'hono/factory';
@@ -20,10 +25,12 @@ import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { createSecretKey } from 'node:crypto';
 import type { JWTPayload, JWTVerifyGetKey } from 'jose';
 import { TenantId } from '@radar/kernel';
+import { UsuarioId } from '@radar/identidade';
 
 declare module 'hono' {
   interface ContextVariableMap {
     tenantId: ReturnType<typeof TenantId>;
+    usuarioId: UsuarioId;
   }
 }
 
@@ -99,6 +106,14 @@ export function criarAutenticarMiddleware(opts: CognitoMiddlewareOpts) {
       return c.json({ code: 'TOKEN_INVALIDO', mensagem: 'Token inválido ou expirado.' }, 401);
     }
 
+    const sub = payload.sub;
+    if (typeof sub !== 'string' || sub.trim() === '') {
+      return c.json(
+        { code: 'SUB_AUSENTE_NO_TOKEN', mensagem: 'Identidade do usuário ausente no token.' },
+        401,
+      );
+    }
+
     const claim = payload[opts.tenantClaim];
     if (typeof claim !== 'string' || claim.trim() === '') {
       return c.json(
@@ -108,6 +123,7 @@ export function criarAutenticarMiddleware(opts: CognitoMiddlewareOpts) {
     }
 
     c.set('tenantId', TenantId(claim.trim()));
+    c.set('usuarioId', UsuarioId(sub.trim()));
     await next();
   });
 }
