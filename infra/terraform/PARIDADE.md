@@ -175,6 +175,31 @@ resolvidos, não só de endereços. Quando o runner credenciado (RAD-134) rodar
 nos 3 envs; qualquer `exit 2` seria skew de provider (ver seção acima), não quebra de contrato.
 O swap continua **gated** só nesse `plan` objetivo + creds.
 
+## Swap executado — gate movido para a pipeline (2026-07-11, Nash)
+
+**Decisão do Nash (comentário RAD-181, 2026-07-11):** *"nesse caso só substituir e testar
+na pipeline"*. Com o `tofu plan` credenciado indisponível localmente (mesma frente
+RAD-134/RAD-130), o gate de paridade **deixa de ser** o `plan -exit 0` local **e passa a ser
+a pipeline** — o rewrite vira o oficial e a CI o exercita.
+
+**O que foi feito:** `infra/terraform-next/` → `infra/terraform/` (swap in-place, mesmo path).
+`modules/` + `stacks/` substituídos pelo rewrite; `README.md`/`PARIDADE.md` trazidos junto;
+`scripts/` (runbooks + `ab3-evidence.sh`) **preservados**. `backend.tf` dos 3 stacks
+**inalterado** (só comentário) → mesmo estado remoto, sem reimport. `.terraform.lock.hcl`
+**não versionado** (status quo do tree atual) — a CI usa `hashicorp/setup-terraform`
+(registry.terraform.io) e um lock com hashes do **opentofu** quebraria o `init`; o lock
+versionado (registry HashiCorp, pin 5.100.0) fica para o runner credenciado pós-primeiro `init`.
+
+**O que a pipeline testa (Gate 8 `terraform-validate`, `ci.yml`):** `terraform init
+-backend=false` + `terraform validate` nos 3 stacks (dev/staging/prod), em push e PR para
+`main`. Cobre sintaxe, wiring de `variable`/`output`, provider — o substituto de `tofu
+validate` que o pré-flight antecipou estaticamente. **Não** roda `plan` (segue creds-gated).
+
+**O que a pipeline NÃO prova:** o `plan -exit 0` (state-parity) — ainda depende de creds/estado
+AWS. Isso é confirmado no **primeiro `apply` real** (AWS-account gated, RAD-134). A paridade de
+**endereço + config resolvida** já está provada estaticamente (seções acima), então o risco
+residual do swap é baixo e **100% reversível por git** (revert do commit restaura o tree antigo).
+
 ### Validação `tofu validate` real (2026-07-11, Artur — RAD-182)
 
 Fecho o gap que o pré-flight acima sinalizou (*"a camada que o `tofu validate` cobriria —

@@ -1,3 +1,6 @@
+# Contrato do módulo `database` — provider-agnóstico (A08 §4/§6, RAD-181).
+# Ver README.md para o que aqui é irredutivelmente provider-bound.
+
 variable "project" {
   description = "Nome do projeto (prefixo de recursos)"
   type        = string
@@ -12,18 +15,13 @@ variable "env" {
   }
 }
 
-variable "vpc_id" {
-  description = "ID da VPC onde o banco será provisionado"
+variable "network_id" {
+  description = "ID da rede privada onde o banco roda. AWS: VPC id"
   type        = string
 }
 
-variable "vpc_cidr" {
-  description = "CIDR da VPC para regra de ingress"
-  type        = string
-}
-
-variable "subnet_ids" {
-  description = "Subnets privadas para o subnet group"
+variable "private_subnet_ids" {
+  description = "Sub-redes privadas do banco (sem IP público). AWS: subnet ids"
   type        = list(string)
 }
 
@@ -40,13 +38,13 @@ variable "db_username" {
 }
 
 variable "db_password" {
-  description = "Senha master — use AWS Secrets Manager em prod"
+  description = "Senha master — vem de secret gerenciado em prod (nunca hardcoded, docs/05 §4)"
   type        = string
   sensitive   = true
 }
 
-variable "kms_key_arn" {
-  description = "ARN da chave KMS para criptografia em repouso (LGPD 13.709/2018)"
+variable "encryption_key_ref" {
+  description = "Handle da chave de cifra em repouso (LGPD 13.709/2018). AWS: KMS key ARN"
   type        = string
 }
 

@@ -1,47 +1,40 @@
-# Módulo `serverless` — workers Lambda + reserved concurrency como teto (P-41/RAD-165)
+# Módulo `serverless` — workers serverless com teto de concorrência P-41 (RAD-181/RAD-182)
 
-Materializa o **teto** de P-41 no *tier* serverless: `reserved_concurrent_executions` por
-função limita quantas invocações concorrem e, como cada invocação abre ~1 conexão pelo
-RDS Proxy, **limita os backends do banco**. Para os workers dirigidos por SQS, o
-`scaling_config.maximum_concurrency` espelha o teto na fila.
+Seam P-27: workers Lambda com `reserved_concurrent_executions` como TETO de conexões ao
+banco (P-41). Gated off (`enabled=false`, `count=0`) no MVP-Now — workers coabitam
+`apps/api` Fargate (P-96). Binding hoje = AWS Lambda. Contrato usa vocabulário neutro
+(`network_id`, `private_subnet_ids`, `proxy_firewall_group_ref`, `encryption_key_ref`,
+`secret_refs`, `firewall_group_ref`).
 
-Refs: `arquitetura/08 §2` (compute por workload) · `docs/98` P-41/P-27/P-96/P-64.
+## O que é genuinamente portável
 
-## Este módulo é o *seam* de P-27 — hoje gated (off)
+| Conceito | Contrato | Binding AWS |
+|---|---|---|
+| Rede privada | `network_id` | VPC id |
+| Sub-redes privadas | `private_subnet_ids` | Subnet ids |
+| Grupo de firewall do proxy | `proxy_firewall_group_ref` | Security Group id |
+| Cifra (decrypt secrets) | `encryption_key_ref` | KMS key ARN |
+| Handles dos secrets | `secret_refs` | Secrets Manager ARNs |
+| DATABASE_URL secret | `database_url_secret_ref` | Secrets Manager ARN |
+| Grupo de firewall dos workers | `firewall_group_ref` | Security Group id |
+| Nomes das funções | `function_names` | Lambda function names |
 
-No **MVP-Now** os consumers **coabitam `apps/api`** (Fargate; P-96 item 4, `iniciarWorkers()`
-gated por `WORKERS_ENABLED`). O *tier* Lambda é o **destino** quando A09 justificar o
-isolamento (12-factor: separar *web dyno* de *consumer dyno*). Por isso os stacks o
-instanciam com `enable_serverless_workers = false` por padrão — o grafo é **validado**
-(`tofu validate`), mas nada é criado até a decisão de extrair o seam.
+## O que é provider-bound (custo real de exit → GCP Cloud Functions / Azure Functions)
 
-O valor entregue **agora**: os **tetos** (números de P-41) e o **wiring** (endpoint do
-proxy, VPC, secrets, egress só p/ o SG do proxy) escritos e revisados; e o **gate de plan**
-que recusa `soma(reserved_concurrency) > max_total_reserved_concurrency` — a invariante
-"soma dos pools < `max_connections` com folga de admin" vira erro de `plan`, não surpresa
-em produção.
+- **`reserved_concurrent_executions`** (teto P-41) — Lambda por-função; em GCP Cloud
+  Functions é `max_instance_count`; em Azure Functions é `functionAppScaleLimit`.
+  Conceito idêntico, parâmetro diferente por provedor.
+- **`aws_lambda_event_source_mapping` + `scaling_config.maximum_concurrency`** — wiring
+  SQS→Lambda no provedor; em GCP é Pub/Sub trigger; em Azure é Queue trigger.
+- **VPC Lambda** — Lambda em VPC exige ENI + `AWSLambdaVPCAccessExecutionRole`; em GCP
+  Cloud Functions é VPC Connector; em Azure é VNET Integration.
+- **`AWSLambdaVPCAccessExecutionRole`** — ARN de política gerenciada AWS.
+- **`kms:Decrypt` resource = KMS ARN** — em GCP é `cloudkms.cryptoKeyVersions.useToDecrypt`
+  por key resource; em Azure é Key Vault `unwrapKey` permission.
+- **`awslogs` CloudWatch Logs** — em GCP é Cloud Logging; em Azure é Application Insights.
 
-## Mapeamento função → pool → teto (partida)
+## Guardrails anti-pin no driver (P-41 — modo transação do proxy)
 
-| Função | Pool do proxy | `reserved_concurrency` | Origem |
-|---|---|---|---|
-| `ingestao` | `ingestao` | 12 | agendada (EventBridge) — rajada do PNCP |
-| `matching` | `matching` | 8 | fila `alertas-*` (fan-out do alerta) |
-| `notificacao` | `matching`/`triagem` | 4 | fila de alertas gerados |
-
-Soma = 24 ≤ `max_total_reserved_concurrency` (40) < `max_connections` (200). Números de
-**partida**; *tuning* fino sob carga em A09/RAD-162.
-
-## Invariantes de wiring
-
-- `DB_PROXY_ENDPOINT` de cada função aponta ao **endpoint do proxy do seu pool**, nunca ao
-  cluster (P-41). `DATABASE_URL_SECRET_ARN` é lido em runtime do Secrets Manager.
-- SG do worker: **egress 5432 apenas para o SG do proxy** + 443 (Secrets/SQS/Bedrock).
-- Handler `node-pg` segue os guardrails anti-*pin* do `db_proxy/README.md` (sem `SET` de
-  sessão, sem *prepared statement* nomeado, `SET LOCAL`/`pg_advisory_xact_lock`).
-
-## Pendente
-
-`apply` bloqueado no mesmo unblock de AWS (RAD-134) **e** na extração real do seam (P-27):
-`lambda_package_path` é placeholder até haver artefato de build dos workers. Owner do
-unblock de infra: **DevOps/Segurança**; decisão de extrair o seam: **Eng/Artur** sob gatilho A09.
+Ver `../db_proxy/README.md`. Em modo transação: sem `SET` de sessão, sem prepared
+statement **nomeado** (`name:` no pg), sem `pg_advisory_lock` de sessão, sem
+`LISTEN/NOTIFY`. Field crypto (AES-256-GCM em JS) é app-level — não toca sessão.

@@ -1,3 +1,8 @@
+# Contrato do módulo `db_proxy` — pool de conexão gerenciado (A08 §4 "Pool de conexão").
+# Binding hoje = RDS Proxy modo transação. O muito que aqui é provider-bound (semântica de
+# pool por percentual, anti-pin, wiring SG→SG) está documentado no README.md — é o custo de
+# um exit, não escondido atrás de nome neutro.
+
 variable "project" {
   description = "Nome do projeto (prefixo de recursos)"
   type        = string
@@ -12,43 +17,43 @@ variable "env" {
   }
 }
 
-variable "aws_region" {
-  description = "Região AWS (usada na condição kms:ViaService)"
+variable "region" {
+  description = "Região do provedor (usada na condição de escopo do decrypt do secret). AWS: kms:ViaService"
   type        = string
 }
 
-variable "vpc_id" {
-  description = "ID da VPC onde o proxy roda"
+variable "network_id" {
+  description = "ID da rede privada onde o proxy roda. AWS: VPC id"
   type        = string
 }
 
-variable "vpc_cidr" {
-  description = "CIDR da VPC para o ingress do proxy"
+variable "network_cidr" {
+  description = "CIDR da rede privada para o ingress do proxy. AWS: VPC cidr"
   type        = string
 }
 
-variable "subnet_ids" {
-  description = "Subnets privadas para o proxy"
+variable "private_subnet_ids" {
+  description = "Sub-redes privadas do proxy. AWS: subnet ids"
   type        = list(string)
 }
 
-variable "db_cluster_id" {
-  description = "Identifier do cluster Aurora que o proxy fronteia"
+variable "cluster_ref" {
+  description = "Handle do cluster de banco que o proxy fronteia. AWS: Aurora cluster_identifier"
   type        = string
 }
 
-variable "db_security_group_id" {
-  description = "SG do banco — o proxy adiciona ingress 5432 dele p/ o cluster (proxy-only, P-41)"
+variable "db_firewall_group_ref" {
+  description = "Grupo de firewall do banco — o proxy adiciona ingress 5432 dele p/ o cluster (proxy-only, P-41). AWS: Security Group id"
   type        = string
 }
 
-variable "db_credentials_secret_arn" {
-  description = "ARN do secret {username,password} para auth proxy→banco"
+variable "db_credentials_secret_ref" {
+  description = "Handle do secret {username,password} para auth proxy→banco. AWS: Secrets Manager ARN"
   type        = string
 }
 
-variable "kms_key_arn" {
-  description = "ARN da KMS que cifra o secret de credenciais (para kms:Decrypt)"
+variable "encryption_key_ref" {
+  description = "Handle da chave que cifra o secret de credenciais (para decrypt). AWS: KMS key ARN"
   type        = string
 }
 
@@ -64,13 +69,13 @@ variable "db_max_connections" {
 # → percentuais 8/5/5/3/3 (≈ 48/200; folga enorme p/ admin). Stacks podem colapsar
 # (ex.: dev/staging = ingestao + critical) por custo — o proxy é cobrado por proxy.
 variable "pools" {
-  description = "Mapa pool→config de bulkhead. Um RDS Proxy por entrada."
+  description = "Mapa pool→config de bulkhead. Um pool gerenciado por entrada (AWS: um RDS Proxy)."
   type = map(object({
     max_connections_percent      = number
     max_idle_connections_percent = optional(number) # null → default = max_connections_percent
     connection_borrow_timeout    = optional(number, 120)
     idle_client_timeout          = optional(number, 1800)
-    secret_arn                   = optional(string) # null → usa o secret master compartilhado
+    secret_ref                   = optional(string) # null → usa o secret master compartilhado
   }))
   default = {
     ingestao  = { max_connections_percent = 8 }
@@ -90,7 +95,7 @@ variable "pools" {
     condition     = sum([for _, p in var.pools : p.max_connections_percent]) <= 80
     error_message = "Soma dos max_connections_percent dos pools deve ser <= 80% (folga admin, P-41)."
   }
-  # AWS: max_idle_connections_percent <= max_connections_percent.
+  # max_idle_connections_percent <= max_connections_percent (restrição do RDS Proxy).
   validation {
     condition = alltrue([
       for _, p in var.pools :
@@ -101,13 +106,13 @@ variable "pools" {
 }
 
 variable "session_pinned_threshold" {
-  description = "Limiar do alarme de conexões fixadas (pin). >0 sustentado é bug a caçar."
+  description = "Limiar do alarme de conexões fixadas (pin). >0 sustentado é bug a caçar. Provider-bound (métrica CloudWatch)"
   type        = number
   default     = 0
 }
 
-variable "alarm_sns_topic_arn" {
-  description = "SNS de destino dos alarmes (vazio = alarme sem ação, só métrica)"
+variable "alarm_topic_ref" {
+  description = "Handle do tópico de alarme (vazio = alarme sem ação, só métrica). AWS: SNS topic ARN"
   type        = string
   default     = ""
 }

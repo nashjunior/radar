@@ -1,6 +1,8 @@
 # Módulo: compute
-# Container quente (ECS Fargate) para apps/api.
-# Topologia decidida em arquitetura/08 §§4,11 e docs/98 P-64/P-86.
+# Container quente para apps/api. Binding hoje = AWS ECS Fargate.
+# Contrato usa `region`, `container_image_uri`, `*_secret_ref` (neutros);
+# recursos internos (ECS cluster/task-def/IAM) documentados como provider-bound.
+# Refs: arquitetura/08 §§4,11; docs/98 P-64/P-86; RAD-181/RAD-182
 
 terraform {
   required_providers {
@@ -8,6 +10,14 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
+  }
+}
+
+locals {
+  tags = {
+    project     = var.project
+    environment = var.env
+    managed_by  = "terraform"
   }
 }
 
@@ -34,7 +44,7 @@ resource "aws_ecs_task_definition" "api" {
   container_definitions = jsonencode([
     {
       name      = "api"
-      image     = "${var.ecr_image_uri}:${var.image_tag}"
+      image     = "${var.container_image_uri}:${var.image_tag}"
       essential = true
 
       portMappings = [{ containerPort = 3000, protocol = "tcp" }]
@@ -45,15 +55,15 @@ resource "aws_ecs_task_definition" "api" {
       ]
 
       secrets = [
-        { name = "DATABASE_URL", valueFrom = var.database_url_secret_arn },
-        { name = "FIELD_CRYPTO_KEY", valueFrom = var.field_crypto_key_secret_arn },
+        { name = "DATABASE_URL", valueFrom = var.database_url_secret_ref },
+        { name = "FIELD_CRYPTO_KEY", valueFrom = var.field_crypto_key_secret_ref },
       ]
 
       logConfiguration = {
         logDriver = "awslogs"
         options = {
           "awslogs-group"         = "/ecs/${var.project}-${var.env}/api"
-          "awslogs-region"        = var.aws_region
+          "awslogs-region"        = var.region
           "awslogs-stream-prefix" = "api"
         }
       }
@@ -101,12 +111,4 @@ resource "aws_cloudwatch_log_group" "api" {
   name              = "/ecs/${var.project}-${var.env}/api"
   retention_in_days = var.env == "prod" ? 30 : 7
   tags              = local.tags
-}
-
-locals {
-  tags = {
-    project     = var.project
-    environment = var.env
-    managed_by  = "terraform"
-  }
 }

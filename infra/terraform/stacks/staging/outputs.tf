@@ -1,3 +1,5 @@
+# Outputs consumidos por CI/BFF/front — NOMES mantidos para não quebrar scripts.
+
 output "cognito_user_pool_id" {
   description = "COGNITO_USER_POOL_ID do BFF"
   value       = module.identity.user_pool_id
@@ -29,8 +31,8 @@ output "cognito_tenant_claim" {
 }
 
 output "field_crypto_key_secret_arn" {
-  description = "Secret do FIELD_CRYPTO_KEY isolado do ambiente staging"
-  value       = module.secrets.field_crypto_key_secret_arn
+  description = "Secret do FIELD_CRYPTO_KEY isolado do ambiente staging (nome mantido para paridade de CI)"
+  value       = module.secrets.field_crypto_key_secret_ref
 }
 
 output "db_proxy_endpoints" {

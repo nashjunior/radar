@@ -15,12 +15,12 @@ variable "db_password" {
 }
 
 variable "kms_key_arn" {
-  description = "ARN da chave KMS para criptografia (LGPD 13.709/2018)"
+  description = "ARN da chave KMS para criptografia (LGPD 13.709/2018). Passado aos módulos como encryption_key_ref."
   type        = string
 }
 
 variable "cognito_domain_prefix" {
-  description = "Prefixo unico do dominio Hosted/Managed Login do Cognito"
+  description = "Prefixo único do domínio Hosted/Managed Login do Cognito"
   type        = string
   default     = "radar-dev"
 }
