@@ -66,6 +66,8 @@ CREATE TABLE IF NOT EXISTS extracao_edital (
 CREATE TABLE IF NOT EXISTS editais (
   id                   TEXT        PRIMARY KEY,
   numero_controle_pncp TEXT        NOT NULL UNIQUE,
+  ano_compra           INT         NOT NULL DEFAULT 0,
+  sequencial_compra    INT         NOT NULL DEFAULT 0,
   modalidade_codigo    INT         NOT NULL,
   modalidade_nome      TEXT        NOT NULL,
   fase_atual           TEXT        NOT NULL,
