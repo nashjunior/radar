@@ -76,6 +76,30 @@ tofu plan -detailed-exitcode -var-file=...
 
 `-detailed-exitcode` é o gate objetivo: **exit 0 (no changes) é a única luz verde**.
 
+### Paridade de provider — pin obrigatório antes do `plan` (senão o gate dá *falso* `exit 2`)
+
+O `.terraform.lock.hcl` dos stacks atuais fixa **`hashicorp/aws 5.100.0`**
+(`registry.opentofu.org/hashicorp/aws`). Atual e `-next` têm o **mesmo constraint**
+(`required_version >= 1.9`, `hashicorp/aws >= 5.98, < 6.0`) — mas o `-next` **não tem
+lock file**. Sem lock, o `tofu init` do `-next` resolve o provider **mais novo** dentro de
+`< 6.0`; se sair um patch > 5.100.0 até a hora do gate, o `plan` compara o estado (gerado
+com 5.100.0) contra config resolvida por outra versão de provider → defaults/computeds
+podem divergir → **`exit 2` que NÃO é quebra de contrato, e sim skew de provider**.
+
+Para o `plan` testar só o rename (o que a paridade promete), **pin o mesmo build 5.100.0
+antes do `init` do `-next`**:
+
+```sh
+# copie o lock do stack atual para o -next ANTES do init (mesmo runner do apply Cognito):
+cp infra/terraform/stacks/dev/.terraform.lock.hcl infra/terraform-next/stacks/dev/.terraform.lock.hcl
+# idem staging/prod. Depois: tofu init  →  seleciona 5.100.0 (mesmo build do estado)  →  plan.
+```
+
+Como o gate roda no **mesmo runner tofu-enabled/credenciado do apply Cognito** (RAD-134),
+os hashes do lock já são válidos ali. Alternativa equivalente: `tofu init` e **confirmar**
+que a versão resolvida é 5.100.0 antes de confiar no `plan`. Pós-swap, manter o lock
+versionado torna o `apply` reproduzível.
+
 ## Swap atômico (só após exit 0 nos três envs)
 
 `infra/terraform/scripts/` (runbooks + `ab3-evidence.sh`) **não** foi reescrito — segue
@@ -94,10 +118,21 @@ git mv infra/terraform-next infra/terraform
 O `-next` compartilha o `backend.tf` (mesmo estado) dos stacks atuais — por isso o `plan`
 enxerga o estado real e, pós-swap, o `apply` continua sobre o mesmo estado, sem reimport.
 
-## Estado do gate (2026-07-10)
+## Estado do gate (2026-07-11)
 
-- **Módulos de referência (database, db_proxy):** paridade **provada por inspeção**
-  (matriz acima). Falta o `plan` objetivo (`exit 0`) — **gated em tooling**.
-- **Demais módulos + stacks:** a escrever (RAD-182), depois entram nesta mesma matriz e no
-  `plan`. **O swap só acontece com o `-next` completo e `plan` limpo nos 3 envs.**
-- **Owner do unblock de tooling/creds:** DevOps (frente RAD-134/RAD-130).
+- **Todos os 9 módulos + 3 stacks (RAD-182):** escritos e commitados (`c9466f8`).
+  Paridade de **endereço** provada estaticamente (byte-a-byte, sem tooling): 9/9 módulos
+  com `resource`/`data` idênticos; 3/3 stacks com mesmas instâncias de módulo, mesmo
+  `backend.tf` (bucket/lock/key/`sa-east-1`) e mesmas chaves de `for_each`
+  (`pools`/`functions`: ingestao/matching/triagem). Único delta = renames de interface
+  (invisíveis ao estado) + comentários.
+- **Paridade de provider:** constraint idêntico nos dois trees; lock do atual fixa
+  `hashicorp/aws 5.100.0`, `-next` sem lock → **pin obrigatório antes do `init`** (ver
+  seção "Paridade de provider" acima), senão o gate dá falso `exit 2`.
+- **Falta o `plan` objetivo (`exit 0`)** — **gated em tooling/creds**. Refinamento do
+  caminho: o gate deve rodar na **mesma sessão credenciada e no mesmo runner tofu-enabled
+  do apply Cognito** (RAD-134), não num runner novo. **O swap só acontece com `plan` limpo
+  nos 3 envs.**
+- **Owner do unblock:** decisão de conta/creds AWS = usuário/Nash (interação
+  `interaction:RAD-134:aws-account-decision`, RAD-130); execução do gate = runner
+  tofu-enabled co-localizado (frente RAD-134/RAD-130).
