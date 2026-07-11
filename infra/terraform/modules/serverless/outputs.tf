@@ -1,20 +1,22 @@
-output "function_arns" {
-  description = "Mapa função→ARN da Lambda worker"
+# Saídas neutras. `_ref` = handle opaco do provedor; sem sufixo = valor portável.
+
+output "function_refs" {
+  description = "Mapa função→handle da função serverless. AWS: Lambda ARN"
   value       = { for k, f in aws_lambda_function.worker : k => f.arn }
 }
 
 output "function_names" {
-  description = "Mapa função→nome da Lambda worker"
+  description = "Mapa função→nome da função serverless (portável — usado em logging/CI)"
   value       = { for k, f in aws_lambda_function.worker : k => f.function_name }
 }
 
-output "worker_role_arn" {
-  description = "ARN da role de execução dos workers"
+output "worker_role_ref" {
+  description = "Handle da role de execução dos workers. AWS: IAM role ARN"
   value       = aws_iam_role.worker.arn
 }
 
-output "security_group_id" {
-  description = "SG dos workers (egress 5432 → proxy)"
+output "firewall_group_ref" {
+  description = "Grupo de firewall dos workers (egress 5432 → proxy). AWS: Security Group id"
   value       = aws_security_group.worker.id
 }
 
