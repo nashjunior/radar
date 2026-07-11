@@ -211,5 +211,34 @@ describe('ReconciliarCatalogoUseCase', () => {
 
       await expect(uc.executar({ janela }, noop)).rejects.toThrow(SchemaDriftError);
     });
+
+    it('relança erro sem contar em erros quando o signal já foi abortado (RAD-188/189)', async () => {
+      const editalLocal = criarEdital();
+      const ac = new AbortController();
+      const editais: EditalRepository = {
+        listarPorJanelaPublicacao: vi.fn().mockReturnValue(paginaLocal([editalLocal])),
+        porId: vi.fn(),
+        porNumeroControle: vi.fn(),
+        upsertPorNumeroControle: vi.fn().mockImplementation(() => {
+          ac.abort();
+          return Promise.reject(new DOMException('aborted', 'AbortError'));
+        }),
+      };
+      const gateway: PncpGateway = {
+        buscarContratacaoPorNumero: vi.fn().mockResolvedValue(
+          dadoPncp('Homologado', new Date('2024-02-01'))
+        ),
+        buscarContratacoesPorPublicacao: vi.fn(),
+        buscarContratacoesPorAtualizacao: vi.fn(),
+        buscarArquivos: vi.fn(),
+        downloadArquivo: vi.fn(),
+      };
+      const proveniencias: ProvenienciaRepository = { registrar: vi.fn() };
+      const uc = new ReconciliarCatalogoUseCase(
+        gateway, editais, proveniencias, { publicar: vi.fn() },
+      );
+
+      await expect(uc.executar({ janela }, ac.signal)).rejects.toThrow();
+    });
   });
 });

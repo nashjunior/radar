@@ -28,6 +28,7 @@ export interface IngerirEditaisInput {
  *   - Minimização aplicada no ACL (PncpGateway) antes de chegar ao use case (A02, §4).
  *   - Proveniência obrigatória em todo edital gravado (docs/05, §5).
  *   - `SchemaDriftError` e `FonteIndisponivelError` são fatais: interrompem o lote.
+ *   - Abort (RAD-188/189): `signal.aborted` também interrompe o lote — nunca contado em `erros`.
  */
 export class IngerirEditaisUseCase {
   private readonly normalizarEPersistir: NormalizarEPersistirEditalService;
@@ -72,6 +73,7 @@ export class IngerirEditaisUseCase {
 
           existente !== null ? atualizados++ : ingeridos++;
         } catch (err) {
+          if (signal.aborted) throw err;
           if (err instanceof FonteIndisponivelError || err instanceof SchemaDriftError) {
             throw err;
           }

@@ -26,6 +26,7 @@ export interface IngerirAtualizacoesInput {
  *   - Publica `edital.fase-mudou` quando a fase muda em relação ao registro local.
  *   - Publica `edital.ingerido` para editais ainda não conhecidos.
  *   - `SchemaDriftError` e `FonteIndisponivelError` são fatais: interrompem o lote.
+ *   - Abort (RAD-188/189): `signal.aborted` também interrompe o lote — nunca contado em `erros`.
  *
  * Cadência (P-29): este use case é acionado a cada 5 min com janela de 35 min
  * para atingir frescor p95 ≤ 30 min sem furar rate-limit (ver PncpPollingScheduler).
@@ -75,6 +76,7 @@ export class IngerirAtualizacoesUseCase {
             ingeridos++;
           }
         } catch (err) {
+          if (signal.aborted) throw err;
           if (err instanceof FonteIndisponivelError || err instanceof SchemaDriftError) {
             throw err;
           }

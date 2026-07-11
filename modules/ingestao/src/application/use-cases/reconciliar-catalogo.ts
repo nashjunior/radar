@@ -27,6 +27,8 @@ export interface ReconciliarCatalogoInput {
  * sabe de onde veio, quando e sob qual base legal") via `NormalizarEPersistirEditalService`,
  * igual aos outros 2 fluxos de ingestão. Antes desta correção, a reconciliação fazia upsert
  * sem gravar proveniência — gap identificado no sweep de duplicação (RAD-183/RAD-184).
+ *
+ * Correção RAD-188/189: `signal.aborted` interrompe o lote — nunca contado em `erros`.
  */
 export class ReconciliarCatalogoUseCase {
   private readonly normalizarEPersistir: NormalizarEPersistirEditalService;
@@ -78,6 +80,7 @@ export class ReconciliarCatalogoUseCase {
 
           reingeridos++;
         } catch (err) {
+          if (signal.aborted) throw err;
           if (err instanceof FonteIndisponivelError || err instanceof SchemaDriftError) {
             throw err;
           }
