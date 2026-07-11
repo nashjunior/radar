@@ -13,13 +13,8 @@ export interface EditalParaMatchingDTO {
   cnae: string | null;
   valorEstimado: number | null;
   dataPublicacao: Date;
-}
-
-/** Critério com score calculado pelo adapter. */
-export interface CriterioComScore {
-  criterio: CriterioDeMonitoramento;
-  /** Score de aderência [0,1] calculado pelo adapter (SQL + full-text). */
-  score: number;
+  /** Proveniência do edital, disponível quando presente no evento edital.ingerido (RAD-115). */
+  proveniencia?: { fonte: string; baseLegal: string; dataColeta: string };
 }
 
 export interface CriterioDTO {
@@ -42,6 +37,25 @@ export interface AlertaDTO {
   editalId: string;
   aderencia: number;
   relevante: boolean | null;
+  /** Proveniência do edital — presente quando disponível no evento de ingestão (RAD-115). */
+  proveniencia?: { fonte: string; baseLegal: string; dataColeta: string };
+  /** Campos enriquecidos do Catálogo (RAD-148). Ausentes quando o edital não for encontrado. */
+  modalidade?: string;
+  titulo?: string;
+  orgao?: string;
+  valorEstimado?: number | null;
+  /** ISO string — mapeado de prazoProposta do edital (data-limite para propostas). */
+  dataAbertura?: string;
+}
+
+/** Resumo de edital vindo do Catálogo para enriquecer alertas (RAD-148). */
+export interface EditalResumoParaMatchingDTO {
+  modalidade: string;
+  titulo: string;
+  orgao: string;
+  valorEstimado: number | null;
+  /** ISO string — de prazoProposta. */
+  dataAbertura: string;
 }
 
 export interface FaixaValorDTO {
@@ -66,7 +80,24 @@ export function criterioParaDTO(c: CriterioDeMonitoramento): CriterioDTO {
   };
 }
 
-export function alertaParaDTO(a: Alerta): AlertaDTO {
+/** Snapshot de métricas de qualidade do matching para um tenant (docs/08 §3, P-14). */
+export interface MetricasMatchingDTO {
+  /** Ratio de alertas marcados relevantes / total com feedback. null se ainda não há feedback. */
+  precisao: number | null;
+  /** Alvo de precisão: 60% (docs/08 §3). */
+  precisaoAlvo: number;
+  /** Ratio de clientes com ≥1 alerta relevante na janela / total com ≥1 alerta na janela. null se sem dados. */
+  ativacao: number | null;
+  /** Alvo de ativação: 50% (docs/08 §3). */
+  ativacaoAlvo: number;
+  /** Janela de ativação em dias usada no cálculo. */
+  janelaEmDias: number;
+}
+
+export function alertaParaDTO(
+  a: Alerta,
+  proveniencia?: { fonte: string; baseLegal: string; dataColeta: string },
+): AlertaDTO {
   return {
     id: a.id,
     tenantId: a.tenantId,
@@ -75,5 +106,6 @@ export function alertaParaDTO(a: Alerta): AlertaDTO {
     editalId: a.editalId,
     aderencia: a.aderencia.valor,
     relevante: a.relevante,
+    ...(proveniencia !== undefined ? { proveniencia } : {}),
   };
 }

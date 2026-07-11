@@ -1,10 +1,22 @@
 export type { AnexosDTO, EditalDTO, IngestaoResumoDTO, ReconciliacaoDTO } from './dtos.js';
-export { EditalFaseMudou, EditalIngerido } from './events.js';
-export type { DomainEvent } from './events.js';
+export {
+  AnexoAprovado,
+  AnexoQuarentenado,
+  AnexoRejeitado,
+  EditalFaseMudou,
+  EditalIngerido,
+  PipelineBreakerEstadoMudou,
+  PipelineCicloConcluido,
+} from './events.js';
+export type { DomainEvent, EstadoBreaker } from './events.js';
 export { editalParaDTO } from './mappers.js';
 export type {
-  ContratacaoData,
+  AnexoEditalRepository,
+  AnexoMetadados,
+  AnexoScanner,
   ArquivoPncpData,
+  ContratacaoData,
+  DocumentosDoEditalPort,
   EditalRepository,
   EventPublisher,
   IdProvider,
@@ -21,6 +33,10 @@ export {
 } from './use-cases/baixar-anexos-edital.js';
 export type { BaixarAnexosEditalInput } from './use-cases/baixar-anexos-edital.js';
 export {
+  EscanearAnexoUseCase,
+} from './use-cases/escanear-anexo.js';
+export type { EscanearAnexoInput } from './use-cases/escanear-anexo.js';
+export {
   IngerirEditaisUseCase,
 } from './use-cases/ingerir-editais.js';
 export type { IngerirEditaisInput } from './use-cases/ingerir-editais.js';
@@ -28,3 +44,7 @@ export {
   ReconciliarCatalogoUseCase,
 } from './use-cases/reconciliar-catalogo.js';
 export type { ReconciliarCatalogoInput } from './use-cases/reconciliar-catalogo.js';
+export {
+  IngerirAtualizacoesUseCase,
+} from './use-cases/ingerir-atualizacoes.js';
+export type { IngerirAtualizacoesInput } from './use-cases/ingerir-atualizacoes.js';

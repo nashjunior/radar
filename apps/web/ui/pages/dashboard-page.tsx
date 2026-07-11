@@ -1,49 +1,58 @@
 /** @figma nodeId=8:2 fileKey=SAbjXOQO4gFAH4syq7VdQf (Light) / 15:2 (Dark) */
 import { AlertBanner, CardEdital, StatCard } from '@/ui/components';
 import type { EditalCardData } from '@/ui/components';
+import { useAlertas } from '@/ui/hooks/use-alertas';
+import type { AlertaCardItem } from '@/domain/alerta-card';
 
-const MOCK_STATS = [
-  { label: 'Editais monitorados', value: 142, icon: '📁' },
-  { label: 'Novos alertas',       value: 8,   icon: '🔔' },
-  { label: 'Triagens pendentes',  value: 3,   icon: '🔍' },
-  { label: 'Aderência média',     value: '78%', icon: '📈' },
-];
-
-const MOCK_EDITAIS: EditalCardData[] = [
-  {
-    id: '001',
-    modalidade: 'Pregão',
-    titulo: 'Aquisição de equipamentos de informática para uso administrativo',
-    orgao: 'Min. da Educação',
-    valor: 'R$ 85.000,00',
-    prazo: '10/07 às 14h',
-    aderencia: 92,
-  },
-  {
-    id: '002',
-    modalidade: 'Concorrência',
-    titulo: 'Contratação de serviços de desenvolvimento de software sob demanda',
-    orgao: 'TRF - 1ª Região',
-    valor: 'R$ 240.000,00',
-    prazo: '15/07 às 10h',
-    aderencia: 78,
-  },
-  {
-    id: '003',
-    modalidade: 'Dispensa',
-    titulo: 'Fornecimento de licenças de software de gestão empresarial',
-    orgao: 'ANATEL',
-    valor: 'R$ 45.000,00',
-    prazo: '08/07 às 17h',
-    aderencia: 65,
-  },
-];
+function alertaParaCardData(a: AlertaCardItem): EditalCardData {
+  const prazo = a.dataAbertura
+    ? new Date(a.dataAbertura).toLocaleString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : '—';
+  const valor = a.valorEstimado != null
+    ? a.valorEstimado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+    : '—';
+  return {
+    id: a.alertaId,
+    modalidade: a.modalidade,
+    titulo: a.titulo,
+    orgao: a.orgao,
+    valor,
+    prazo,
+    aderencia: a.aderencia,
+    ...(a.proveniencia !== undefined ? { proveniencia: a.proveniencia } : {}),
+  };
+}
 
 interface DashboardPageProps {
   onTriagem: (editalId: string) => void;
 }
 
 export function DashboardPage({ onTriagem }: DashboardPageProps) {
+  const alertasState = useAlertas();
+
+  const alertas = alertasState.status === 'success' ? alertasState.data : [];
+  const novosAlertas = alertas.filter((a) => a.relevante === null).length;
+  const aderenciaMedia = alertas.length > 0
+    ? Math.round(alertas.reduce((sum, a) => sum + a.aderencia, 0) / alertas.length)
+    : 0;
+
+  const recentes: EditalCardData[] = [...alertas]
+    .sort((a, b) => b.aderencia - a.aderencia)
+    .slice(0, 3)
+    .map(alertaParaCardData);
+
+  const stats = [
+    { label: 'Editais monitorados', value: 142,             icon: '📁' },
+    { label: 'Novos alertas',       value: alertasState.status === 'success' ? novosAlertas : '…', icon: '🔔' },
+    { label: 'Triagens pendentes',  value: 3,               icon: '🔍' },
+    { label: 'Aderência média',     value: alertasState.status === 'success' ? `${aderenciaMedia}%` : '…', icon: '📈' },
+  ];
+
   return (
     <div style={{ maxWidth: 1120 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--radar-space-6)' }}>
@@ -54,14 +63,22 @@ export function DashboardPage({ onTriagem }: DashboardPageProps) {
       </div>
 
       <div style={{ display: 'flex', gap: 'var(--radar-space-4)', marginBottom: 'var(--radar-space-6)' }}>
-        {MOCK_STATS.map((s) => <StatCard key={s.label} {...s} />)}
+        {stats.map((s) => <StatCard key={s.label} {...s} />)}
       </div>
 
-      <div style={{ marginBottom: 'var(--radar-space-6)' }}>
-        <AlertBanner type="info">
-          8 novos editais correspondentes ao seu perfil foram publicados hoje.
-        </AlertBanner>
-      </div>
+      {alertasState.status === 'success' && novosAlertas > 0 && (
+        <div style={{ marginBottom: 'var(--radar-space-6)' }}>
+          <AlertBanner type="info">
+            {novosAlertas} {novosAlertas === 1 ? 'novo edital correspondente ao seu perfil foi publicado' : 'novos editais correspondentes ao seu perfil foram publicados'} hoje.
+          </AlertBanner>
+        </div>
+      )}
+
+      {alertasState.status === 'error' && (
+        <div style={{ marginBottom: 'var(--radar-space-6)', padding: '12px 16px', background: 'var(--radar-color-feedback-erro-bg)', color: 'var(--radar-color-feedback-erro-fg)', borderRadius: 'var(--radar-radius-sm)', fontSize: 'var(--radar-font-size-sm)' }}>
+          Erro ao carregar alertas: {alertasState.message}
+        </div>
+      )}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--radar-space-4)' }}>
         <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>Editais recentes</h2>
@@ -70,11 +87,17 @@ export function DashboardPage({ onTriagem }: DashboardPageProps) {
         </button>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--radar-space-3)' }}>
-        {MOCK_EDITAIS.map((edital) => (
-          <CardEdital key={edital.id} data={edital} onClick={() => onTriagem(edital.id)} />
-        ))}
-      </div>
+      {alertasState.status === 'loading' ? (
+        <div style={{ color: 'var(--radar-color-text-muted)', fontSize: 'var(--radar-font-size-sm)', padding: 'var(--radar-space-6) 0' }}>
+          Carregando…
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--radar-space-3)' }}>
+          {recentes.map((edital) => (
+            <CardEdital key={edital.id} data={edital} onClick={() => onTriagem(edital.id)} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

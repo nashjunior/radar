@@ -30,6 +30,22 @@ Desktop.ini
 *.pem
 *.key
 secrets/
+# Exceção: módulo Terraform de secrets é código de infra, não segredos reais.
+!infra/terraform/modules/secrets/
+
+# ── Terraform / OpenTofu (artefatos de execução — NUNCA commitar) ─────
+# .terraform/ = providers baixados (centenas de MB); state/plan podem conter segredos.
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.auto.tfvars
+crash.log
+# Fica versionado: .terraform.lock.hcl (fixa versão/hash do provider).
+# Artefatos de operação AB3/Cognito (RAD-134): bundle de evidência (dado do usuário de
+# teste) e outputs coletados — não commitar mesmo sendo não-sensíveis.
+**/ab3-evidence*/
+infra/terraform/scripts/cognito-outputs-*.json
 
 # ── Claude Code (local / privado da máquina) ─────────────────
 # Fica versionado: .claude/skills/, .claude/commands/, .claude/settings.json
@@ -46,6 +62,7 @@ out/
 .next/
 coverage/
 *.tsbuildinfo
+.turbo/
 .npm/
 .pnpm-store/
 .yarn/*

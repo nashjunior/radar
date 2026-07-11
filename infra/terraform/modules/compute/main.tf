@@ -46,6 +46,7 @@ resource "aws_ecs_task_definition" "api" {
 
       secrets = [
         { name = "DATABASE_URL", valueFrom = var.database_url_secret_arn },
+        { name = "FIELD_CRYPTO_KEY", valueFrom = var.field_crypto_key_secret_arn },
       ]
 
       logConfiguration = {

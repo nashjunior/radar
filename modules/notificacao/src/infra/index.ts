@@ -5,3 +5,8 @@ export * from './adapters/postgres-preferencia-repository.js';
 export * from './adapters/ses-notifier.js';
 export * from './adapters/sqs-event-publisher.js';
 export * from './queue/notificacao-worker.js';
+export { DigestScheduler } from './schedulers/digest-scheduler.js';
+export type {
+  DigestSchedulerConfig,
+  DigestSchedulerDestinatario,
+} from './schedulers/digest-scheduler.js';

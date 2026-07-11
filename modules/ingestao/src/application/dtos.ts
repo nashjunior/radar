@@ -32,6 +32,8 @@ export interface EditalDTO {
   dataAtualizacao: string;
   orgao: { cnpj: string; nome: string; uf: string; municipio: string };
   itens: ItemEditalDTO[];
+  /** Proveniência do edital: fonte, data de coleta e base legal (docs/02 §4, docs/05 §5). */
+  proveniencia: { fonte: string; dataColeta: string; baseLegal: string };
 }
 
 export interface ArquivoDTO {

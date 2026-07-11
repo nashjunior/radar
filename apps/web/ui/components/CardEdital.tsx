@@ -9,6 +9,8 @@ export interface EditalCardData {
   valor: string;
   prazo: string;
   aderencia: number;
+  /** Linha de proveniência (RAD-115/RAD-147) — exibida no rodapé do card quando presente. */
+  proveniencia?: { fonte: string; dataColeta: string; baseLegal: string };
 }
 
 type CardState = 'default' | 'hover' | 'selected';
@@ -58,6 +60,11 @@ export function CardEdital({ data, state = 'default', onClick }: CardEditalProps
           <span>{data.valor}</span>
           <span>⏱ {data.prazo}</span>
         </div>
+        {data.proveniencia && (
+          <div style={{ fontSize: '0.6875rem', color: 'var(--radar-color-text-disabled, var(--radar-color-text-muted))' }}>
+            {data.proveniencia.fonte} · Coletado em {new Date(data.proveniencia.dataColeta).toLocaleDateString('pt-BR')} · {data.proveniencia.baseLegal}
+          </div>
+        )}
       </div>
       <div style={{
         width: 100,

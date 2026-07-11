@@ -1,0 +1,36 @@
+{
+  "name": "@radar/triagem",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./infra": {
+      "types": "./dist/infra/index.d.ts",
+      "default": "./dist/infra/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "tsc -p tsconfig.json --watch",
+    "test": "vitest run",
+    "smoke:batch": "tsx scripts/smoke-extracao-batch.ts",
+    "fixtures:gold-set": "tsx scripts/gravar-fixtures-gold-set.ts",
+    "calibrar:limiar": "tsx scripts/calibrar-limiar-gold-set.ts",
+    "fixtures:gold-set:cli": "tsx scripts/gravar-fixtures-gold-set-via-cli.ts",
+    "lint": "eslint src"
+  },
+  "dependencies": {
+    "@radar/kernel": "workspace:*"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^0.110.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.0"
+  }
+}

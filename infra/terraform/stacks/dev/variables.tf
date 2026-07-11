@@ -18,3 +18,37 @@ variable "kms_key_arn" {
   description = "ARN da chave KMS para criptografia (LGPD 13.709/2018)"
   type        = string
 }
+
+variable "cognito_domain_prefix" {
+  description = "Prefixo unico do dominio Hosted/Managed Login do Cognito"
+  type        = string
+  default     = "radar-dev"
+}
+
+variable "cognito_callback_urls" {
+  description = "URLs de callback OAuth cadastradas no app client Cognito"
+  type        = list(string)
+  default     = ["http://localhost:5173/auth/callback"]
+}
+
+variable "cognito_logout_urls" {
+  description = "URLs de logout cadastradas no app client Cognito"
+  type        = list(string)
+  default     = ["http://localhost:5173/login"]
+}
+
+variable "cognito_advanced_security_mode" {
+  description = "Cognito Advanced Security/adaptive auth: ENFORCED | AUDIT | OFF"
+  type        = string
+  default     = "ENFORCED"
+  validation {
+    condition     = contains(["ENFORCED", "AUDIT", "OFF"], var.cognito_advanced_security_mode)
+    error_message = "cognito_advanced_security_mode deve ser ENFORCED, AUDIT ou OFF."
+  }
+}
+
+variable "enable_serverless_workers" {
+  description = "Extrai os workers p/ o tier Lambda (seam P-27). false = coabitam apps/api (P-96)."
+  type        = bool
+  default     = false
+}

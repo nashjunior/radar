@@ -8,6 +8,7 @@ import type {
   EditalRepository,
   EventPublisher,
   PncpGateway,
+  ProvenienciaRepository,
 } from '../../application/ports.js';
 
 const CNPJ_VALIDO = '11222333000181';
@@ -62,7 +63,10 @@ describe('ReconciliarCatalogoUseCase', () => {
         porNumeroControle: vi.fn(),
         upsertPorNumeroControle: vi.fn(),
       };
-      const uc = new ReconciliarCatalogoUseCase({} as PncpGateway, editais, { publicar: vi.fn() });
+      const proveniencias: ProvenienciaRepository = { registrar: vi.fn() };
+      const uc = new ReconciliarCatalogoUseCase(
+        {} as PncpGateway, editais, proveniencias, { publicar: vi.fn() },
+      );
 
       const res = await uc.executar({ janela }, noop);
       expect(res.verificados).toBe(0);
@@ -88,13 +92,15 @@ describe('ReconciliarCatalogoUseCase', () => {
         downloadArquivo: vi.fn(),
       };
       const eventos: EventPublisher = { publicar: vi.fn() };
-      const uc = new ReconciliarCatalogoUseCase(gateway, editais, eventos);
+      const proveniencias: ProvenienciaRepository = { registrar: vi.fn() };
+      const uc = new ReconciliarCatalogoUseCase(gateway, editais, proveniencias, eventos);
 
       const res = await uc.executar({ janela }, noop);
       expect(res.verificados).toBe(1);
       expect(res.reingeridos).toBe(0);
       expect(editais.upsertPorNumeroControle).not.toHaveBeenCalled();
       expect(eventos.publicar).not.toHaveBeenCalled();
+      expect(proveniencias.registrar).not.toHaveBeenCalled();
     });
   });
 
@@ -116,12 +122,14 @@ describe('ReconciliarCatalogoUseCase', () => {
         downloadArquivo: vi.fn(),
       };
       const eventos: EventPublisher = { publicar: vi.fn().mockResolvedValue(undefined) };
-      const uc = new ReconciliarCatalogoUseCase(gateway, editais, eventos);
+      const proveniencias: ProvenienciaRepository = { registrar: vi.fn().mockResolvedValue(undefined) };
+      const uc = new ReconciliarCatalogoUseCase(gateway, editais, proveniencias, eventos);
 
       const res = await uc.executar({ janela }, noop);
       expect(res.reingeridos).toBe(1);
       expect(editais.upsertPorNumeroControle).toHaveBeenCalledOnce();
       expect(eventos.publicar).toHaveBeenCalledOnce();
+      expect(proveniencias.registrar).toHaveBeenCalledOnce();
     });
   });
 
@@ -141,7 +149,10 @@ describe('ReconciliarCatalogoUseCase', () => {
         buscarArquivos: vi.fn(),
         downloadArquivo: vi.fn(),
       };
-      const uc = new ReconciliarCatalogoUseCase(gateway, editais, { publicar: vi.fn() });
+      const proveniencias: ProvenienciaRepository = { registrar: vi.fn() };
+      const uc = new ReconciliarCatalogoUseCase(
+        gateway, editais, proveniencias, { publicar: vi.fn() },
+      );
 
       const res = await uc.executar({ janela }, noop);
       expect(res.verificados).toBe(1);
@@ -168,7 +179,10 @@ describe('ReconciliarCatalogoUseCase', () => {
         buscarArquivos: vi.fn(),
         downloadArquivo: vi.fn(),
       };
-      const uc = new ReconciliarCatalogoUseCase(gateway, editais, { publicar: vi.fn() });
+      const proveniencias: ProvenienciaRepository = { registrar: vi.fn() };
+      const uc = new ReconciliarCatalogoUseCase(
+        gateway, editais, proveniencias, { publicar: vi.fn() },
+      );
 
       await expect(uc.executar({ janela }, noop)).rejects.toThrow(FonteIndisponivelError);
     });
@@ -190,9 +204,41 @@ describe('ReconciliarCatalogoUseCase', () => {
         buscarArquivos: vi.fn(),
         downloadArquivo: vi.fn(),
       };
-      const uc = new ReconciliarCatalogoUseCase(gateway, editais, { publicar: vi.fn() });
+      const proveniencias: ProvenienciaRepository = { registrar: vi.fn() };
+      const uc = new ReconciliarCatalogoUseCase(
+        gateway, editais, proveniencias, { publicar: vi.fn() },
+      );
 
       await expect(uc.executar({ janela }, noop)).rejects.toThrow(SchemaDriftError);
+    });
+
+    it('relança erro sem contar em erros quando o signal já foi abortado (RAD-188/189)', async () => {
+      const editalLocal = criarEdital();
+      const ac = new AbortController();
+      const editais: EditalRepository = {
+        listarPorJanelaPublicacao: vi.fn().mockReturnValue(paginaLocal([editalLocal])),
+        porId: vi.fn(),
+        porNumeroControle: vi.fn(),
+        upsertPorNumeroControle: vi.fn().mockImplementation(() => {
+          ac.abort();
+          return Promise.reject(new DOMException('aborted', 'AbortError'));
+        }),
+      };
+      const gateway: PncpGateway = {
+        buscarContratacaoPorNumero: vi.fn().mockResolvedValue(
+          dadoPncp('Homologado', new Date('2024-02-01'))
+        ),
+        buscarContratacoesPorPublicacao: vi.fn(),
+        buscarContratacoesPorAtualizacao: vi.fn(),
+        buscarArquivos: vi.fn(),
+        downloadArquivo: vi.fn(),
+      };
+      const proveniencias: ProvenienciaRepository = { registrar: vi.fn() };
+      const uc = new ReconciliarCatalogoUseCase(
+        gateway, editais, proveniencias, { publicar: vi.fn() },
+      );
+
+      await expect(uc.executar({ janela }, ac.signal)).rejects.toThrow();
     });
   });
 });

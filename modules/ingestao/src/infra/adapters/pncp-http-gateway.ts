@@ -7,6 +7,7 @@ import {
   FonteIndisponivelError,
   SchemaDriftError,
 } from '../../domain/errors/index.js';
+import { SsrfGuard, type SsrfGuardConfig } from './ssrf-guard.js';
 
 /** URL base da API pública de consulta do PNCP. [A VALIDAR — Swagger] */
 const BASE_URL = 'https://pncp.gov.br/api/consulta';
@@ -14,12 +15,22 @@ const BASE_URL = 'https://pncp.gov.br/api/consulta';
 /** Teto de registros por página. [A VALIDAR — documentar no Swagger] */
 const TAMANHO_PAGINA = 50;
 
+/** Allowlist de egress padrão para o PNCP (P-58). Sobreposta via config em produção. */
+const DEFAULT_ALLOWED_HOSTS: readonly string[] = ['pncp.gov.br'];
+
 /**
  * Adaptador HTTP para a API pública do PNCP — implementa o ACL.
  * Traduz o JSON externo para o modelo canônico; PII desnecessária é descartada aqui (A02, §4).
- * Inclui retry com backoff exponencial e detecção de schema drift.
+ * Inclui retry com backoff exponencial, detecção de schema drift e guarda SSRF (P-58).
  */
 export class PncpHttpGateway implements PncpGateway {
+  private readonly ssrfGuard: SsrfGuard;
+
+  constructor(ssrfConfig?: Partial<SsrfGuardConfig>) {
+    const base: SsrfGuardConfig = { allowedHosts: ssrfConfig?.allowedHosts ?? DEFAULT_ALLOWED_HOSTS };
+    if (ssrfConfig?.maxRedirects !== undefined) base.maxRedirects = ssrfConfig.maxRedirects;
+    this.ssrfGuard = new SsrfGuard(base);
+  }
   async *buscarContratacoesPorPublicacao(
     modalidade: number,
     janela: { inicio: Date; fim: Date },
@@ -94,7 +105,12 @@ export class PncpHttpGateway implements PncpGateway {
   }
 
   async downloadArquivo(urlOrigem: string, signal: AbortSignal): Promise<Uint8Array> {
-    const resposta = await this.fetchComRetry(urlOrigem, signal);
+    // Guarda SSRF (P-58): valida URL e segue redirects com revalidação por hop.
+    // A URL vem do PNCP (dado não confiável — arq/11) e pode apontar para IPs internos.
+    const resposta = await this.ssrfGuard.fetch(urlOrigem, signal);
+    if (!resposta.ok) {
+      throw new FonteIndisponivelError('PNCP', `HTTP ${resposta.status} ao baixar anexo`);
+    }
     return new Uint8Array(await resposta.arrayBuffer());
   }
 

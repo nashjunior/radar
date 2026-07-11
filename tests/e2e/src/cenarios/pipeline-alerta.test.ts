@@ -20,6 +20,7 @@ import {
   type ClockProvider,
   type EditalParaMatchingDTO,
   type FaixaValorReferencia,
+  type FieldCryptoProvider,
 } from '@radar/matching';
 import { PostgresCriterioRepository, PostgresAlertaRepository, CryptoCriterioIdProvider, CryptoAlertaIdProvider } from '@radar/matching/infra';
 import {
@@ -34,7 +35,6 @@ import {
 
 import { startDb, teardownDb, type DbFixture } from '../helpers/db.js';
 import { InMemoryEventBus } from '../helpers/event-bus.js';
-import { InMemoryEditalView } from '../stubs/in-memory-edital-view.js';
 import { InMemoryAlertaView } from '../stubs/in-memory-alerta-view.js';
 import { InMemoryClienteFinalGateway } from '../stubs/in-memory-cliente-gateway.js';
 import { CaptureNotifier } from '../stubs/capture-notifier.js';
@@ -74,6 +74,10 @@ const faixasRefVazia: FaixaValorReferencia = {
 };
 
 const clock: ClockProvider = { agora: () => new Date('2026-07-05T12:00:00Z') };
+const fieldCrypto: FieldCryptoProvider = {
+  cifrarTexto: async (valor) => valor,
+  decifrarTexto: async (valor) => valor,
+};
 
 // ---------------------------------------------------------------------------
 // Setup global — 1 container por suite (compartilhado, schema limpo entre testes)
@@ -102,12 +106,11 @@ beforeEach(async () => {
 
 function criarHarness() {
   const bus = new InMemoryEventBus();
-  const editalView = new InMemoryEditalView();
   const alertaView = new InMemoryAlertaView();
   const clienteGateway = new InMemoryClienteFinalGateway();
   const notifier = new CaptureNotifier();
 
-  const criterioRepo = new PostgresCriterioRepository(fixture.db);
+  const criterioRepo = new PostgresCriterioRepository(fixture.db, fieldCrypto);
   const alertaRepo = new PostgresAlertaRepository(fixture.db);
   const notificacaoRepo = new PostgresNotificacaoRepository(fixture.db);
   const preferenciaRepo = new PostgresPreferenciaRepository(fixture.db);
@@ -160,8 +163,8 @@ function criarHarness() {
     );
   });
 
+  // P-97: edital passado diretamente do evento; sem EditalMatchingView cross-context
   const casarUC = new CasarEditalComCriteriosUseCase(
-    editalView,
     criterioRepo,
     alertaRepo,
     matchingPublisher,
@@ -178,7 +181,6 @@ function criarHarness() {
 
   return {
     bus,
-    editalView,
     alertaView,
     clienteGateway,
     notifier,
@@ -198,10 +200,9 @@ const signal = new AbortController().signal;
 
 describe('CE-01 — casamento de edital com critério', () => {
   it('gera alerta e publica alerta.gerado quando score supera limiar', async () => {
-    const { editalView, clienteGateway, definirCriterioUC, casarUC, bus } = criarHarness();
+    const { clienteGateway, definirCriterioUC, casarUC, bus } = criarHarness();
 
     clienteGateway.registrar(CLIENTE, { usuarioId: USUARIO, email: 'usuario@teste.com' });
-    editalView.registrar(editalTi);
 
     // ramoCnae sem palavrasChave → score ELSE 0.5 > 0.3 (caminho ELSE do SQL)
     await definirCriterioUC.executar(
@@ -214,7 +215,7 @@ describe('CE-01 — casamento de edital com critério', () => {
       signal,
     );
 
-    const alertas = await casarUC.executar({ editalId: editalTi.id }, signal);
+    const alertas = await casarUC.executar({ edital: editalTi }, signal);
 
     expect(alertas.length).toBeGreaterThanOrEqual(1);
     expect(alertas[0]?.editalId).toBe(editalTi.id);
@@ -231,11 +232,10 @@ describe('CE-01 — casamento de edital com critério', () => {
 
 describe('CE-02 — notificação disparada por alerta.gerado', () => {
   it('envia notificação e persiste registro quando usuario tem preferência IMEDIATA', async () => {
-    const { editalView, clienteGateway, definirCriterioUC, casarUC, notifier, notificacaoRepo } =
+    const { clienteGateway, definirCriterioUC, casarUC, notifier, notificacaoRepo } =
       criarHarness();
 
     clienteGateway.registrar(CLIENTE, { usuarioId: USUARIO, email: 'usuario@empresa.com' });
-    editalView.registrar(editalTi);
 
     // Preferência IMEDIATA para o usuario
     await fixture.pool.query(
@@ -249,7 +249,7 @@ describe('CE-02 — notificação disparada por alerta.gerado', () => {
       signal,
     );
 
-    await casarUC.executar({ editalId: editalTi.id }, signal);
+    await casarUC.executar({ edital: editalTi }, signal);
 
     expect(notifier.enviadas.length).toBeGreaterThanOrEqual(1);
     const enviada = notifier.enviadas[0];
@@ -271,10 +271,9 @@ describe('CE-02 — notificação disparada por alerta.gerado', () => {
 
 describe('CE-03 — pipeline fim-a-fim', () => {
   it('persiste criterio, alerta e notificacao no Postgres em sequência correta', async () => {
-    const { editalView, clienteGateway, definirCriterioUC, casarUC, notifier } = criarHarness();
+    const { clienteGateway, definirCriterioUC, casarUC, notifier } = criarHarness();
 
     clienteGateway.registrar(CLIENTE, { usuarioId: USUARIO, email: 'cli@radar.com' });
-    editalView.registrar(editalTi);
 
     await fixture.pool.query(
       `INSERT INTO usuario_preferencia (usuario_id, canais, frequencia, atualizada_em)
@@ -293,7 +292,7 @@ describe('CE-03 — pipeline fim-a-fim', () => {
     );
     expect(criterioRows).toHaveLength(1);
 
-    const alertas = await casarUC.executar({ editalId: editalTi.id }, signal);
+    const alertas = await casarUC.executar({ edital: editalTi }, signal);
     expect(alertas.length).toBeGreaterThanOrEqual(1);
 
     const { rows: alertaRows } = await fixture.pool.query(
@@ -317,11 +316,10 @@ describe('CE-03 — pipeline fim-a-fim', () => {
 
 describe('CE-04 — idempotência de notificação', () => {
   it('não reprocessa alerta já entregue ao reprocessar a mesma mensagem da fila', async () => {
-    const { editalView, clienteGateway, definirCriterioUC, casarUC, notifier, alertaRepo } =
+    const { clienteGateway, definirCriterioUC, casarUC, notifier, alertaRepo } =
       criarHarness();
 
     clienteGateway.registrar(CLIENTE, { usuarioId: USUARIO, email: 'idem@radar.com' });
-    editalView.registrar(editalTi);
 
     await fixture.pool.query(
       `INSERT INTO usuario_preferencia (usuario_id, canais, frequencia, atualizada_em)
@@ -335,7 +333,7 @@ describe('CE-04 — idempotência de notificação', () => {
     );
 
     // Primeira execução → alerta gerado e notificado
-    const alertas = await casarUC.executar({ editalId: editalTi.id }, signal);
+    const alertas = await casarUC.executar({ edital: editalTi }, signal);
     expect(alertas.length).toBeGreaterThanOrEqual(1);
     expect(notifier.enviadas.length).toBeGreaterThanOrEqual(1);
     const enviosAposFirstRun = notifier.enviadas.length;
@@ -404,10 +402,9 @@ describe('CE-04 — idempotência de notificação', () => {
 
 describe('CE-05 — edital sem critério correspondente', () => {
   it('não gera alertas quando edital não casa com nenhum critério ativo', async () => {
-    const { editalView, clienteGateway, definirCriterioUC, casarUC } = criarHarness();
+    const { clienteGateway, definirCriterioUC, casarUC } = criarHarness();
 
     clienteGateway.registrar(CLIENTE, { usuarioId: USUARIO, email: 'nada@radar.com' });
-    editalView.registrar(editalSemCasamento);
 
     // Critério de TI (CNAE 62.01) — edital de obras tem CNAE 41.10 → mismatch
     await definirCriterioUC.executar(
@@ -415,7 +412,7 @@ describe('CE-05 — edital sem critério correspondente', () => {
       signal,
     );
 
-    const alertas = await casarUC.executar({ editalId: editalSemCasamento.id }, signal);
+    const alertas = await casarUC.executar({ edital: editalSemCasamento }, signal);
 
     expect(alertas).toHaveLength(0);
 

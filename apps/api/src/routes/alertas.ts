@@ -1,0 +1,42 @@
+/**
+ * Rotas de leitura de alertas — apps/api.
+ *
+ * GET /api/alertas
+ *   US-05: Lista todos os alertas gerados para o tenant autenticado.
+ *   tenantId vem do JWT via autenticarMiddleware — nunca do corpo.
+ *   Autorização por objeto (P-51/AB1): AlertaRepository.listarPorTenant
+ *   usa o tenantId como scope; cross-tenant é impossível.
+ *   Retorna 200 AlertaDTO[] (vazio quando não há alertas).
+ *
+ * Refs: docs/14 §2 (US-05), P-51, arquitetura/17 §5.3, RAD-115 (proveniência).
+ */
+
+import { Hono } from 'hono';
+import type { ConsultarAlertasTenantUseCase } from '@radar/matching';
+import { responderErro } from '../errors.js';
+import { autenticarMiddleware } from '../middleware/tenant.js';
+
+export interface AlertasContainer {
+  consultarAlertas: ConsultarAlertasTenantUseCase;
+}
+
+export function criarAlertasRouter(container: AlertasContainer): Hono {
+  const router = new Hono();
+
+  router.use('/*', autenticarMiddleware);
+
+  // GET / — US-05 ConsultarAlertasTenant
+  router.get('/', async (c) => {
+    const tenantId = c.get('tenantId');
+    const signal = c.req.raw.signal;
+
+    try {
+      const resultado = await container.consultarAlertas.executar({ tenantId }, signal);
+      return c.json(resultado);
+    } catch (err) {
+      return responderErro(c, err);
+    }
+  });
+
+  return router;
+}

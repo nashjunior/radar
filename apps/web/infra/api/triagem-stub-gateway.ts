@@ -21,6 +21,7 @@ export class TriagemStubGateway implements TriagemGateway {
     });
 
     return {
+      status: 'concluida' as const,
       editalId: mkEditalId(input.editalId),
       perfilId: mkPerfilId(input.perfilId),
       aderencia: 0.92,
@@ -33,18 +34,21 @@ export class TriagemStubGateway implements TriagemGateway {
           conteudo:
             'Aquisição de 120 computadores desktop com especificações mínimas definidas no Termo de Referência (Anexo I), destinados à modernização do parque tecnológico das unidades administrativas do FNDE.',
           fonte: 'Edital §1.1, Anexo I TR §2',
+          estado: 'ok' as const,
         },
         {
           titulo: '📋 Requisitos de habilitação',
           conteudo:
             '• Certidão Negativa de Débitos (CND) federal, estadual e municipal\n• Balanço patrimonial dos últimos 3 exercícios\n• Comprovação de capacidade técnica: fornecimento de ≥ 50 unidades similares em contrato único\n• Registro no SICAF',
           fonte: 'Edital §8.1 a §8.5',
+          estado: 'ok' as const,
         },
         {
           titulo: '⏱ Prazos críticos',
           conteudo:
             '• Envio de propostas: até 10/07/2026 às 13h59\n• Sessão de disputa: 10/07/2026 às 14h\n• Prazo de entrega dos equipamentos: 30 dias após assinatura do contrato',
           fonte: 'Edital §5.2, §11.1',
+          estado: 'ok' as const,
         },
       ],
       checklist: [
@@ -55,5 +59,24 @@ export class TriagemStubGateway implements TriagemGateway {
         { ok: true,  texto: 'SICAF ativo — atualizado em 03/2026' },
       ],
     };
+  }
+
+  async solicitar(
+    input: { tenantId: TenantId; editalId: EditalId; perfilId: PerfilId },
+    _signal: AbortSignal,
+  ): Promise<{ editalId: EditalId; estado: 'processando' }> {
+    return { editalId: mkEditalId(input.editalId), estado: 'processando' as const };
+  }
+
+  async aceitar(_input: { tenantId: TenantId; editalId: EditalId; perfilId: PerfilId }, _signal: AbortSignal): Promise<void> {
+    /* stub */
+  }
+
+  async contestar(_input: { tenantId: TenantId; editalId: EditalId; perfilId: PerfilId; motivo?: string }, _signal: AbortSignal): Promise<void> {
+    /* stub */
+  }
+
+  async registrarDecisao(_input: { tenantId: TenantId; editalId: EditalId; perfilId: PerfilId; go: boolean }, _signal: AbortSignal): Promise<void> {
+    /* stub */
   }
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ClienteFinalId, CriterioId, TenantId } from '@radar/kernel';
 import { CriterioDeMonitoramento } from '../../domain/entities/criterio-de-monitoramento.js';
+import { FaixaValor } from '../../domain/value-objects/faixa-valor.js';
 import { PalavrasChave } from '../../domain/value-objects/palavras-chave.js';
 import { CriterioInvalidoError } from '../../domain/errors/index.js';
 
@@ -72,6 +73,117 @@ describe('CriterioDeMonitoramento', () => {
       expect(() =>
         CriterioDeMonitoramento.reconstituir({ ...base, ativo: true }),
       ).not.toThrow();
+    });
+  });
+
+  describe('casaCom', () => {
+    it('retorna AderenciaMatching quando todos os filtros e palavras-chave casam', () => {
+      const criterio = CriterioDeMonitoramento.criar({
+        ...base,
+        ramoCnae: '62.01',
+        regiaoUf: 'SP',
+        faixaValor: FaixaValor.criar(10_000, 500_000),
+        palavrasChave: PalavrasChave.criar(['cloud', 'erp']),
+      });
+
+      const aderencia = criterio.casaCom({
+        objetoDescricao: 'Contratação de ERP em cloud para gestão pública',
+        uf: 'SP',
+        cnae: '62.01',
+        valorEstimado: 120_000,
+      });
+
+      expect(aderencia).not.toBeNull();
+      expect(aderencia!.valor).toBe(1);
+    });
+
+    it('retorna AderenciaMatching(0) quando filtros estruturais casam mas palavras-chave não', () => {
+      const criterio = CriterioDeMonitoramento.criar({
+        ...base,
+        palavrasChave: PalavrasChave.criar(['cloud', 'erp']),
+      });
+
+      const aderencia = criterio.casaCom({
+        objetoDescricao: 'Contratação de ERP para gestão pública',
+        uf: null,
+        cnae: null,
+        valorEstimado: null,
+      });
+
+      expect(aderencia).not.toBeNull();
+      expect(aderencia!.valor).toBe(0);
+      expect(aderencia!.superaLimiar).toBe(false);
+    });
+
+    it('retorna null quando CNAE não casa', () => {
+      const criterio = CriterioDeMonitoramento.criar({
+        ...base,
+        ramoCnae: '62.01',
+        regiaoUf: 'SP',
+        faixaValor: FaixaValor.criar(10_000, 500_000),
+      });
+
+      expect(
+        criterio.casaCom({
+          objetoDescricao: 'Serviços de software',
+          uf: 'SP',
+          cnae: '47.51',
+          valorEstimado: 120_000,
+        }),
+      ).toBeNull();
+    });
+
+    it('retorna null quando UF não casa', () => {
+      const criterio = CriterioDeMonitoramento.criar({
+        ...base,
+        ramoCnae: '62.01',
+        regiaoUf: 'SP',
+        faixaValor: FaixaValor.criar(10_000, 500_000),
+      });
+
+      expect(
+        criterio.casaCom({
+          objetoDescricao: 'Serviços de software',
+          uf: 'RJ',
+          cnae: '62.01',
+          valorEstimado: 120_000,
+        }),
+      ).toBeNull();
+    });
+
+    it('retorna null quando valor estimado está fora da faixa', () => {
+      const criterio = CriterioDeMonitoramento.criar({
+        ...base,
+        ramoCnae: '62.01',
+        regiaoUf: 'SP',
+        faixaValor: FaixaValor.criar(10_000, 500_000),
+      });
+
+      expect(
+        criterio.casaCom({
+          objetoDescricao: 'Serviços de software',
+          uf: 'SP',
+          cnae: '62.01',
+          valorEstimado: 1_000_000,
+        }),
+      ).toBeNull();
+    });
+
+    it('retorna null quando critério exige faixa mas edital não informa valor estimado', () => {
+      const criterio = CriterioDeMonitoramento.criar({
+        ...base,
+        ramoCnae: '62.01',
+        faixaValor: FaixaValor.criar(10_000, null),
+      });
+
+      expect(
+        criterio.casaCom({
+          objetoDescricao: 'Serviços de software',
+          uf: 'SP',
+          cnae: '62.01',
+          valorEstimado: null,
+        }),
+      ).toBeNull();
     });
   });
 });

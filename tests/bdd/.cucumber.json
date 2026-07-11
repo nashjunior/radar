@@ -1,9 +1,6 @@
 {
   "default": {
     "paths": ["features/**/*.feature"],
-    "import": ["steps/**/*.ts"],
-    "loader": ["tsx"],
-    "format": ["progress-bar", "json:cucumber-report.json"],
-    "publishQuiet": true
+    "format": ["progress-bar", "json:cucumber-report.json"]
   }
 }

@@ -63,7 +63,7 @@ Para cada edital no gold set:
      e que nenhum contexto de sistema foi vazado na saída
 ```
 
-Framework de eval: `[A VALIDAR]` → P-85.
+Framework de eval: **custom runner vitest/TypeScript em `tests/eval/` (`@radar/eval`)** — decidido em P-85 (RAD-157, 2026-07-09). Usa `RecordReplayLlmClient` (REPLAY) + `calibrar()`/`varreLimiar()` de `calibracao-limiar.ts`; gates: recall ≥ 0,95, 0 alucinação numérica (regra dura), precisão ≥ 0,90. Migração para Braintrust quando P-18 entregar gold set real ≥ 50 editais.
 
 ### 2.4 Critérios de aceite do gold set (gate de release)
 
@@ -151,8 +151,8 @@ O MVP só vai a usuários externos quando **todos** os itens abaixo forem verifi
 | 5 | Checklist de conformidade por funcionalidade satisfeito | Revisão de [docs/04](../docs/04-fluxos-conforme-lei.md) + [docs/05](../docs/05-seguranca-e-privacidade.md) | A verificar |
 | 6 | Métricas de ativação e precisão instrumentadas e observáveis | Auditoria de instrumentação (P-15) | A verificar |
 | 7 | Estresse do core passa: NFRs mantidos + degradação graciosa + 0 regras duras violadas | TC-S1–S7; TC-DB1–DB5; TC-EL1–EL6 | A verificar |
-| 8 | Nenhum achado de segurança crítico/alto em aberto | TC-AB1–AB13; SAST/DAST; pentest | A verificar |
-| 9 | Testes de abuso **obrigatórios** passando (A07, §5): AB1 pela **matriz recurso × ação** (§2.1), AB4 (prompt-injection), camadas de IA AB5–AB7/AB9, AB10 (titular) e AB13 (audit log append-only/fail-closed) | TC-AB1, TC-AB4, TC-AB5, TC-AB6, TC-AB7, TC-AB9, TC-AB10, TC-AB13 (CI) | A verificar |
+| 8 | Nenhum achado de segurança crítico/alto em aberto | TC-AB1–AB14; SAST/DAST; pentest | A verificar |
+| 9 | Testes de abuso **obrigatórios** passando (A07, §5): AB1 pela **matriz recurso × ação** (§2.1), AB4 (prompt-injection), camadas de IA AB5–AB7/AB9, AB10 (titular), AB13 (audit log append-only/fail-closed) e AB14 (trust-gating de anexos) | TC-AB1, TC-AB4, TC-AB5, TC-AB6, TC-AB7, TC-AB9, TC-AB10, TC-AB13, TC-AB14 (CI) | A verificar |
 | 10 | Secret scanning limpo; nada sensível em logs | TC-AB11 (CI) | A verificar |
 | 11 | Dependências sem CVE crítica conhecida | SCA/SBOM no CI (P-56) | A verificar |
 
@@ -165,7 +165,7 @@ O MVP só vai a usuários externos quando **todos** os itens abaixo forem verifi
 | 0 alucinação em campo numérico | Gold set §2.4 |
 | Auditoria imutável e fail-closed (0 adulteração/bypass da trilha) | TC-AB13 |
 | Titular verificado antes de atender solicitação LGPD | TC-AB10 |
-| Achado de segurança crítico/alto em aberto | TC-AB1–AB13 + pentest |
+| Achado de segurança crítico/alto em aberto | TC-AB1–AB14 + pentest |
 
 ## 8. Pendências
 

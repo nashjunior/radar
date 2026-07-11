@@ -1,9 +1,8 @@
 import type { TenantId } from '@radar/kernel';
-import { CanalIndisponivelError } from '../../domain/errors/index.js';
-import { Notificacao, NotificacaoId, UsuarioId } from '../../domain/entities/notificacao.js';
+import { UsuarioId } from '../../domain/entities/notificacao.js';
 import { Canal } from '../../domain/value-objects/canal.js';
 import type { DigestDTO } from '../dtos.js';
-import { NotificacaoEnviada } from '../events.js';
+import { EnvioNotificacaoService } from '../services/envio-notificacao-service.js';
 import type {
   AlertaRepository,
   EventPublisher,
@@ -30,14 +29,18 @@ export interface EnviarDigestInput {
  * Usuários com frequência IMEDIATA recebem por alerta individual, não digest.
  */
 export class EnviarDigestUseCase {
+  private readonly envio: EnvioNotificacaoService;
+
   constructor(
     private readonly alertas: AlertaRepository,
     private readonly preferencias: PreferenciaRepository,
-    private readonly notificacoes: NotificacaoRepository,
-    private readonly notifier: Notifier,
-    private readonly eventos: EventPublisher,
-    private readonly ids: IdProvider,
-  ) {}
+    notificacoes: NotificacaoRepository,
+    notifier: Notifier,
+    eventos: EventPublisher,
+    ids: IdProvider,
+  ) {
+    this.envio = new EnvioNotificacaoService(notificacoes, notifier, eventos, ids);
+  }
 
   async executar(input: EnviarDigestInput, signal: AbortSignal): Promise<DigestDTO> {
     const preferencia = await this.preferencias.porUsuario(input.usuarioId, signal);
@@ -61,38 +64,16 @@ export class EnviarDigestUseCase {
     const alertaAncora = selecionados[0];
     if (!alertaAncora) return { enviados: 0, agrupados: 0 };
 
-    let notificacao = Notificacao.criar({
-      id: NotificacaoId(this.ids.gerar()),
-      tenantId: input.tenantId,
-      usuarioId: input.usuarioId,
-      alertaId: alertaAncora.id,
-      canal,
-    });
-
-    try {
-      await this.notifier.enviar({
+    await this.envio.enviarComRegistro(
+      {
+        tenantId: input.tenantId,
+        usuarioId: input.usuarioId,
+        alertaId: alertaAncora.id,
         canal,
         destinatario: input.emailDestinatario,
         assunto: `${selecionados.length} novo(s) alerta(s) — Radar de Licitações`,
         corpo: montarCorpoDigest(selecionados, pendentes.length),
-        signal,
-      });
-      notificacao = notificacao.marcarEnviada();
-    } catch {
-      notificacao = notificacao.marcarFalhou();
-      throw new CanalIndisponivelError(canal.tipo);
-    } finally {
-      await this.notificacoes.salvar(notificacao, signal);
-    }
-
-    await this.eventos.publicar(
-      new NotificacaoEnviada({
-        notificacaoId: notificacao.id,
-        tenantId: notificacao.tenantId,
-        usuarioId: notificacao.usuarioId,
-        alertaId: notificacao.alertaId,
-        canal: notificacao.canal.tipo,
-      }),
+      },
       signal,
     );
 

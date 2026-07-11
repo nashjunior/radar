@@ -2,6 +2,14 @@
 -- Derivado dos adapters postgres de matching e notificacao.
 -- REGRA: nunca tocar a fonte real do PNCP nem LLM aqui (A04 §4).
 
+CREATE TABLE IF NOT EXISTS faixa_valor_referencia (
+  codigo      TEXT        PRIMARY KEY,
+  min         NUMERIC,
+  max         NUMERIC,
+  vigente_de  TIMESTAMPTZ NOT NULL,
+  vigente_ate TIMESTAMPTZ
+);
+
 CREATE TABLE IF NOT EXISTS criterio_monitoramento (
   id             TEXT    PRIMARY KEY,
   tenant_id      TEXT    NOT NULL,
@@ -10,18 +18,21 @@ CREATE TABLE IF NOT EXISTS criterio_monitoramento (
   regiao_uf      TEXT,
   faixa_valor_min NUMERIC,
   faixa_valor_max NUMERIC,
+  faixa_valor_min_cripto TEXT,
+  faixa_valor_max_cripto TEXT,
   palavras_chave TEXT[]  NOT NULL DEFAULT '{}',
   ativo          BOOLEAN NOT NULL DEFAULT true
 );
 
 CREATE TABLE IF NOT EXISTS alerta (
-  id               TEXT    PRIMARY KEY,
-  tenant_id        TEXT    NOT NULL,
-  cliente_final_id TEXT    NOT NULL,
-  criterio_id      TEXT    NOT NULL,
-  edital_id        TEXT    NOT NULL,
-  aderencia        NUMERIC NOT NULL,
-  relevante        BOOLEAN
+  id               TEXT        PRIMARY KEY,
+  tenant_id        TEXT        NOT NULL,
+  cliente_final_id TEXT        NOT NULL,
+  criterio_id      TEXT        NOT NULL,
+  edital_id        TEXT        NOT NULL,
+  aderencia        NUMERIC     NOT NULL,
+  relevante        BOOLEAN,
+  criado_em        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS notificacao (

@@ -1,0 +1,24 @@
+{
+  "name": "@radar/security-gates",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --reporter=verbose"
+  },
+  "dependencies": {
+    "@radar/governanca": "workspace:*",
+    "@radar/identidade": "workspace:*",
+    "@radar/ingestao": "workspace:*",
+    "@radar/kernel": "workspace:*",
+    "@radar/matching": "workspace:*",
+    "@radar/notificacao": "workspace:*",
+    "@radar/triagem": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.0"
+  }
+}

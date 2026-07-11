@@ -1,0 +1,23 @@
+# Módulo `queue` — fila gerenciada com DLQ (RAD-181/RAD-182)
+
+Fila de mensagens com dead-letter queue. Binding hoje = AWS SQS.
+
+## O que é genuinamente portável
+
+| Conceito | Contrato | Binding AWS |
+|---|---|---|
+| URL de acesso | `queue_url` | SQS queue URL |
+| Cifra em repouso | `encryption_key_ref` | KMS key ARN (`kms_master_key_id`) |
+| Handle da fila | `queue_ref` | SQS queue ARN |
+| Handle da DLQ | `dlq_ref` | SQS DLQ ARN |
+| Visibilidade | `visibility_timeout` (segundos) | `visibility_timeout_seconds` |
+| Retentativas | `max_receive_count` | `maxReceiveCount` no redrive_policy |
+
+## O que é provider-bound (custo real de exit → GCP/Azure)
+
+- **`redrive_policy` / `deadLetterTargetArn`** — em GCP Pub/Sub a DLQ é uma subscription
+  separada com `dead_letter_policy`; em Azure Service Bus é um sub-queue built-in.
+- **`kms_master_key_id`** — AWS SQS usa KMS diretamente; em GCP Pub/Sub a cifra é pelo
+  Cloud KMS via CMEK; em Azure Service Bus é via Customer-managed key no namespace.
+- **`message_retention_seconds`** — SQS aceita até 14 dias; GCP Pub/Sub até 7 dias;
+  Azure Service Bus até 14 dias (Basic/Standard).

@@ -1,6 +1,6 @@
 # A08 · Infraestrutura e Implantação
 
-> O que o projeto **precisa de infra**: o modelo de compute por workload (serverless, containers, gerenciados) e seus equivalentes entre provedores. Complementa a stack de [A01, §5](01-visao-arquitetural.md) e a topologia de dados de [A05](05-stress-test-banco.md). Estágio: **Concepção**. Runtime/linguagem ([P-27](../docs/98-decisoes-e-pendencias.md)), modelo de compute + **provedor default AWS** ([P-64](../docs/98-decisoes-e-pendencias.md)), **região Brasil/SP** ([P-28](../docs/98-decisoes-e-pendencias.md)) e **IaC/CI-CD** ([P-65](../docs/98-decisoes-e-pendencias.md)) **confirmados** (2026-07-05); segue `[A VALIDAR]` só a residência do LLM + DPA de sub-operador ([P-66](../docs/98-decisoes-e-pendencias.md)/[P-54](../docs/98-decisoes-e-pendencias.md)).
+> O que o projeto **precisa de infra**: o modelo de compute por workload (serverless, containers, gerenciados) e seus equivalentes entre provedores. Complementa a stack de [A01, §5](01-visao-arquitetural.md) e a topologia de dados de [A05](05-stress-test-banco.md). Estágio: **Concepção**. Runtime/linguagem ([P-27](../docs/98-decisoes-e-pendencias.md)), modelo de compute + **provedor default AWS** ([P-64](../docs/98-decisoes-e-pendencias.md)), **região Brasil/SP** ([P-28](../docs/98-decisoes-e-pendencias.md)) e **IaC/CI-CD** ([P-65](../docs/98-decisoes-e-pendencias.md)) **confirmados** (2026-07-05); o **caminho técnico do LLM = Amazon Bedrock** decidido (2026-07-09, [P-66](../docs/98-decisoes-e-pendencias.md)), seguindo `[A VALIDAR]` só a **residência/DPA jurídica** do recorte enviado ao LLM ([P-54](../docs/98-decisoes-e-pendencias.md)/[P-80](../docs/98-decisoes-e-pendencias.md), Jurídico).
 
 ## 1. Princípio de escolha
 
@@ -37,8 +37,20 @@ Observação: no MVP monólito modular (A01, §2), API e workers podem coabitar 
 | **Fila gerenciada** | eventos entre módulos (A03, §3) | retries + DLQ nativos |
 | **Object storage** | editais/anexos (A02, §6) | já é serverless por natureza |
 | **Secrets manager** | segredos, rotação (P-08) | nunca segredo no código (05, §4) |
-| **LLM (Claude)** | triagem (10) | API direta **ou** via nuvem (Bedrock/Vertex) — decisão de residência/DPA (P-54, P-66) |
+| **Provedor de identidade (IdP)** | autenticação de usuário, emissão de token OIDC/JWT, MFA (P-08) | **default do MVP = Cognito** (User Pools); a borda valida o JWT e o BFF deriva o `tenantId` de **claim verificado**, nunca de header do cliente (05, §4; P-51). Operação (sessão/MFA/recuperação) em P-53 |
+| **LLM (Claude)** | triagem (10) | **via nuvem = Amazon Bedrock** (decidido P-66; não a API direta) — residência/DPA jurídica em P-54/P-80 |
 | **E-mail transacional** | alertas/digest | entregabilidade |
+
+### Object storage — tiering e retenção (S3, P-30/P-44)
+
+**Tiering:** nativo via S3, sem código de aplicação. Bucket de anexos (`radar-editais-{env}`) configurado com **S3 Intelligent-Tiering** ou duas lifecycle rules:
+
+1. `Standard → Glacier Instant Retrieval` após janela parametrizada de não-acesso, derivada da matriz de retenção (docs/05, §5; P-05/P-44 resolvidas) e ajustada por configuração de lifecycle.
+2. `Glacier Instant → Deep Archive` para editais terminais que nunca mais serão lidos.
+
+**Decisão de design (RAD-121):** sem SDK customizado de zip+manifesto — o overhead por objeto só vira custo relevante em dezenas de milhões de objetos com perfil arquivar-e-quase-nunca-restaurar. Para o volume do MVP, Intelligent-Tiering cobre sem complexidade de restore assíncrono ou expurgo-sobre-zip (crítico para P-30/LGPD).
+
+**Expurgo LGPD:** `AplicarRetencaoUseCase` chama `ObjectStorage.deletar()` por chave para remoção individual de objetos — não há consolidação em zip, então o expurgo é atômico e não precisa descompactar (RAD-101, P-30).
 
 ## 4. Equivalentes por provedor (evitar lock-in)
 
@@ -54,6 +66,7 @@ Escolher **primitivas portáveis** (container OCI, Postgres, fila, blob) mantém
 | Fila | SQS | Pub/Sub | Service Bus |
 | Object storage | S3 | Cloud Storage | Blob |
 | Secrets | Secrets Manager | Secret Manager | Key Vault |
+| Identidade (IdP, OIDC/JWT) | Cognito | Identity Platform | Entra External ID |
 | CDN + estático | CloudFront + S3 | Cloud CDN + GCS | Front Door + Blob |
 | LLM (Claude) | Bedrock | Vertex AI | (API Anthropic direta) |
 | E-mail | SES | (SendGrid/Mailgun) | Communication Services |
@@ -70,6 +83,7 @@ flowchart TB
     subgraph Nuvem[Nuvem · região Brasil]
       CDN[CDN + estático · Web App]
       GW[API Gateway / WAF]
+      IDP[[IdP · Cognito]]
       subgraph Privada[Sub-rede privada · sem acesso público]
         API[API/BFF · container]
         ING[Ingestão · serverless agendado]
@@ -84,7 +98,9 @@ flowchart TB
       end
     end
     U --> CDN
-    U --> GW --> API
+    U -->|login OIDC| IDP
+    U -->|Bearer JWT| GW
+    GW -->|valida JWT + injeta tenant do claim| API
     ING -->|egress allowlist| PNCP
     ING --> DB
     ING --> OBJ
@@ -97,7 +113,7 @@ flowchart TB
     WRK --> MAIL
 ```
 
-Pontos de segurança embutidos: workers e banco em **sub-rede privada** (sem IP público); **egress allowlist** nas saídas para PNCP e LLM (defesa de SSRF, P-58); WAF/gateway na borda (P-55).
+Pontos de segurança embutidos: workers e banco em **sub-rede privada** (sem IP público); **egress allowlist** nas saídas para PNCP e LLM (defesa de SSRF, P-58); WAF/gateway na borda (P-55). **Autenticação na borda (P-08):** o cliente faz login no **IdP (Cognito)** e apresenta um **JWT OIDC**; o GW valida assinatura/expiração e o BFF deriva `tenantId` (e `clienteFinalId` no Next) de **claim verificado do token** — nunca de header controlado pelo cliente. Requisição sem token válido é rejeitada na borda; o `x-tenant-id` que o BFF lê hoje é **placeholder de desenvolvimento** e não é fonte de autoridade em produção. Fecha a dimensão de autenticação de P-51 (anti-BOLA).
 
 ## 6. Ambientes, IaC e CI/CD
 
@@ -111,7 +127,7 @@ Pontos de segurança embutidos: workers e banco em **sub-rede privada** (sem IP 
 ## 7. Rede e residência de dados
 
 - **Região Brasil / São Paulo** — **confirmado** (P-28, 2026-07-05): latência + residência LGPD dos dados pessoais e da estratégia comercial do cliente. No provedor default (AWS) = `sa-east-1`; os três provedores têm região em SP (§4), preservando a portabilidade. Dado em repouso e compute ficam na região; nada de dado pessoal/estratégico sai do país **exceto** o recorte enviado ao LLM (abaixo).
-- O ponto sensível é o **LLM**: a API direta da Anthropic pode processar fora do Brasil; via **Bedrock/Vertex** há mais controle de região e o provedor de nuvem entra como sub-operador com DPA — decisão de P-54/P-66. Reforça **não enviar a classe crítica** ao LLM.
+- O ponto sensível é o **LLM**: **decidido usar Amazon Bedrock** (não a API direta da Anthropic) — o Bedrock **centraliza controle operacional e billing na AWS** (P-64) e, segundo a doc AWS, o provedor de modelo **não acessa prompts/completions** (retenção configurável: `data_retention_mode=none`, sem `provider_data_share`, sem logging de prompt/output); o contrato/DPA, porém, fica **a validar no pacote AWS + termos Anthropic do Bedrock** (que incorporam o Anthropic DPA), **não** como "DPA único/AWS-only" (P-66, 2026-07-09; ajuste pós-parecer Selma, 2026-07-10). Ressalva: Bedrock serve os Claude atuais por *cross-region inference* e **não em `sa-east-1`**, então o recorte **processa fora do Brasil em qualquer caminho** (igual à API direta) — se contiver dado pessoal é **transferência internacional (LGPD art. 33)**; **caminho default = região UE** quando o modelo suportar (ANPD reconheceu a UE como adequada: **Resolução ANPD nº 32/2026**); caminho US/global **não é release-ready** sem mecanismo LGPD art. 33 II — CPCs da ANPD (**Res. CD/ANPD nº 19/2024**) sem modificação, ou cláusulas equivalentes/instrumento aprovado pela ANPD (EU SCCs do DPA AWS **não bastam sozinhas** p/ a LGPD). Reforça **não enviar a classe crítica** ao LLM; a **operacionalização jurídica** (mecanismo de transferência + ROPA/Política) fica em P-54 (Jurídico).
 - Sub-redes privadas, egress allowlist, sem banco público (§5, liga segurança A07).
 
 ## 8. Custo
@@ -149,7 +165,9 @@ Tão importante quanto o que usar:
 
 - Runtime/linguagem: **TS-first** com seam para Go (§9) — **confirmado** (P-27, 2026-07-05).
 - Modelo de compute por workload (§§2,4) e **provedor default do MVP = AWS** — **confirmado** (P-64, 2026-07-05): a tabela de §2 é o alvo; primitivas portáveis (§4) mantêm o exit aberto.
-- Região e residência de dados (§7): **Brasil / São Paulo** — **confirmado** (P-28, 2026-07-05). A residência do **LLM** e o DPA de sub-operador seguem em P-66/P-54/P-80 (Jurídico+Eng).
+- Região e residência de dados (§7): **Brasil / São Paulo** — **confirmado** (P-28, 2026-07-05).
+- LLM direto-vs-nuvem (§7): **direção técnica = Amazon Bedrock** — **decidido (Eng/Artur, 2026-07-09, P-66/RAD-156):** o LLM entra pelo **Bedrock** (mesmo fornecedor do MVP, P-64), não pela API direta da Anthropic. **Bedrock centraliza controle operacional e billing na AWS** (auth IAM/SigV4, billing no Marketplace; o recorte sai pela **rede/VPC da AWS** — egress allowlist + A07/§7 —, não por chamada pública a `api.anthropic.com`) e, segundo a doc AWS, o provedor de modelo **não acessa prompts/completions** — o que reduz a superfície de sub-operador, **mas não é "um DPA único/AWS-only"**: os termos oficiais dos modelos Anthropic no Bedrock **incorporam o Anthropic DPA**, então o contrato/DPA fica **a validar no pacote AWS + termos Anthropic do Bedrock** (não "um contrato e pronto") — ruling em P-54/P-80. Porta de saída: o port `AnthropicLlmGateway` (A10 §4.6) fica provider-agnóstico → Bedrock↔API-direta é swap de adapter (§4). Ressalva-chave: Bedrock **não serve `sa-east-1`** p/ os Claude atuais (cross-region inference) → **o recorte cruza a fronteira em qualquer caminho** (§7); **classe crítica nunca vai ao LLM** (A07/A03). **Condição jurídica (parecer Selma, 2026-07-10, RAD-156; aplicado docs RAD-158, 2026-07-09):** o recorte enviado contém dado pessoal de terceiro (edital PNCP, camada 2/P-94) → **transferência internacional (LGPD art. 33)**; caminho default = **região UE** quando o modelo/perfil suportar — ANPD reconheceu a UE como adequada: **Resolução ANPD nº 32/2026**; caminho US/global = **não-release-ready** sem mecanismo LGPD art. 33 II: CPCs da ANPD (**Res. CD/ANPD nº 19/2024**) incorporadas sem modificação, cláusulas equivalentes reconhecidas pela ANPD, ou instrumento específico aprovado (EU SCCs do DPA AWS **não bastam sozinhas**). Configs obrigatórias: `data_retention_mode=none`/retenção zero, sem `provider_data_share`, logs sem prompt/output bruto nem PII desnecessária; **bloquear** perfis/modelos que exijam retenção ou compartilhamento incompatível. Registro no **ROPA e na Política de Privacidade**: AWS Bedrock como sub-operador, transferência internacional, finalidade de triagem, recorte minimizado, base legal, salvaguardas. Dependência jurídica = operacionalização em **P-54** (Jurídico/Segurança); trade-offs em P-66.
 - IaC = **Terraform**, ambientes **dev/staging/prod** isolados, pipeline CI/CD com gates (§6) — **confirmado** (P-65, 2026-07-05); implementação do CI + IaC scaffold delegada (RAD-34).
+- Cofre de segredos + provedor de identidade (§§3,5) — **confirmado** (P-08, 2026-07-05): cofre = **AWS Secrets Manager** (rotação nativa; segredo nunca no código/pipeline, §6) e IdP = **Amazon Cognito** (User Pools; OIDC/JWT; `sa-east-1`, P-28), no default AWS de "comprar, não operar" (§1) e portável pelo padrão OIDC (§4). Invariante: a borda valida o JWT e o `tenantId` vem de **claim verificado**, nunca de header do cliente — o `x-tenant-id` do BFF é placeholder de dev. Escolha (Pré-dev) separada da **operação de identidade** — expiração/revogação de sessão, MFA obrigatório, brute-force, recuperação de conta — que segue em **P-53** (Pré-lançamento, sobre este mesmo IdP).
 
 Rastreadas em [../docs/98](../docs/98-decisoes-e-pendencias.md).

@@ -1,87 +1,109 @@
 /** @figma nodeId=12:2 fileKey=SAbjXOQO4gFAH4syq7VdQf (Light) / 15:308 (Dark) */
 import { useState } from 'react';
 import { Button, Input } from '@/ui/components';
+import { useDefinirCriterio } from '@/ui/hooks/use-definir-criterio';
 
 type Frequencia = 'tempo-real' | 'diario' | 'semanal';
 type Canal = 'email' | 'in-app' | 'whatsapp';
 
-const REGIOES = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'];
+/** Códigos da tabela faixa_valor_referencia (Lei 14.133/2021 arts. 75-76). */
+const FAIXAS_VALOR = [
+  { codigo: '', label: 'Qualquer valor' },
+  { codigo: 'MICRO_COMPRA',       label: 'Micro compra — até R$ 100 mil' },
+  { codigo: 'DISPENSA_SERVICOS',  label: 'Dispensa serviços — até R$ 50 mil' },
+  { codigo: 'DISPENSA_OBRAS',     label: 'Dispensa obras — R$ 100 mil a R$ 500 mil' },
+  { codigo: 'CONVITE',            label: 'Convite — R$ 50 mil a R$ 250 mil' },
+  { codigo: 'TOMADA_PRECOS_SERV', label: 'Tomada de preços serviços — R$ 250 mil a R$ 1,43 mi' },
+  { codigo: 'TOMADA_PRECOS_OBRAS',label: 'Tomada de preços obras — R$ 500 mil a R$ 3,3 mi' },
+  { codigo: 'CONCORRENCIA_SERV',  label: 'Concorrência serviços — acima de R$ 1,43 mi' },
+  { codigo: 'CONCORRENCIA_OBRAS', label: 'Concorrência obras — acima de R$ 3,3 mi' },
+] as const;
+
+const UFS = ['', 'AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
+
+const selectStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '8px 10px',
+  borderRadius: 'var(--radar-radius-sm)',
+  border: '1px solid var(--radar-color-border-default)',
+  background: 'var(--radar-color-bg-canvas)',
+  color: 'var(--radar-color-text-default)',
+  fontSize: 'var(--radar-font-size-sm)',
+  fontFamily: 'var(--radar-font-sans)',
+  outline: 'none',
+};
 
 export function ConfigurarPage() {
-  const [cnaes, setCnaes] = useState<string[]>(['4751-2/01', '6201-5/01']);
-  const [regioesSel, setRegioesSel] = useState<string[]>(['DF']);
-  const [valorMin, setValorMin] = useState('');
-  const [valorMax, setValorMax] = useState('');
+  /* --- critérios (US-04 DefinirCriterioMonitoramento) --- */
+  const [cnae, setCnae] = useState('6201-5/01');
+  const [uf, setUf] = useState('DF');
+  const [faixaCodigo, setFaixaCodigo] = useState('');
   const [palavras, setPalavras] = useState('software, TI, informática');
+  const { estado, salvar } = useDefinirCriterio();
+
+  /* --- preferências de alerta (aguarda E4/RAD-64) --- */
   const [frequencia, setFrequencia] = useState<Frequencia>('diario');
   const [canais, setCanais] = useState<Canal[]>(['email', 'in-app']);
-  const [saved, setSaved] = useState(false);
-
-  function toggleRegiao(uf: string) {
-    setRegioesSel((prev) => prev.includes(uf) ? prev.filter((r) => r !== uf) : [...prev, uf]);
-  }
 
   function toggleCanal(c: Canal) {
     setCanais((prev) => prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]);
   }
 
-  function handleSave() {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  function handleSalvarCriterio() {
+    const palavrasChave = palavras
+      .split(',')
+      .map((p) => p.trim())
+      .filter(Boolean);
+
+    const input: Parameters<typeof salvar>[0] = {};
+    if (cnae.trim()) input.ramoCnae = cnae.trim();
+    if (uf) input.regiaoUf = uf;
+    if (faixaCodigo) input.faixaValorCodigo = faixaCodigo;
+    if (palavrasChave.length > 0) input.palavrasChave = palavrasChave;
+
+    void salvar(input);
   }
+
+  const salvando = estado.status === 'loading';
 
   return (
     <div style={{ maxWidth: 800 }}>
       <h1 style={{ margin: '0 0 var(--radar-space-8)', fontSize: '1.25rem', fontWeight: 600 }}>Configurar Radar</h1>
 
+      {/* Critérios de busca — US-04 */}
       <section style={{ marginBottom: 'var(--radar-space-8)' }}>
         <h2 style={{ margin: '0 0 var(--radar-space-4)', fontSize: '1rem', fontWeight: 600 }}>Critérios de busca</h2>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--radar-space-6)' }}>
+          <Input
+            label="CNAE principal"
+            placeholder="Ex.: 6201-5/01"
+            value={cnae}
+            onChange={(e) => setCnae(e.target.value)}
+            hint="Código CNAE da atividade principal da empresa"
+          />
+
           <div>
             <label style={{ display: 'block', marginBottom: 'var(--radar-space-2)', fontSize: 'var(--radar-font-size-sm)', fontWeight: 500 }}>
-              CNAE
+              Região (UF)
             </label>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--radar-space-2)' }}>
-              {cnaes.map((c) => (
-                <span key={c} style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--radar-space-1)', background: 'var(--radar-color-bg-subtle)', borderRadius: 'var(--radar-radius-sm)', padding: '4px 10px', fontSize: 'var(--radar-font-size-sm)', border: '1px solid var(--radar-color-border-default)' }}>
-                  {c}
-                  <button onClick={() => setCnaes((prev) => prev.filter((x) => x !== c))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--radar-color-text-muted)', padding: 0, fontSize: '0.85rem' }}>✕</button>
-                </span>
+            <select value={uf} onChange={(e) => setUf(e.target.value)} style={selectStyle}>
+              <option value="">Qualquer UF</option>
+              {UFS.slice(1).map((u) => (
+                <option key={u} value={u}>{u}</option>
               ))}
-            </div>
+            </select>
           </div>
 
           <div>
             <label style={{ display: 'block', marginBottom: 'var(--radar-space-2)', fontSize: 'var(--radar-font-size-sm)', fontWeight: 500 }}>
-              Região (UF / município)
+              Faixa de valor (Lei 14.133/2021)
             </label>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--radar-space-1)' }}>
-              {REGIOES.map((uf) => (
-                <button
-                  key={uf}
-                  onClick={() => toggleRegiao(uf)}
-                  style={{
-                    padding: '4px 10px',
-                    borderRadius: 'var(--radar-radius-sm)',
-                    border: `1px solid ${regioesSel.includes(uf) ? 'var(--radar-color-action-primary)' : 'var(--radar-color-border-default)'}`,
-                    background: regioesSel.includes(uf) ? 'var(--radar-color-action-primary)' : 'transparent',
-                    color: regioesSel.includes(uf) ? 'var(--radar-color-text-onPrimary)' : 'var(--radar-color-text-muted)',
-                    cursor: 'pointer',
-                    fontSize: '0.75rem',
-                    fontFamily: 'var(--radar-font-sans)',
-                    transition: 'all 0.15s',
-                  }}
-                >
-                  {uf}
-                </button>
+            <select value={faixaCodigo} onChange={(e) => setFaixaCodigo(e.target.value)} style={selectStyle}>
+              {FAIXAS_VALOR.map(({ codigo, label }) => (
+                <option key={codigo} value={codigo}>{label}</option>
               ))}
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', gap: 'var(--radar-space-4)' }}>
-            <Input label="Valor mínimo (R$)" placeholder="0,00" value={valorMin} onChange={(e) => setValorMin(e.target.value)} />
-            <Input label="Valor máximo (R$)" placeholder="Sem limite" value={valorMax} onChange={(e) => setValorMax(e.target.value)} />
+            </select>
           </div>
 
           <Input
@@ -92,18 +114,40 @@ export function ConfigurarPage() {
             hint="Separe por vírgulas"
           />
         </div>
+
+        {/* Feedback do critério salvo */}
+        {estado.status === 'erro' && (
+          <div style={{ marginTop: 'var(--radar-space-4)', padding: 'var(--radar-space-3) var(--radar-space-4)', borderRadius: 'var(--radar-radius-sm)', background: 'var(--radar-color-feedback-erro-bg)', color: 'var(--radar-color-feedback-erro-fg)', fontSize: 'var(--radar-font-size-sm)' }}>
+            {estado.mensagem}
+          </div>
+        )}
+        {estado.status === 'sucesso' && (
+          <div style={{ marginTop: 'var(--radar-space-4)', padding: 'var(--radar-space-3) var(--radar-space-4)', borderRadius: 'var(--radar-radius-sm)', background: 'var(--radar-color-feedback-sucesso-bg)', color: 'var(--radar-color-feedback-sucesso-fg)', fontSize: 'var(--radar-font-size-sm)' }}>
+            Critério salvo. O radar usará esses parâmetros nos próximos alertas.
+          </div>
+        )}
+
+        <div style={{ marginTop: 'var(--radar-space-6)' }}>
+          <Button variant="primary" onClick={handleSalvarCriterio} disabled={salvando}>
+            {salvando ? 'Salvando...' : 'Salvar critério'}
+          </Button>
+        </div>
       </section>
 
-      <section style={{ marginBottom: 'var(--radar-space-8)' }}>
-        <h2 style={{ margin: '0 0 var(--radar-space-4)', fontSize: '1rem', fontWeight: 600 }}>Preferências de alerta</h2>
+      {/* Preferências de alerta — aguarda E4/RAD-64 */}
+      <section style={{ marginBottom: 'var(--radar-space-8)', opacity: 0.6 }}>
+        <h2 style={{ margin: '0 0 var(--radar-space-1)', fontSize: '1rem', fontWeight: 600 }}>Preferências de alerta</h2>
+        <p style={{ margin: '0 0 var(--radar-space-4)', fontSize: 'var(--radar-font-size-sm)', color: 'var(--radar-color-text-muted)' }}>
+          Configurações de e-mail e digest serão ativadas quando o módulo de Notificação estiver disponível.
+        </p>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--radar-space-6)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--radar-space-6)', pointerEvents: 'none' }}>
           <div>
             <label style={{ display: 'block', marginBottom: 'var(--radar-space-2)', fontSize: 'var(--radar-font-size-sm)', fontWeight: 500 }}>Frequência</label>
             <div style={{ display: 'flex', gap: 'var(--radar-space-4)' }}>
               {(['tempo-real', 'diario', 'semanal'] as Frequencia[]).map((f) => (
-                <label key={f} style={{ display: 'flex', alignItems: 'center', gap: 'var(--radar-space-2)', cursor: 'pointer', fontSize: 'var(--radar-font-size-sm)' }}>
-                  <input type="radio" checked={frequencia === f} onChange={() => setFrequencia(f)} style={{ accentColor: 'var(--radar-color-action-primary)' }} />
+                <label key={f} style={{ display: 'flex', alignItems: 'center', gap: 'var(--radar-space-2)', cursor: 'default', fontSize: 'var(--radar-font-size-sm)' }}>
+                  <input type="radio" checked={frequencia === f} readOnly style={{ accentColor: 'var(--radar-color-action-primary)' }} />
                   {{ 'tempo-real': 'Tempo real', diario: 'Digest diário', semanal: 'Semanal' }[f]}
                 </label>
               ))}
@@ -114,8 +158,8 @@ export function ConfigurarPage() {
             <label style={{ display: 'block', marginBottom: 'var(--radar-space-2)', fontSize: 'var(--radar-font-size-sm)', fontWeight: 500 }}>Canais</label>
             <div style={{ display: 'flex', gap: 'var(--radar-space-4)' }}>
               {(['email', 'in-app', 'whatsapp'] as Canal[]).map((c) => (
-                <label key={c} style={{ display: 'flex', alignItems: 'center', gap: 'var(--radar-space-2)', cursor: 'pointer', fontSize: 'var(--radar-font-size-sm)' }}>
-                  <input type="checkbox" checked={canais.includes(c)} onChange={() => toggleCanal(c)} style={{ accentColor: 'var(--radar-color-action-primary)' }} />
+                <label key={c} style={{ display: 'flex', alignItems: 'center', gap: 'var(--radar-space-2)', cursor: 'default', fontSize: 'var(--radar-font-size-sm)' }}>
+                  <input type="checkbox" checked={canais.includes(c)} readOnly style={{ accentColor: 'var(--radar-color-action-primary)' }} />
                   {{ email: 'E-mail', 'in-app': 'In-app', whatsapp: 'WhatsApp' }[c]}
                 </label>
               ))}
@@ -123,10 +167,6 @@ export function ConfigurarPage() {
           </div>
         </div>
       </section>
-
-      <Button variant="primary" onClick={handleSave}>
-        {saved ? '✓ Salvo!' : 'Salvar configurações'}
-      </Button>
     </div>
   );
 }

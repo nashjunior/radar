@@ -8,7 +8,9 @@ import { PalavrasChave } from '../../domain/value-objects/palavras-chave.js';
 import { criterioParaDTO } from '../dtos.js';
 import type { CriterioDTO } from '../dtos.js';
 import { CriterioDefinido } from '../events.js';
+import { AuditoriaCriterioService } from '../services/auditoria-criterio-service.js';
 import type {
+  AuditCriterioPort,
   ClockProvider,
   CriterioIdProvider,
   CriterioRepository,
@@ -31,15 +33,21 @@ export interface DefinirCriterioInput {
  * Define um novo critério de monitoramento para o clienteFinal.
  * Trigger: usuário via API.
  * Faixa de valor lida da tabela parametrizável datada, nunca hardcoded.
+ * Auditoria fail-closed (AB13/P-61, docs/05 §9): registro de escrita obrigatório.
  */
 export class DefinirCriterioMonitoramentoUseCase {
+  private readonly auditoria: AuditoriaCriterioService;
+
   constructor(
     private readonly criterios: CriterioRepository,
     private readonly faixasRef: FaixaValorReferencia,
     private readonly eventos: EventPublisher,
     private readonly ids: CriterioIdProvider,
     private readonly clock: ClockProvider,
-  ) {}
+    audit: AuditCriterioPort,
+  ) {
+    this.auditoria = new AuditoriaCriterioService(audit);
+  }
 
   async executar(
     input: DefinirCriterioInput,
@@ -71,6 +79,19 @@ export class DefinirCriterioMonitoramentoUseCase {
     });
 
     await this.criterios.salvar(criterio, signal);
+
+    // Auditoria de escrita fail-closed (AB13/P-61, docs/05 §9 — CRITERIO_MONITORAMENTO é classe crítica).
+    // Falha interrompe a operação: o evento NÃO é publicado e o caller recebe erro.
+    await this.auditoria.registrarFailClosed(
+      {
+        operadorId: input.clienteFinalId,
+        recurso: `criterio-monitoramento:${criterio.id}`,
+        acao: 'ESCREVER',
+        baseLegal: 'Lei 14.133/2021 art. 174 — monitoramento de licitações',
+        escopo: { tenantId: input.tenantId, clienteFinalId: input.clienteFinalId },
+      },
+      signal,
+    );
 
     await this.eventos.publicar(
       new CriterioDefinido({

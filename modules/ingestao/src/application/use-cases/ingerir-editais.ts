@@ -1,10 +1,10 @@
-import { Edital } from '../../domain/entities/edital.js';
 import {
   FonteIndisponivelError,
   SchemaDriftError,
 } from '../../domain/errors/index.js';
 import type { IngestaoResumoDTO } from '../dtos.js';
-import { EditalIngerido } from '../events.js';
+import { paraEventoEditalIngerido } from '../mappers.js';
+import { NormalizarEPersistirEditalService } from '../services/normalizar-e-persistir-edital-service.js';
 import type {
   EditalRepository,
   EventPublisher,
@@ -28,15 +28,20 @@ export interface IngerirEditaisInput {
  *   - Minimização aplicada no ACL (PncpGateway) antes de chegar ao use case (A02, §4).
  *   - Proveniência obrigatória em todo edital gravado (docs/05, §5).
  *   - `SchemaDriftError` e `FonteIndisponivelError` são fatais: interrompem o lote.
+ *   - Abort (RAD-188/189): `signal.aborted` também interrompe o lote — nunca contado em `erros`.
  */
 export class IngerirEditaisUseCase {
+  private readonly normalizarEPersistir: NormalizarEPersistirEditalService;
+
   constructor(
     private readonly pncpGateway: PncpGateway,
     private readonly editais: EditalRepository,
-    private readonly proveniencias: ProvenienciaRepository,
+    proveniencias: ProvenienciaRepository,
     private readonly eventos: EventPublisher,
     private readonly ids: IdProvider,
-  ) {}
+  ) {
+    this.normalizarEPersistir = new NormalizarEPersistirEditalService(editais, proveniencias);
+  }
 
   async executar(
     input: IngerirEditaisInput,
@@ -62,41 +67,13 @@ export class IngerirEditaisUseCase {
 
           const id = existente?.id ?? this.ids.gerar();
 
-          const edital = Edital.criar({
-            id,
-            ...dado,
-            proveniencia: {
-              fonte: 'PNCP',
-              baseLegal: 'Lei 14.133/2021, art. 174',
-              coletadoEm: new Date(),
-            },
-          });
+          const edital = await this.normalizarEPersistir.persistir(id, dado, signal);
 
-          await this.editais.upsertPorNumeroControle(edital, signal);
-
-          await this.proveniencias.registrar(
-            {
-              editalId: edital.id,
-              fonte: 'PNCP',
-              baseLegal: 'Lei 14.133/2021, art. 174',
-              coletadoEm: edital.proveniencia.coletadoEm,
-            },
-            signal,
-          );
-
-          await this.eventos.publicar(
-            new EditalIngerido({
-              editalId: edital.id,
-              numeroControlePncp: edital.numeroControlePncp.valor,
-              modalidadeCodigo: edital.modalidade.codigo,
-              faseAtual: edital.faseAtual,
-              dataAtualizacao: edital.dataAtualizacao,
-            }),
-            signal,
-          );
+          await this.eventos.publicar(paraEventoEditalIngerido(edital), signal);
 
           existente !== null ? atualizados++ : ingeridos++;
         } catch (err) {
+          if (signal.aborted) throw err;
           if (err instanceof FonteIndisponivelError || err instanceof SchemaDriftError) {
             throw err;
           }

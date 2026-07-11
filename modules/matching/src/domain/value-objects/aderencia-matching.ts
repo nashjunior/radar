@@ -9,7 +9,7 @@ export class AderenciaMatching {
   private constructor(readonly valor: number) {}
 
   static criar(valor: number): AderenciaMatching {
-    if (valor < 0 || valor > 1) throw new AderenciaMatchingInvalidaError(valor);
+    if (!Number.isFinite(valor) || valor < 0 || valor > 1) throw new AderenciaMatchingInvalidaError(valor);
     return new AderenciaMatching(valor);
   }
 

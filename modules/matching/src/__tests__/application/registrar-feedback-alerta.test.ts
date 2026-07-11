@@ -29,8 +29,10 @@ describe('RegistrarFeedbackAlertaUseCase', () => {
       const alerta = criarAlerta('cliente-A');
       const alertas: AlertaRepository = {
         salvar: vi.fn(),
+        salvarEmLote: vi.fn(),
         porId: vi.fn().mockResolvedValue(alerta),
         atualizarFeedback: vi.fn(),
+        listarPorTenant: vi.fn(),
       };
       const eventos: EventPublisher = { publicar: vi.fn() };
 
@@ -48,8 +50,10 @@ describe('RegistrarFeedbackAlertaUseCase', () => {
       const alerta = criarAlerta('cliente-A');
       const alertas: AlertaRepository = {
         salvar: vi.fn(),
+        salvarEmLote: vi.fn(),
         porId: vi.fn().mockResolvedValue(alerta),
         atualizarFeedback: vi.fn(),
+        listarPorTenant: vi.fn(),
       };
       const eventos: EventPublisher = { publicar: vi.fn() };
       const uc = new RegistrarFeedbackAlertaUseCase(alertas, eventos);
@@ -66,8 +70,10 @@ describe('RegistrarFeedbackAlertaUseCase', () => {
       const atualizarFeedback = vi.fn();
       const alertas: AlertaRepository = {
         salvar: vi.fn(),
+        salvarEmLote: vi.fn(),
         porId: vi.fn().mockResolvedValue(alerta),
         atualizarFeedback,
+        listarPorTenant: vi.fn(),
       };
       const eventos: EventPublisher = { publicar: vi.fn() };
       const uc = new RegistrarFeedbackAlertaUseCase(alertas, eventos);
@@ -82,8 +88,10 @@ describe('RegistrarFeedbackAlertaUseCase', () => {
       const publicar = vi.fn();
       const alertas: AlertaRepository = {
         salvar: vi.fn(),
+        salvarEmLote: vi.fn(),
         porId: vi.fn().mockResolvedValue(alerta),
         atualizarFeedback: vi.fn(),
+        listarPorTenant: vi.fn(),
       };
       const eventos: EventPublisher = { publicar };
       const uc = new RegistrarFeedbackAlertaUseCase(alertas, eventos);
@@ -101,8 +109,10 @@ describe('RegistrarFeedbackAlertaUseCase', () => {
       const publicar = vi.fn().mockResolvedValue(undefined);
       const alertas: AlertaRepository = {
         salvar: vi.fn(),
+        salvarEmLote: vi.fn(),
         porId: vi.fn().mockResolvedValue(alerta),
         atualizarFeedback,
+        listarPorTenant: vi.fn(),
       };
       const eventos: EventPublisher = { publicar };
       const uc = new RegistrarFeedbackAlertaUseCase(alertas, eventos);
@@ -116,8 +126,10 @@ describe('RegistrarFeedbackAlertaUseCase', () => {
     it('lança AlertaNaoEncontradoError quando alerta não existe', async () => {
       const alertas: AlertaRepository = {
         salvar: vi.fn(),
+        salvarEmLote: vi.fn(),
         porId: vi.fn().mockResolvedValue(null),
         atualizarFeedback: vi.fn(),
+        listarPorTenant: vi.fn(),
       };
       const eventos: EventPublisher = { publicar: vi.fn() };
       const uc = new RegistrarFeedbackAlertaUseCase(alertas, eventos);

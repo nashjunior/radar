@@ -254,5 +254,38 @@ describe('IngerirEditaisUseCase', () => {
         ac.signal,
       );
     });
+
+    it('relança erro sem contar em erros quando o signal já foi abortado (RAD-188/189)', async () => {
+      async function* gen(): AsyncGenerator<ContratacaoData[]> {
+        yield [contratacaoBase()];
+      }
+      const gateway: PncpGateway = {
+        buscarContratacoesPorPublicacao: vi.fn().mockReturnValue(gen()),
+        buscarContratacoesPorAtualizacao: vi.fn(),
+        buscarContratacaoPorNumero: vi.fn(),
+        buscarArquivos: vi.fn(),
+        downloadArquivo: vi.fn(),
+      };
+      const ac = new AbortController();
+      const editais: EditalRepository = {
+        upsertPorNumeroControle: vi.fn().mockImplementation(() => {
+          ac.abort();
+          return Promise.reject(new DOMException('aborted', 'AbortError'));
+        }),
+        porId: vi.fn(),
+        porNumeroControle: vi.fn().mockResolvedValue(null),
+        listarPorJanelaPublicacao: vi.fn(),
+      };
+
+      const uc = new IngerirEditaisUseCase(
+        gateway,
+        editais,
+        { registrar: vi.fn() },
+        { publicar: vi.fn() },
+        { gerar: vi.fn().mockReturnValue(EditalId('id-001')) },
+      );
+
+      await expect(uc.executar({ modalidade: 6, janela }, ac.signal)).rejects.toThrow();
+    });
   });
 });

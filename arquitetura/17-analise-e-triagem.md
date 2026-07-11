@@ -248,6 +248,7 @@ export class ExtracaoEdital {
     readonly dataAberturaPropostas: CampoExtraido<Date | null>,
     readonly requisitos: Requisito[],
     readonly riscosBrutos: Risco[],
+    readonly paginas: number,   // nº de páginas do edital (PDF/OCR) — fonte de `paginasEdital` no contrato de leitura (§4.2 TriagemLeituraDTO)
   ) {}
 
   static montar(p: {
@@ -257,10 +258,11 @@ export class ExtracaoEdital {
     dataAberturaPropostas: CampoExtraido<Date | null>;
     requisitos: Requisito[];
     riscosBrutos: Risco[];
+    paginas: number;
   }): ExtracaoEdital {
     return new ExtracaoEdital(
       p.editalId, p.objeto, p.valorEstimado, p.dataAberturaPropostas,
-      p.requisitos, p.riscosBrutos,
+      p.requisitos, p.riscosBrutos, p.paginas,
     );
   }
 
@@ -299,10 +301,12 @@ export class PerfilHabilitacao {
     readonly habEconomica: string[],             // campos definidos em docs/12 (P-50)
   ) {}
 
-  static de(dto: PerfilParaTriagemDTO): PerfilHabilitacao {
+  // Factory usado pelo PerfilHabilitacaoAdapter (infra) após o ACL traduzir o modelo externo.
+  // RAD-56: IDs chegam já branded (o cast string→PerfilId/ClienteFinalId é responsabilidade do adapter).
+  static de(props: { id: PerfilId; clienteFinalId: ClienteFinalId; habJuridica: string[]; habFiscal: string[]; habTecnica: string[]; habEconomica: string[] }): PerfilHabilitacao {
     return new PerfilHabilitacao(
-      dto.id as PerfilId, dto.clienteFinalId as ClienteFinalId,
-      dto.habJuridica, dto.habFiscal, dto.habTecnica, dto.habEconomica,
+      props.id, props.clienteFinalId,
+      props.habJuridica, props.habFiscal, props.habTecnica, props.habEconomica,
     );
   }
 
@@ -370,10 +374,13 @@ export interface ExtracaoRepository {
   salvar(extracao: ExtracaoEdital, signal?: AbortSignal): Promise<void>;
 }
 
-// Triagem é escopada ao tenant/cliente (P-49).
+// Triagem é escopada ao tenant/cliente (P-49). A leitura por chave natural recebe o ESCOPO
+// (tenantId/clienteFinalId) além do sub-key: a chave única é (tenant, edital, perfil) (P-45), então
+// filtrar só por (edital, perfil) não é único sob multi-tenant → escopa a query; authz por objeto
+// (§5.3, P-51) fica como defesa em profundidade.
 export interface TriagemRepository {
   salvar(triagem: Triagem, signal?: AbortSignal): Promise<void>;
-  porEditalEPerfil(editalId: EditalId, perfilId: PerfilId, signal?: AbortSignal): Promise<Triagem | null>;
+  porEditalEPerfil(tenantId: TenantId, clienteFinalId: ClienteFinalId, editalId: EditalId, perfilId: PerfilId, signal?: AbortSignal): Promise<Triagem | null>;
 }
 
 // Perfil de Habilitação: leitura de Identidade & Organização (Cliente-Fornecedor, P-43). A Triagem
@@ -384,8 +391,9 @@ export interface TriagemRepository {
 // Como a Triagem NÃO possui o Perfil, o port é `PerfilGateway`. É um port consumer-defined, distinto do
 // `IdentidadeGateway` da Governança (§ docs/14 §5) — mesmo padrão (Gateway), consumidores e contratos
 // diferentes; só o `tenantId` é compartilhado (Shared Kernel).
+// RAD-56: ACL moveu para o adapter de infra → port devolve o modelo local conformante diretamente.
 export interface PerfilGateway {
-  porId(id: PerfilId, signal?: AbortSignal): Promise<PerfilParaTriagemDTO | null>;
+  porId(id: PerfilId, signal?: AbortSignal): Promise<PerfilHabilitacao | null>;
 }
 
 // Anexos do edital (PDFs) no object storage — baixados pela Ingestão (BaixarAnexosEditalUseCase,
@@ -415,17 +423,12 @@ export interface EntradaExtracaoDTO {
   texto: string;                 // texto selecionável já extraído (ou saída do OCR)
   temTextoSelecionavel: boolean; // false → passou por OCR (docs/10 §3)
   anexos: string[];              // texto de cada anexo, já resolvido do ObjectStorage
+  paginas: number;               // nº de páginas do PDF/OCR — o worker mede ao hidratar; alimenta ExtracaoEdital.paginas (§3)
   // NUNCA inclui classe crítica / estratégia comercial — contexto mínimo ao LLM (P-54).
 }
 
-export interface PerfilParaTriagemDTO {
-  id: string;
-  clienteFinalId: string;
-  habJuridica: string[];
-  habFiscal: string[];
-  habTecnica: string[];
-  habEconomica: string[];
-}
+// PerfilParaTriagemDTO removido (RAD-56): o PerfilGateway agora devolve PerfilHabilitacao diretamente;
+// o ACL (cast string→branded IDs) vive no PerfilHabilitacaoAdapter (infra), não na application.
 
 export interface ExtracaoEditalDTO {
   editalId: string;
@@ -444,21 +447,40 @@ export interface TriagemDTO {
   riscos: { descricao: string; severidade: string; citacao: CitacaoDTO | null }[];
 }
 
+// CONTRATO DE LEITURA SÍNCRONO (BFF GET /api/triagem/:editalId — docs/98 P-86, RAD-31).
+// É DISTINTO do TriagemDTO/evento acima: fonte da verdade EXECUTÁVEL é o front (a SPA fixou o shape),
+// espelhado em apps/web/domain/triagem-view-model.ts e apps/api/src/routes/triagem.ts::TriagemResponseSchema.
+// NÃO carrega `riscos[]`: as lacunas de habilitação são exatamente os itens `checklist.ok === false`.
+export interface TriagemLeituraDTO {
+  editalId: string;
+  perfilId: string;
+  aderencia: number;             // [0,1] — Triagem.aderencia.valor
+  recomendacao: 'go' | 'no-go';
+  confiancaIA: number;           // [0,1] — ExtracaoEdital.confiancaGlobal().valor
+  paginasEdital: number;         // ExtracaoEdital.paginas (§3)
+  camposAnalise: { titulo: string; conteudo: string; fonte: string }[];  // projeção dos CampoExtraido
+  checklist: { ok: boolean; texto: string }[];                           // 1 item por Requisito
+}
+
 // Comando publicado na fila (docs/14 §3): payload enxuto.
 export interface SolicitarTriagemInput {
   editalId: string; perfilId: string; clienteFinalId: string; signal?: AbortSignal;
 }
 export interface ExtrairEditalInput {
   editalId: string; texto: string; temTextoSelecionavel: boolean;
-  anexosRefs: string[]; signal?: AbortSignal;
+  anexosRefs: string[];
+  paginas: number;               // nº de páginas medido ao hidratar → alimenta EntradaExtracaoDTO.paginas → ExtracaoEdital.paginas (§3); obrigatório para o read path (paginasEdital, §4.2). RAD-30.
+  signal?: AbortSignal;
 }
 // Input do worker: o consumidor de `triagem.solicitada` hidrata o conteúdo do edital
 // (texto/anexos) e o limiar antes de invocar o use case (A03 §4.5 usa editalTexto no input).
+// RAD-56: tenantId é campo obrigatório do input (resolvido no worker/borda; P-25: 'global' no MVP).
+// signal é parâmetro separado de executar(), não parte do DTO de entrada.
 export interface TriarEditalInput {
   editalId: string; perfilId: string; clienteFinalId: string;
+  tenantId: string;              // Shared Kernel (docs/13 §5) — 'global' no MVP single-tenant (P-25)
   conteudo: EntradaExtracaoDTO;  // hidratado pelo worker a partir do Catálogo/ObjectStorage
   limiarConfianca: number;       // da política de confiança (docs/10 §4, P-19)
-  signal?: AbortSignal;
 }
 ```
 
@@ -490,8 +512,69 @@ export class SolicitarTriagemUseCase {
 ```
 
 ```ts
+// application/use-cases/consultar-triagem.ts
+// Trigger: BFF, GET /api/triagem/:editalId (RAD-31, docs/98 P-86). É o CAMINHO DE LEITURA SÍNCRONO —
+// distinto do fluxo assíncrono comando/worker: NÃO chama o LLM, apenas projeta o que já foi triado.
+// Serve o `TriagemLeituraDTO` (§4.2), NÃO o TriagemDTO/`riscos[]` de comando.
+export class ConsultarTriagemUseCase {
+  constructor(
+    private readonly triagens: TriagemRepository,
+    private readonly extracoes: ExtracaoRepository,
+  ) {}
+
+  // Chave (tenantId, editalId, perfilId). A URL só traz editalId + x-tenant-id; o BFF resolve o par
+  // {clienteFinalId, perfilId} ANTES de chamar, via seu port `PerfilAtivoGateway` (borda, NÃO deste
+  // módulo — a seleção do perfil ativo é do contexto Identidade & Organização, não da Triagem). Regra
+  // MVP (P-25): 1 tenant → 1 cliente → 1 perfil; migra para query param no *Next* (>1 perfil/cliente).
+  // Seam decidido em docs/98 P-90 (Resolvido); implementação do port → RAD-31 (BFF).
+  async executar(
+    input: { tenantId: TenantId; editalId: EditalId; perfilId: PerfilId; clienteFinalId: ClienteFinalId },
+    signal?: AbortSignal,
+  ): Promise<TriagemLeituraDTO | null> {
+    // RAD-56: porEditalEPerfil recebe (tenantId, clienteFinalId, editalId, perfilId, signal) — 5 params.
+    const triagem = await this.triagens.porEditalEPerfil(input.tenantId, input.clienteFinalId, input.editalId, input.perfilId, signal);
+    if (!triagem) return null;                         // sem triagem → BFF 404 → SPA null
+
+    // Autorização POR OBJETO (P-51 / AB1), nunca por filtro de query: escopo divergente lança —
+    // o BFF mapeia AcessoNegadoError → 403 e a SPA também devolve null (nunca vaza o motivo; §5.3).
+    if (triagem.tenantId !== input.tenantId || triagem.clienteFinalId !== input.clienteFinalId) {
+      throw new AcessoNegadoError();
+    }
+
+    // Extração é catálogo GLOBAL (P-45): reidrata confiança/páginas/campos + a lista COMPLETA de
+    // requisitos — o checklist precisa dos ATENDIDOS, não só das lacunas guardadas em `triagem.riscos`.
+    const extracao = await this.extracoes.porEdital(input.editalId, signal);
+    if (!extracao) return null;                        // triagem sem extração é estado inconsistente → ausente
+
+    return projetarLeitura(triagem, extracao);
+  }
+}
+
+// Projeção domínio → TriagemLeituraDTO. Regra-chave: `riscos[]` do domínio NÃO aparece no contrato de
+// leitura — vira `checklist.ok === false` (docs/10 §4). `camposAnalise` é a face de apresentação dos
+// CampoExtraido: `conteudo` = "verificar" quando o campo não é exibível como fato (sem citação ou abaixo
+// do limiar, §6), e `fonte` = citação renderizada ("p. 12, seção 5.1" | "").
+function projetarLeitura(triagem: Triagem, extracao: ExtracaoEdital): TriagemLeituraDTO {
+  const lacunas = new Set(triagem.riscos.map(r => r.descricao));   // "não atende: <requisito>"
+  return {
+    editalId: triagem.editalId,
+    perfilId: triagem.perfilId,
+    aderencia: triagem.aderencia.valor,
+    recomendacao: triagem.recomendacao,
+    confiancaIA: extracao.confiancaGlobal().valor,
+    paginasEdital: extracao.paginas,
+    camposAnalise: camposExibiveis(extracao),          // [{ titulo: rótulo (docs/10 §5.2), conteudo, fonte }]
+    checklist: extracao.requisitos.map(req => ({
+      ok: !lacunas.has(`não atende: ${req.descricao}`),
+      texto: req.descricao,
+    })),
+  };
+}
+```
+
+```ts
 // application/use-cases/extrair-edital.ts
-// Trigger: interno na 1ª triagem, ou evento edital.ingerido (pré-extração na ingestão — docs/10 §7).
+// Trigger: interno na 1ª triagem, ou evento edital.ingerido (pré-extração em LOTE na ingestão — docs/10 §7.1 / P-92).
 // Cacheia por edital (P-45): só chama o LLM UMA vez por edital, independente de quantos perfis triam.
 export class ExtrairEditalUseCase {
   constructor(
@@ -518,6 +601,7 @@ export class ExtrairEditalUseCase {
     const entrada: EntradaExtracaoDTO = {
       editalId: input.editalId, texto: input.texto,
       temTextoSelecionavel: input.temTextoSelecionavel, anexos,
+      paginas: input.paginas,                                // obrigatório em EntradaExtracaoDTO (§4.2) → ExtracaoEdital.paginas (§3)
     };
 
     // O adapter aplica a defesa de injeção (A11 §2) e valida a saída por schema (camada 3).
@@ -544,32 +628,33 @@ export class TriarEditalUseCase {
     private readonly eventos: EventPublisher,
   ) {}
 
-  async executar(input: TriarEditalInput): Promise<TriagemDTO> {
+  async executar(input: TriarEditalInput, signal?: AbortSignal): Promise<TriagemDTO> {
     const editalId = input.editalId as EditalId;
     const perfilId = input.perfilId as PerfilId;
+    const tenantId = input.tenantId as TenantId;  // 'global' no MVP single-tenant (P-25)
 
-    // 1. Extração CACHEADA por edital (P-45). Cache-miss → 1 chamada de LLM (A10 §4.5).
-    let extracao = await this.extracoes.porEdital(editalId, input.signal);
+    // 1. Autorização POR OBJETO (P-51 / AB1) ANTES da extração paga: o perfil deve pertencer ao
+    //    clienteFinal solicitante. Checá-lo primeiro fecha a chamada PAGA de LLM (passo 2) atrás do
+    //    authz — protege contra fila envenenada (defesa em profundidade além de SolicitarTriagem).
+    //    RAD-56: PerfilGateway.porId() devolve PerfilHabilitacao diretamente (ACL no adapter de infra).
+    const perfil = await this.perfis.porId(perfilId, signal);
+    if (!perfil) throw new PerfilNaoEncontradoError(input.perfilId);
+    if (perfil.clienteFinalId !== input.clienteFinalId) throw new AcessoNegadoError();
+
+    // 2. Extração CACHEADA por edital (P-45). Cache-miss → 1 chamada de LLM (A10 §4.5).
+    let extracao = await this.extracoes.porEdital(editalId, signal);
     if (!extracao) {
-      extracao = await this.llm.extrair(input.conteudo, input.signal);
-      await this.extracoes.salvar(extracao, input.signal);
+      extracao = await this.llm.extrair(input.conteudo, signal);
+      await this.extracoes.salvar(extracao, signal);
     }
 
-    // 2. Gate de confiança (docs/10 §4). Abaixo do limiar → leitura assistida (docs/10 §6),
+    // 3. Gate de confiança (docs/10 §4). Abaixo do limiar → leitura assistida (docs/10 §6),
     //    nunca apresentar palpite como certeza. Limiar vem da política por campo (P-19).
     if (!extracao.suficiente(input.limiarConfianca)) throw new ConfiancaInsuficienteError();
 
-    // 3. Autorização POR OBJETO (P-51 / AB1): o perfil deve pertencer ao clienteFinal que solicita.
-    //    Reforça a checagem de SolicitarTriagem — defesa em profundidade contra IDOR/BOLA.
-    const perfilDto = await this.perfis.porId(perfilId, input.signal);
-    if (!perfilDto) throw new PerfilNaoEncontradoError(input.perfilId);
-    if (perfilDto.clienteFinalId !== input.clienteFinalId) throw new AcessoNegadoError();
-    const perfil = PerfilHabilitacao.de(perfilDto);
-
     // 4. Aderência POR PERFIL (não cacheável) — regra de domínio pura.
-    const tenantId = 'global' as TenantId;   // MVP single-tenant (P-25); real no Next
     const triagem = Triagem.avaliar(extracao, perfil, tenantId);
-    await this.triagens.salvar(triagem, input.signal);
+    await this.triagens.salvar(triagem, signal);
 
     // 5. triagem.concluida → API/front (A03 §3). Payload leva campos + citações + confiança.
     await this.eventos.publicar(new TriagemConcluida({
@@ -581,7 +666,7 @@ export class TriarEditalUseCase {
       aderencia: triagem.aderencia.valor,
       recomendacao: triagem.recomendacao,
       riscos: triagem.riscos.map(r => r.descricao),
-    }), input.signal);
+    }), signal);
 
     return TriagemDTO.de(triagem);   // a UI exibe com citação em um clique; usuário decide (HITL)
   }
@@ -604,7 +689,7 @@ export class AnthropicLlmGateway implements LlmGateway {
     // como DADO em mensagem separada, entre delimitadores. Conteúdo do edital nunca é concatenado no
     // prompt de instrução, e nunca pode reescrevê-la.
     const resposta = await this.client.messages.create({
-      model: escolherModelo(entrada),        // Sonnet no caso comum; Opus em editais difíceis (A01 §98 / P-66)
+      model: escolherModelo(entrada),        // 3 tiers por dificuldade: Haiku (fácil) / Sonnet / Opus (difícil) — P-93, validado no gold set (A16); P-66
       system: INSTRUCAO_EXTRACAO,            // fixa, versionada, roda no gold set a cada mudança (A16 §2.4)
       messages: [{
         role: 'user',
@@ -657,7 +742,10 @@ export class PostgresTriagemRepository implements TriagemRepository {
     // INSERT com tenant_id e cliente_final_id — isolamento estrutural (docs/05 §3).
     throw new Error('não implementado — ilustrativo');
   }
-  async porEditalEPerfil(/* ... */): Promise<Triagem | null> {
+  async porEditalEPerfil(/* tenantId, clienteFinalId, editalId, perfilId, signal */): Promise<Triagem | null> {
+    // SELECT ... WHERE tenant_id=$1 AND cliente_final_id=$2 AND edital_id=$3 AND perfil_id=$4 — escopo
+    // no WHERE (a chave única é (tenant, edital, perfil)): sem ele, (edital, perfil) não é único sob
+    // multi-tenant e rows[0] seria arbitrário. Authz por objeto (§5.3) segue como defesa em profundidade.
     throw new Error('não implementado — ilustrativo');
   }
 }
@@ -696,13 +784,13 @@ Regras que o código impõe:
 2. **A confiança agregada é o mínimo dos críticos** (`ExtracaoEdital.confiancaGlobal`) — um campo crítico fraco derruba a extração e dispara `ConfiancaInsuficienteError` → **leitura assistida** (docs/10 §6): destacar trechos sem decidir.
 3. **Zero alucinação em campo numérico** é gate de release (docs/08 §4 / A16 §2.4), não um limiar ajustável.
 
-Os **valores** de limiar por campo são `[A VALIDAR] → P-19`, calibrados contra o gold set (A16 §2.4). O código já expõe o limiar como parâmetro (`TriarEditalInput.limiarConfianca`) para permitir a calibração sem mudar a estrutura.
+O **valor calibrado** do limiar é P-19 (docs/10 §4.1 · RAD-139): **fonte única `LIMIAR_CONFIANCA_PADRAO = 0,70`** (`@radar/triagem/application`), que a composição-root injeta em `TriarEditalInput.limiarConfianca` (worker/RAD-31) — sem literal mágico; omitir o campo aplica esse default. Calibrado em 2026-07-08 pelo protocolo A16 §2.4: recall@0,70 = 95,4% ≥ 95% ✓, zero alucinação numérica ✓, recall@0,71 = 91,9% ✗ (logo, 0,70 é o maior corte válido). Sem corte separado por classe numérica necessário com o gold set atual. Recalibrar ao resolver P-18/P-84/P-85 via `calibrar:limiar` — nenhuma mudança de estrutura, só o valor aqui e em `politica-confianca.ts`.
 
 ## 7. Barra de qualidade: o seam para o gold set (docs/10 §5 / A16)
 
 A avaliação não vive aqui — vive em [A16](16-plano-de-verificacao-e-gold-set.md) (Quésia). O que este módulo oferece é o **seam** que torna a triagem avaliável e a regressão barata:
 
-- **`LlmGateway` é a fronteira testável.** O gold set roda o pipeline real trocando o adapter por um `RecordReplayLlmGateway` (grava respostas reais uma vez, reproduz de forma determinística) — o eval mede extração vs. rótulo sem custo nem flakiness de rede.
+- **`LlmClient` é a fronteira testável.** O gold set roda o pipeline real trocando a seam `LlmClient` (não o `AnthropicLlmGateway` inteiro) por um **`RecordReplayLlmClient`** (`infra/adapters`, realizado): grava respostas reais uma vez (modo RECORD, credenciado) e reproduz de forma determinística (modo REPLAY, sem rede) — o eval mede extração vs. rótulo sem custo nem flakiness. É o **substrato framework-agnóstico** do eval: independe da escolha de framework de orquestração/relatório (P-85 — Braintrust/Phoenix/custom).
 - **Saída estruturada e validada** (`SCHEMA_EXTRACAO`) dá ao gold set um alvo comparável campo a campo (A16 §2.3), e rejeita deriva de formato antes de contaminar a métrica.
 - **Editais adversariais** (A16 §2.1 / P-72) exercitam as camadas 1 e 3 do adapter: a asserção é que nenhuma instrução do corpo foi executada e nenhum system prompt vazou (A11 §4).
 - **Regressão como gate** — o gold set roda a cada mudança de `INSTRUCAO_EXTRACAO`, modelo ou schema; nenhuma sobe sem passar (docs/10 §5, A16 §2.4). O `system`/prompt é versionado justamente para isso.
@@ -713,7 +801,7 @@ Metas numéricas (recall ≥ 95%, precisão ≥ 90%, fidelidade ≥ 98%, custo/e
 
 | Evento | Direção | Emissor / Consumidor | Payload |
 |--------|---------|----------------------|---------|
-| `edital.ingerido` | consome | Ingestão → Triagem (pré-extração) | `numeroControlePNCP`, atributos normalizados |
+| `edital.ingerido` | consome | Ingestão → Triagem (pré-extração **em lote**, P-92) | `numeroControlePNCP`, atributos normalizados |
 | `triagem.solicitada` | publica/consome | `SolicitarTriagemUseCase` (API) → worker `TriarEditalUseCase` | `tenantId`, `usuarioId`, `editalId`, `perfilId` |
 | `triagem.concluida` | publica | `TriarEditalUseCase` → API/front (e Gestão da Participação no *Next*) | `editalId`, `perfilId`, `campos`+`citacoes`+`confianca`, `recomendacao`, `riscos`, `tenantId` |
 | `extracao.concluida` | interno | intra-contexto (aquece o cache) | `editalId`, `confianca` |
@@ -724,6 +812,7 @@ Metas numéricas (recall ≥ 95%, precisão ≥ 90%, fidelidade ≥ 98%, custo/e
 
 - **Split extração/aderência (P-45 / docs/13 §3):** `ExtracaoEdital` (cacheável, sem `tenantId`) e `Triagem` (por `edital × perfil`, com `tenantId`) são agregados separados; o LLM é chamado **uma vez por edital**.
 - **Triagem assíncrona (A03 §§1,3 / A00 princípio 6):** `SolicitarTriagemUseCase` publica `triagem.solicitada`; o worker roda `TriarEditalUseCase` — nunca no caminho síncrono da API.
+- **Dois contratos, coexistindo (docs/98 P-86):** o **evento** `triagem.concluida` é Published Language (carrega `riscos`, para consumidores assíncronos como a Gestão da Participação); o **read DTO síncrono** `TriagemLeituraDTO` (§4.2) é a projeção fixada pelo front que o BFF serve no `GET /api/triagem/:editalId` — sem `riscos[]` (viram `checklist.ok:false`), com `confiancaIA`/`paginasEdital`/`camposAnalise`. `ConsultarTriagemUseCase` (§4.3) é o único read path; a fonte da verdade executável do shape é `apps/web/.../triagem-http-gateway.ts` + `apps/api/.../routes/triagem.ts`.
 - **Autorização por objeto (P-51 / AB1):** verificada **duas vezes** (na solicitação e na execução) por `clienteFinalId` — defesa em profundidade, não filtro de query.
 - **Edital = dado não-confiável (A11):** a defesa de injeção (camadas 1–6) vive no `AnthropicLlmGateway`; a saída do LLM é validada por schema e sanitizada.
 - **Contexto mínimo ao LLM (P-54):** `EntradaExtracaoDTO` nunca leva a classe crítica/estratégia comercial nem dado de outro tenant.
@@ -739,8 +828,12 @@ Metas numéricas (recall ≥ 95%, precisão ≥ 90%, fidelidade ≥ 98%, custo/e
 | Referência | Pendência |
 |------------|-----------|
 | P-18 | Gold set rotulado + metas finais de qualidade (recall/precisão/fidelidade) — spec em A16 |
-| P-19 | Fixar os limiares de confiança por campo (`limiarConfianca`, `is_critico`), calibrados no gold set |
-| P-20 / P-38 | Teto de custo de IA por edital + alarme como guardrail de negócio |
+| P-19 | Estrutura + default de lançamento fixados (`LIMIAR_CONFIANCA_PADRAO = 0,70`, §6 / docs/10 §4.1); **número** e refinamento por classe seguem `[A VALIDAR]` no gold set (P-18) |
+| P-20 / P-38 | Teto de custo de IA por edital + alarme como guardrail de negócio (alavancas em P-92–P-95, RAD-53) |
+| P-92 | Pré-extração em **lote** (Message Batches) na ingestão — Tier A (preserva inferência), impl RAD-54 |
+| P-93 | Router de modelo por dificuldade (Haiku 4.5 / Sonnet 5 / Opus 4.8) — Tier B, gate no gold set (`escolherModelo`) |
+| P-94 | Minimização de input (pré-filtro de seções candidatas) + teto por edital via `count_tokens` — Tier B (`montarConteudoUsuario`) |
+| P-95 | Prompt caching do prefixo estável (tools→system) — condicional a few-shot do gold set (NO-OP hoje) |
 | P-51 | Testes de autorização por objeto (perfil × clienteFinal) como gate de release |
 | P-54 | Minimização do dado enviado ao LLM + DPA/residência com o provedor |
 | P-66 | LLM: API direta Anthropic vs. via nuvem (Bedrock/Vertex) para residência/DPA |
@@ -748,5 +841,6 @@ Metas numéricas (recall ≥ 95%, precisão ≥ 90%, fidelidade ≥ 98%, custo/e
 | P-73 | Schema de validação (`SCHEMA_EXTRACAO`) + política de sanitização da saída do LLM |
 | P-78 | Verificar que `AbortSignal` é propagado até o SDK do LLM e o driver de DB |
 | P-83 | ~~Forma do port de leitura do Perfil cross-contexto~~ **Resolvido (2026-07-05): `PerfilGateway`** (Gateway, não Repository — A10 §8) |
+| P-90 | ~~Resolução do `perfilId` no read path (§4.3)~~ **Resolvido (2026-07-05):** seam `PerfilAtivoGateway` é do **BFF** (não da Triagem — seleção do perfil ativo é do contexto Identidade); regra MVP 1 tenant→1 cliente→1 perfil (seed/config até haver módulo Identidade); migra para query param no *Next* (>1 perfil/cliente, P-49). Implementação → RAD-31 |
 
 Pendências consolidadas em [docs/98](../docs/98-decisoes-e-pendencias.md).

@@ -1,7 +1,6 @@
 import type { AlertaId, ClienteFinalId } from '@radar/kernel';
-import { AcessoNegadoError } from '@radar/kernel';
-import { AlertaNaoEncontradoError } from '../../domain/errors/index.js';
 import { FeedbackAlerta } from '../events.js';
+import { AlertaAutorizacaoService } from '../services/alerta-autorizacao-service.js';
 import type { AlertaRepository, EventPublisher } from '../ports.js';
 
 export interface RegistrarFeedbackInput {
@@ -17,20 +16,24 @@ export interface RegistrarFeedbackInput {
  * antes de qualquer mutação — defesa de IDOR/BOLA, vetor nº1 de vazamento cross-tenant.
  */
 export class RegistrarFeedbackAlertaUseCase {
+  private readonly autorizacao: AlertaAutorizacaoService;
+
   constructor(
     private readonly alertas: AlertaRepository,
     private readonly eventos: EventPublisher,
-  ) {}
+  ) {
+    this.autorizacao = new AlertaAutorizacaoService(alertas);
+  }
 
   async executar(
     input: RegistrarFeedbackInput,
     signal: AbortSignal,
   ): Promise<void> {
-    const alerta = await this.alertas.porId(input.alertaId, signal);
-
-    if (!alerta) throw new AlertaNaoEncontradoError(input.alertaId);
-
-    if (alerta.clienteFinalId !== input.clienteFinalId) throw new AcessoNegadoError();
+    const alerta = await this.autorizacao.carregarEAutorizar(
+      input.alertaId,
+      input.clienteFinalId,
+      signal,
+    );
 
     const alertaAtualizado = alerta.comFeedback(input.relevante);
 
