@@ -258,24 +258,28 @@ describe('AutorizarAcessoUseCase — edge cases adversariais', () => {
       { papel: 'DPO_COMPLIANCE' as const, recurso: 'ALERTA' as const, acao: 'ler' as const, esperaPermitir: false },
     ];
 
+    // try/catch avoids vitest's expect().rejects overhead (~0.4ms/iter) inside o loop quente;
+    // correctness é verificada pelo contador de falhas após a janela temporizada.
+    let falhas = 0;
     const t0 = performance.now();
     for (let i = 0; i < 1_000; i++) {
       const c = casos[i % casos.length]!;
-      const promise = uc.executar(
-        {
-          contexto: { usuarioId: U1, tenantId: TENANT, papel: c.papel, clienteFinalIds: [C1] },
-          recurso: c.recurso,
-          acao: c.acao,
-        },
-        noop,
-      );
-      if (c.esperaPermitir) {
-        await expect(promise).resolves.toBeUndefined();
-      } else {
-        await expect(promise).rejects.toThrow(AcessoNegadoError);
+      try {
+        await uc.executar(
+          {
+            contexto: { usuarioId: U1, tenantId: TENANT, papel: c.papel, clienteFinalIds: [C1] },
+            recurso: c.recurso,
+            acao: c.acao,
+          },
+          noop,
+        );
+        if (!c.esperaPermitir) falhas++;
+      } catch (e) {
+        if (c.esperaPermitir || !(e instanceof AcessoNegadoError)) falhas++;
       }
     }
     const elapsed = performance.now() - t0;
+    expect(falhas).toBe(0);
     expect(elapsed).toBeLessThan(200);
   });
 });
