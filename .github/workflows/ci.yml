@@ -256,6 +256,11 @@ jobs:
           scan-ref: .
           scanners: vuln,secret,misconfig
           severity: CRITICAL,HIGH
+          # node_modules = dependência instalada, não código nosso; libs vendorizam
+          # Dockerfiles de exemplo (ex.: cpu-features) que não entram no nosso deploy e
+          # geram ruído de misconfig. CVE de dependência é coberto pelo scanner `vuln`
+          # via pnpm-lock.yaml (na raiz, fora de node_modules), então a cobertura real fica.
+          skip-dirs: node_modules
           exit-code: "1"
           format: sarif
           output: trivy-fs.sarif

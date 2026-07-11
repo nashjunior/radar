@@ -48,6 +48,10 @@ module "database" {
   db_username        = var.db_username
   db_password        = var.db_password
   encryption_key_ref = var.kms_key_arn
+
+  # Custo (dev): auto-pause — o banco cai a 0 ACU (~$0 compute, só storage) quando ocioso e
+  # resume em ~15s no 1º acesso. Prod/staging NÃO passam isto → mantêm o piso 0.5 (P-67).
+  min_capacity_acu = 0
 }
 
 module "storage" {
@@ -121,7 +125,9 @@ module "db_proxy" {
   # Os bulkheads por workload existem pra isolar rajada sob carga em PROD; dev não tem essa
   # carga. Colapso sancionado pelo módulo (db_proxy/variables.tf §pools). Prod mantém os 5.
   pools = {
-    ingestao = { max_connections_percent = 40 }
+    # idle_client_timeout curto (5 min) pro proxy não segurar conexão ociosa — senão o Aurora
+    # vê conexão viva e NUNCA cai a 0 ACU, anulando o auto-pause do banco (min_capacity_acu=0).
+    ingestao = { max_connections_percent = 40, idle_client_timeout = 300 }
   }
 }
 

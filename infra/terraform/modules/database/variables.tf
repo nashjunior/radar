@@ -64,13 +64,14 @@ variable "encryption_key_ref" {
 # EL1/EL3, RAD-162). O outro lugar onde P-67 reaparece é o min capacity do autoscaling do
 # ECS (módulo compute). Custo: o piso é cobrado 24/7 e multiplica por `instance_count`.
 variable "min_capacity_acu" {
-  description = "Piso de ACU do Aurora Serverless v2 (P-67). Cobrado 24/7 x instance_count."
+  description = "Piso de ACU do Aurora Serverless v2 (P-67). Cobrado 24/7 x instance_count. 0 = auto-pause/scale-to-zero quando ocioso (PG 16.6+): compute cai a ~$0 (só storage), resume em ~15s no 1º acesso. Usar 0 só em dev; prod mantém piso p/ latência."
   type        = number
   default     = 0.5
   # A granularidade de 0.5 é checada DE VERDADE (o Aurora rejeita 1.3 com InvalidParameterValue).
+  # 0 é permitido (auto-pause) e 0 % 0.5 == 0.
   validation {
-    condition     = var.min_capacity_acu >= 0.5 && var.min_capacity_acu <= 256 && var.min_capacity_acu % 0.5 == 0
-    error_message = "min_capacity_acu: 0.5..256, em incrementos de 0.5."
+    condition     = var.min_capacity_acu >= 0 && var.min_capacity_acu <= 256 && var.min_capacity_acu % 0.5 == 0
+    error_message = "min_capacity_acu: 0..256, em incrementos de 0.5 (0 = auto-pause, exige PG 16.6+)."
   }
 }
 
