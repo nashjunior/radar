@@ -23,6 +23,7 @@ import type {
 } from '@radar/triagem';
 import { responderErro } from '../errors.js';
 import { autenticarMiddleware } from '../middleware/tenant.js';
+import { rateLimitPorTenantMiddleware } from '../security.js';
 import type { PerfilAtivoGateway } from '../ports/perfil-ativo-gateway.js';
 
 export interface TriagemContainer {
@@ -76,6 +77,7 @@ export function criarTriagemRouter(container: TriagemContainer): Hono {
   const router = new Hono();
 
   router.use('/*', autenticarMiddleware);
+  router.use('/*', rateLimitPorTenantMiddleware);
 
   router.get('/:editalId', async (c) => {
     const editalIdRaw = c.req.param('editalId');

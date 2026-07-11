@@ -30,6 +30,7 @@ import type {
 } from '@radar/matching';
 import { responderErro } from '../errors.js';
 import { autenticarMiddleware } from '../middleware/tenant.js';
+import { rateLimitPorTenantMiddleware } from '../security.js';
 import type { PerfilAtivoGateway } from '../ports/perfil-ativo-gateway.js';
 
 export interface MatchingContainer {
@@ -54,6 +55,7 @@ export function criarMatchingRouter(container: MatchingContainer): Hono {
   const router = new Hono();
 
   router.use('/*', autenticarMiddleware);
+  router.use('/*', rateLimitPorTenantMiddleware);
 
   // POST /criterios — US-04 DefinirCritérioMonitoramento
   router.post('/criterios', async (c) => {

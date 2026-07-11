@@ -16,6 +16,7 @@ import type { DefinirPreferenciasNotificacaoUseCase } from '@radar/notificacao';
 import { UsuarioId } from '@radar/notificacao';
 import { responderErro } from '../errors.js';
 import { autenticarMiddleware } from '../middleware/tenant.js';
+import { rateLimitPorTenantMiddleware } from '../security.js';
 
 export interface NotificacaoContainer {
   definirPreferencias: DefinirPreferenciasNotificacaoUseCase;
@@ -30,6 +31,7 @@ export function criarNotificacaoRouter(container: NotificacaoContainer): Hono {
   const router = new Hono();
 
   router.use('/*', autenticarMiddleware);
+  router.use('/*', rateLimitPorTenantMiddleware);
 
   // PUT /preferencias — US-10 DefinirPreferenciasNotificacao
   router.put('/preferencias', async (c) => {

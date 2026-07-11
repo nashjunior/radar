@@ -21,6 +21,12 @@ vi.mock('../../middleware/tenant.js', () => ({
   }) satisfies MiddlewareHandler,
 }));
 
+// Bypass do rate-limit por tenant — coberto isoladamente em rate-limit-tenant.test.ts (RAD-209)
+vi.mock('../../security.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../security.js')>()),
+  rateLimitPorTenantMiddleware: (async (_c: Context, next: () => Promise<void>) => next()) satisfies MiddlewareHandler,
+}));
+
 import { criarTriagemRouter } from '../../routes/triagem.js';
 import type { TriagemContainer } from '../../routes/triagem.js';
 import type {

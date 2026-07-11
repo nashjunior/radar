@@ -15,6 +15,7 @@ import { Hono } from 'hono';
 import type { ConsultarAlertasTenantUseCase } from '@radar/matching';
 import { responderErro } from '../errors.js';
 import { autenticarMiddleware } from '../middleware/tenant.js';
+import { rateLimitPorTenantMiddleware } from '../security.js';
 
 export interface AlertasContainer {
   consultarAlertas: ConsultarAlertasTenantUseCase;
@@ -24,6 +25,7 @@ export function criarAlertasRouter(container: AlertasContainer): Hono {
   const router = new Hono();
 
   router.use('/*', autenticarMiddleware);
+  router.use('/*', rateLimitPorTenantMiddleware);
 
   // GET / — US-05 ConsultarAlertasTenant
   router.get('/', async (c) => {

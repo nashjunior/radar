@@ -16,6 +16,7 @@ import { z } from 'zod';
 import type { ConsultarPerfilHabilitacaoUseCase, GerenciarPerfilHabilitacaoUseCase } from '@radar/identidade';
 import { responderErro } from '../errors.js';
 import { autenticarMiddleware } from '../middleware/tenant.js';
+import { rateLimitPorTenantMiddleware } from '../security.js';
 import type { PerfilAtivoGateway } from '../ports/perfil-ativo-gateway.js';
 
 export interface IdentidadeContainer {
@@ -35,6 +36,7 @@ export function criarIdentidadeRouter(container: IdentidadeContainer): Hono {
   const router = new Hono();
 
   router.use('/*', autenticarMiddleware);
+  router.use('/*', rateLimitPorTenantMiddleware);
 
   // GET /api/identidade/perfil — leitura do perfil do cliente final autenticado (P-101)
   router.get('/perfil', async (c) => {
