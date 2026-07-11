@@ -15,3 +15,13 @@ output "task_role_ref" {
   description = "Handle da role de execução da task. AWS: IAM role ARN"
   value       = aws_iam_role.ecs_task.arn
 }
+
+output "cluster_name" {
+  description = "Nome do ECS cluster. Binding: aws_ecs_cluster.name"
+  value       = aws_ecs_cluster.this.name
+}
+
+output "service_name" {
+  description = "Nome do ECS service. Binding: aws_ecs_service.api.name"
+  value       = aws_ecs_service.api.name
+}

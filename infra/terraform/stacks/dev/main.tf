@@ -267,3 +267,19 @@ module "compute" {
     WORKERS_ENABLED      = "true"
   }
 }
+
+# Stop/start agendado fora do horário comercial (RAD-225).
+# Economia: Aurora (~$50) + Fargate (~$18) só rodam ~40-50h/semana das 168.
+# ⚠️ Decisão pós-apply: se o auto-pause (min_capacity_acu=0) engatar no RDS Proxy, pode-se
+#    remover este módulo para o Aurora e manter apenas o schedule do ECS. Se NÃO engatar,
+#    este módulo cobre o compute inteiro e min_capacity_acu deve ser revertido para 0.5.
+module "scheduled_shutdown" {
+  source = "../../modules/scheduled_shutdown"
+
+  project          = "radar"
+  env              = "dev"
+  region           = var.aws_region
+  aurora_cluster_id = module.database.cluster_ref
+  ecs_cluster_name  = module.compute.cluster_name
+  ecs_service_name  = module.compute.service_name
+}
