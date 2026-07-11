@@ -2,12 +2,13 @@ import type { ClienteFinalId, TenantId } from '@radar/kernel';
 import {
   CriterioDeMonitoramento,
 } from '../../domain/entities/criterio-de-monitoramento.js';
-import { AuditoriaIndisponivelError, CriterioInvalidoError } from '../../domain/errors/index.js';
+import { CriterioInvalidoError } from '../../domain/errors/index.js';
 import { FaixaValor } from '../../domain/value-objects/faixa-valor.js';
 import { PalavrasChave } from '../../domain/value-objects/palavras-chave.js';
 import { criterioParaDTO } from '../dtos.js';
 import type { CriterioDTO } from '../dtos.js';
 import { CriterioDefinido } from '../events.js';
+import { AuditoriaCriterioService } from '../services/auditoria-criterio-service.js';
 import type {
   AuditCriterioPort,
   ClockProvider,
@@ -35,14 +36,18 @@ export interface DefinirCriterioInput {
  * Auditoria fail-closed (AB13/P-61, docs/05 §9): registro de escrita obrigatório.
  */
 export class DefinirCriterioMonitoramentoUseCase {
+  private readonly auditoria: AuditoriaCriterioService;
+
   constructor(
     private readonly criterios: CriterioRepository,
     private readonly faixasRef: FaixaValorReferencia,
     private readonly eventos: EventPublisher,
     private readonly ids: CriterioIdProvider,
     private readonly clock: ClockProvider,
-    private readonly audit: AuditCriterioPort,
-  ) {}
+    audit: AuditCriterioPort,
+  ) {
+    this.auditoria = new AuditoriaCriterioService(audit);
+  }
 
   async executar(
     input: DefinirCriterioInput,
@@ -77,17 +82,16 @@ export class DefinirCriterioMonitoramentoUseCase {
 
     // Auditoria de escrita fail-closed (AB13/P-61, docs/05 §9 — CRITERIO_MONITORAMENTO é classe crítica).
     // Falha interrompe a operação: o evento NÃO é publicado e o caller recebe erro.
-    try {
-      await this.audit.registrar({
+    await this.auditoria.registrarFailClosed(
+      {
         operadorId: input.clienteFinalId,
         recurso: `criterio-monitoramento:${criterio.id}`,
         acao: 'ESCREVER',
         baseLegal: 'Lei 14.133/2021 art. 174 — monitoramento de licitações',
         escopo: { tenantId: input.tenantId, clienteFinalId: input.clienteFinalId },
-      }, signal);
-    } catch {
-      throw new AuditoriaIndisponivelError();
-    }
+      },
+      signal,
+    );
 
     await this.eventos.publicar(
       new CriterioDefinido({

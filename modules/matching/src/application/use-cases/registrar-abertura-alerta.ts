@@ -1,7 +1,6 @@
 import type { AlertaId, ClienteFinalId } from '@radar/kernel';
-import { AcessoNegadoError } from '@radar/kernel';
-import { AlertaNaoEncontradoError } from '../../domain/errors/index.js';
 import { AlertaAberto } from '../events.js';
+import { AlertaAutorizacaoService } from '../services/alerta-autorizacao-service.js';
 import type { AlertaRepository, EventPublisher } from '../ports.js';
 
 export interface RegistrarAberturaInput {
@@ -16,17 +15,21 @@ export interface RegistrarAberturaInput {
  * Autorização POR OBJETO (P-51): verifica titularidade antes de emitir o evento.
  */
 export class RegistrarAberturaAlertaUseCase {
+  private readonly autorizacao: AlertaAutorizacaoService;
+
   constructor(
-    private readonly alertas: AlertaRepository,
+    alertas: AlertaRepository,
     private readonly eventos: EventPublisher,
-  ) {}
+  ) {
+    this.autorizacao = new AlertaAutorizacaoService(alertas);
+  }
 
   async executar(input: RegistrarAberturaInput, signal: AbortSignal): Promise<void> {
-    const alerta = await this.alertas.porId(input.alertaId, signal);
-
-    if (!alerta) throw new AlertaNaoEncontradoError(input.alertaId);
-
-    if (alerta.clienteFinalId !== input.clienteFinalId) throw new AcessoNegadoError();
+    const alerta = await this.autorizacao.carregarEAutorizar(
+      input.alertaId,
+      input.clienteFinalId,
+      signal,
+    );
 
     await this.eventos.publicar(
       new AlertaAberto({
