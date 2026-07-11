@@ -29,6 +29,7 @@ function msg(over: Partial<MensagemFinal> = {}): MensagemFinal {
     content: [{ type: 'tool_use', name: FERRAMENTA_EXTRACAO, input: INPUT_OK }],
     stop_reason: 'tool_use',
     stop_details: null,
+    usage: { input_tokens: 1000, output_tokens: 200 },
     ...over,
   };
 }
@@ -55,14 +56,22 @@ function fakeMessages(resposta: MensagemFinal): { client: MessagesClient; cap: C
 describe('AnthropicSdkClient — levers 6+5a (RAD-55)', () => {
   it('lever 1+5a: streaming (.stream().finalMessage()) forçando a ferramenta STRICT', async () => {
     const { client, cap } = fakeMessages(msg());
-    const bruto = await new AnthropicSdkClient(client).extrairViaFerramenta(req(), noop);
+    const resultado = await new AnthropicSdkClient(client).extrairViaFerramenta(req(), noop);
 
     expect(cap.chamadas).toBe(1); // 1 request via stream, não create
     expect(cap.params!.max_tokens).toBe(MAX_TOKENS_EXTRACAO);
     expect(cap.params!.tool_choice).toEqual({ type: 'tool', name: FERRAMENTA_EXTRACAO });
     expect(cap.params!.tools[0]!.strict).toBe(true);
     expect(cap.params!.tools[0]!.input_schema['additionalProperties']).toBe(false);
-    expect(bruto).toBe(INPUT_OK); // devolve o input CRU (unknown) — validação é da camada 3
+    expect(resultado.input).toBe(INPUT_OK); // devolve o input CRU (unknown) — validação é da camada 3
+    // RAD-230: `uso` acompanha o input cru, mapeado do `usage` do SDK.
+    expect(resultado.uso).toEqual({
+      modelo: 'claude-sonnet-5',
+      inputTokens: 1000,
+      outputTokens: 200,
+      cacheReadInputTokens: 0,
+      cacheCreationInputTokens: 0,
+    });
   });
 
   it('lever 4: thinking EXPLÍCITO por modelo (Sonnet 5 adaptive, Opus 4.8 disabled)', async () => {

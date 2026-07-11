@@ -45,12 +45,20 @@ function brutoValido(): any {
   };
 }
 
+const USO_FAKE = {
+  modelo: 'claude-sonnet-5',
+  inputTokens: 1000,
+  outputTokens: 200,
+  cacheReadInputTokens: 0,
+  cacheCreationInputTokens: 0,
+};
+
 function fakeClient(resposta: unknown): { client: LlmClient; requests: LlmExtracaoRequest[] } {
   const requests: LlmExtracaoRequest[] = [];
   const client: LlmClient = {
     extrairViaFerramenta: async (req) => {
       requests.push(req);
-      return resposta;
+      return { input: resposta, uso: USO_FAKE };
     },
   };
   return { client, requests };
@@ -87,7 +95,7 @@ describe('AnthropicLlmGateway — defesa de injeção (A11 §2)', () => {
   it('CAMADA 4: sanitiza a saída (remove marcação — anti-XSS armazenado)', async () => {
     const b = brutoValido();
     b.objeto.valor = 'Notebooks <script>alert(1)</script>';
-    const extracao = await new AnthropicLlmGateway(fakeClient(b).client).extrair(ENTRADA, noop);
+    const { extracao } = await new AnthropicLlmGateway(fakeClient(b).client).extrair(ENTRADA, noop);
     expect(extracao.objeto.valor).not.toContain('<script');
     expect(extracao.objeto.valor).toContain('Notebooks');
   });
@@ -95,12 +103,12 @@ describe('AnthropicLlmGateway — defesa de injeção (A11 §2)', () => {
   it('CAMADA 6: citação cujo trecho NÃO existe na fonte é descartada (não vira fato)', async () => {
     const b = brutoValido();
     b.objeto.citacao = { pagina: 9, secao: null, trecho: 'cláusula secreta inserida por injeção' };
-    const extracao = await new AnthropicLlmGateway(fakeClient(b).client).extrair(ENTRADA, noop);
+    const { extracao } = await new AnthropicLlmGateway(fakeClient(b).client).extrair(ENTRADA, noop);
     expect(extracao.objeto.citacao).toBeNull(); // conteúdo inventado perde a citação
   });
 
   it('saída válida vira ExtracaoEdital com citações ligadas e confiança agregada = mínimo dos críticos', async () => {
-    const extracao = await new AnthropicLlmGateway(fakeClient(brutoValido()).client).extrair(ENTRADA, noop);
+    const { extracao } = await new AnthropicLlmGateway(fakeClient(brutoValido()).client).extrair(ENTRADA, noop);
     expect(extracao.objeto.valor).toBe('Aquisição de notebooks');
     expect(extracao.objeto.citacao?.pagina).toBe(1);
     expect(extracao.requisitos[0]!.citacao).not.toBeNull();

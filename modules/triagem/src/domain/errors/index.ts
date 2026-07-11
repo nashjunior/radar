@@ -98,3 +98,11 @@ export class TriagemNaoEncontradaError extends DomainError {
     super(`Triagem não encontrada: editalId=${editalId}, perfilId=${perfilId}`);
   }
 }
+
+/** Registro de uso de LLM com campo negativo/ausente (RAD-230, P-20/P-38) — bug de contabilização, nunca condição esperada. */
+export class UsoLlmInvalidoError extends DomainError {
+  readonly code = 'USO_LLM_INVALIDO' as const;
+  constructor(motivo: string) {
+    super(`registro de uso de LLM inválido: ${motivo}`);
+  }
+}

@@ -59,6 +59,22 @@ CREATE TABLE IF NOT EXISTS extracao_edital (
   paginas                 INT     NOT NULL
 );
 
+-- Ledger append-only de uso de LLM (RAD-230, P-20/P-38) — modules/triagem/src/infra/migrations/003_registro_uso_llm.sql
+CREATE TABLE IF NOT EXISTS registro_uso_llm (
+  id                          BIGSERIAL PRIMARY KEY,
+  edital_id                   TEXT        NOT NULL,
+  tenant_id                   TEXT,
+  cliente_final_id            TEXT,
+  perfil_id                   TEXT,
+  modelo                      TEXT        NOT NULL,
+  input_tokens                BIGINT      NOT NULL,
+  output_tokens               BIGINT      NOT NULL,
+  cache_read_input_tokens     BIGINT      NOT NULL DEFAULT 0,
+  cache_creation_input_tokens BIGINT      NOT NULL DEFAULT 0,
+  custo_usd                   NUMERIC     NOT NULL,
+  ocorrido_em                 TIMESTAMPTZ NOT NULL
+);
+
 -- ---------------------------------------------------------------------------
 -- Ingestão
 -- ---------------------------------------------------------------------------

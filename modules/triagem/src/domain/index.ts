@@ -6,6 +6,8 @@ export { PerfilHabilitacao } from './perfil-habilitacao.js';
 export type { PerfilHabilitacaoProps } from './perfil-habilitacao.js';
 export { Triagem } from './triagem.js';
 export type { Recomendacao, ReconstituirTriagemProps, TriagemStatus } from './triagem.js';
+export { RegistroUsoLlm } from './registro-uso-llm.js';
+export type { CriarRegistroUsoLlmProps } from './registro-uso-llm.js';
 export {
   AderenciaInvalidaError,
   CitacaoInvalidaError,
@@ -18,6 +20,7 @@ export {
   RequisitoInvalidoError,
   SaidaLlmInvalidaError,
   TriagemNaoEncontradaError,
+  UsoLlmInvalidoError,
 } from './errors/index.js';
 export { Aderencia } from './value-objects/aderencia.js';
 export { CampoExtraido } from './value-objects/campo-extraido.js';

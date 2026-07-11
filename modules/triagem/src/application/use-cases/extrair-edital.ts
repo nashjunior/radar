@@ -1,9 +1,11 @@
 import type { EditalId } from '@radar/kernel';
 import { avaliarElegibilidadeExtracao } from '../../domain/elegibilidade-extracao.js';
 import { ConfiancaInsuficienteError, OcrFalhouError } from '../../domain/errors/index.js';
+import { RegistroUsoLlm } from '../../domain/registro-uso-llm.js';
 import { extracaoParaDTO } from '../dtos.js';
 import type { ExtracaoEditalDTO } from '../dtos.js';
-import type { ExtracaoRepository, LlmGateway, ObjectStorage } from '../ports.js';
+import { calcularCustoUsd } from '../precificacao-llm.js';
+import type { ExtracaoRepository, LlmGateway, ObjectStorage, UsoLlmLedger } from '../ports.js';
 import { prepararEntradaExtracao } from '../preparar-entrada-extracao.js';
 
 export interface ExtrairEditalInput {
@@ -29,6 +31,7 @@ export class ExtrairEditalUseCase {
     private readonly llm: LlmGateway,
     private readonly extracoes: ExtracaoRepository,
     private readonly storage: ObjectStorage,
+    private readonly usoLedger: UsoLlmLedger,
   ) {}
 
   async executar(input: ExtrairEditalInput, signal: AbortSignal): Promise<ExtracaoEditalDTO> {
@@ -46,7 +49,26 @@ export class ExtrairEditalUseCase {
     const entrada = await prepararEntradaExtracao(input, this.storage, signal);
 
     // O adapter aplica a defesa de injeção (A11 §2) e valida a saída por schema (camada 3).
-    const extracao = await this.llm.extrair(entrada, signal);
+    const { extracao, uso } = await this.llm.extrair(entrada, signal);
+
+    // Grava o CUSTO real assim que a chamada volta — mesmo que o gate de confiança abaixo rejeite a
+    // extração, os tokens já foram gastos (RAD-230, P-20/P-38). Sem tenant: pré-extração GLOBAL (P-45).
+    await this.usoLedger.registrar(
+      RegistroUsoLlm.criar({
+        editalId: input.editalId,
+        tenantId: null,
+        clienteFinalId: null,
+        perfilId: null,
+        modelo: uso.modelo,
+        inputTokens: uso.inputTokens,
+        outputTokens: uso.outputTokens,
+        cacheReadInputTokens: uso.cacheReadInputTokens,
+        cacheCreationInputTokens: uso.cacheCreationInputTokens,
+        custoUsd: calcularCustoUsd(uso),
+        ocorridoEm: new Date(),
+      }),
+      signal,
+    );
 
     // Piso de confiança: se nenhum campo crítico saiu com citação utilizável, é leitura assistida
     // (docs/10 §6) — nunca apresentar palpite como certeza.

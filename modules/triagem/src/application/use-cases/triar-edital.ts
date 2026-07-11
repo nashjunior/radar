@@ -6,17 +6,20 @@ import {
   OcrFalhouError,
   PerfilNaoEncontradoError,
 } from '../../domain/errors/index.js';
+import { RegistroUsoLlm } from '../../domain/registro-uso-llm.js';
 import { Triagem } from '../../domain/triagem.js';
 import { triagemParaDTO } from '../dtos.js';
 import type { EntradaExtracaoDTO, TriagemDTO } from '../dtos.js';
 import { LIMIAR_CONFIANCA_PADRAO } from '../politica-confianca.js';
 import { TriagemConcluida } from '../events.js';
+import { calcularCustoUsd } from '../precificacao-llm.js';
 import type {
   EventPublisher,
   ExtracaoRepository,
   LlmGateway,
   PerfilGateway,
   TriagemRepository,
+  UsoLlmLedger,
 } from '../ports.js';
 
 export interface TriarEditalInput {
@@ -40,6 +43,7 @@ export class TriarEditalUseCase {
     private readonly llm: LlmGateway,
     private readonly triagens: TriagemRepository,
     private readonly eventos: EventPublisher,
+    private readonly usoLedger: UsoLlmLedger,
   ) {}
 
   async executar(input: TriarEditalInput, signal: AbortSignal): Promise<TriagemDTO> {
@@ -57,7 +61,27 @@ export class TriarEditalUseCase {
     if (extracao === null) {
       // OCR falhou ou modelo recusou → persiste estado degradado antes de re-lançar (RAD-79).
       try {
-        extracao = await this.llm.extrair(input.conteudo, signal);
+        const resultado = await this.llm.extrair(input.conteudo, signal);
+        extracao = resultado.extracao;
+        // ÚNICO caller com tenant conhecido no momento da chamada (cache-miss dentro de uma triagem
+        // solicitada por um cliente) — `ExtrairEditalUseCase`/`ExtrairEditaisEmLoteUseCase` são
+        // pré-extração GLOBAL (P-45), sem tenant a atribuir (docs/98 P-20 veredicto RAD-227).
+        await this.usoLedger.registrar(
+          RegistroUsoLlm.criar({
+            editalId: input.editalId,
+            tenantId: input.tenantId,
+            clienteFinalId: perfil.clienteFinalId,
+            perfilId: input.perfilId,
+            modelo: resultado.uso.modelo,
+            inputTokens: resultado.uso.inputTokens,
+            outputTokens: resultado.uso.outputTokens,
+            cacheReadInputTokens: resultado.uso.cacheReadInputTokens,
+            cacheCreationInputTokens: resultado.uso.cacheCreationInputTokens,
+            custoUsd: calcularCustoUsd(resultado.uso),
+            ocorridoEm: new Date(),
+          }),
+          signal,
+        );
       } catch (err) {
         let degradada: Triagem;
         if (err instanceof OcrFalhouError) {

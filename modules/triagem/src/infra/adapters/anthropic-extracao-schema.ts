@@ -1,4 +1,5 @@
 import { SaidaLlmInvalidaError } from '../../domain/errors/index.js';
+import type { UsoLlm } from '../../application/ports.js';
 import type { LlmExtracaoRequest } from './anthropic-llm-gateway.js';
 import { CATEGORIAS, FERRAMENTA_EXTRACAO, SEVERIDADES } from './anthropic-llm-gateway.js';
 
@@ -157,9 +158,39 @@ interface BlocoConteudo {
   readonly name?: string;
   readonly input?: unknown;
 }
+
+/**
+ * `usage` cru do SDK (`Message.usage`) — estruturalmente compatível, mesma convenção das demais
+ * interfaces deste arquivo (P-74: sem importar `@anthropic-ai/sdk`). Campos de cache ausentes
+ * quando o provedor/chamada não usou prompt caching (P-95, ainda não ligado por `paramsExtracao`).
+ */
+export interface UsageBruto {
+  readonly input_tokens: number;
+  readonly output_tokens: number;
+  readonly cache_read_input_tokens?: number | null;
+  readonly cache_creation_input_tokens?: number | null;
+}
+
 /** Resposta com conteúdo — casa com `Message` do SDK e com cada resultado `succeeded` do lote. */
 export interface MensagemComConteudo {
   readonly content: readonly BlocoConteudo[];
+  readonly usage: UsageBruto;
+}
+
+/**
+ * Mapeia o `usage` cru (snake_case, formato SDK) para `UsoLlm` (application, RAD-230) — mesma
+ * função para o caminho síncrono (`AnthropicSdkClient`) e o lote (`AnthropicBatchLlmGateway`), para
+ * as duas medições nunca divergirem. `modelo` não vem no `usage` da resposta — o caller passa o
+ * mesmo `modelo` que montou a requisição (`LlmExtracaoRequest.modelo`).
+ */
+export function usoDeMensagem(mensagem: MensagemComConteudo, modelo: string): UsoLlm {
+  return {
+    modelo,
+    inputTokens: mensagem.usage.input_tokens,
+    outputTokens: mensagem.usage.output_tokens,
+    cacheReadInputTokens: mensagem.usage.cache_read_input_tokens ?? 0,
+    cacheCreationInputTokens: mensagem.usage.cache_creation_input_tokens ?? 0,
+  };
 }
 
 /**

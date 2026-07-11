@@ -131,7 +131,7 @@ async function main(): Promise<void> {
     const req = montarRequisicaoExtracao(entrada);
     editalPorChave.set(chavePorConteudo(req), entrada.editalId);
     try {
-      const saidaCrua = await client.extrairViaFerramenta(req, signal);
+      const { input: saidaCrua } = await client.extrairViaFerramenta(req, signal);
       // Sanidade: a saída passa no schema (camada 3)?
       try {
         interpretarSaidaExtracao(saidaCrua, entrada);

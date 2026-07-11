@@ -1,6 +1,6 @@
 import { ExtracaoRecusadaError, SaidaLlmInvalidaError } from '../../domain/errors/index.js';
-import type { LlmClient, LlmExtracaoRequest } from './anthropic-llm-gateway.js';
-import { extrairToolInput, paramsExtracao } from './anthropic-extracao-schema.js';
+import type { LlmClient, LlmExtracaoRequest, ResultadoExtracaoClient } from './anthropic-llm-gateway.js';
+import { extrairToolInput, paramsExtracao, usoDeMensagem } from './anthropic-extracao-schema.js';
 import type { ExtracaoMessageParams, MensagemComConteudo } from './anthropic-extracao-schema.js';
 
 /**
@@ -80,7 +80,10 @@ export class AnthropicSdkClient implements LlmClient {
     this.resolverThinking = opts.thinkingPorModelo ?? thinkingExtracao;
   }
 
-  async extrairViaFerramenta(req: LlmExtracaoRequest, signal: AbortSignal): Promise<unknown> {
+  async extrairViaFerramenta(
+    req: LlmExtracaoRequest,
+    signal: AbortSignal,
+  ): Promise<ResultadoExtracaoClient> {
     const params: ExtracaoStreamParams = {
       ...paramsExtracao(req),
       thinking: this.resolverThinking(req.modelo),
@@ -90,6 +93,8 @@ export class AnthropicSdkClient implements LlmClient {
     const mensagem = await this.messages.stream(params, { signal }).finalMessage();
 
     // Lever 6 — refusal ANTES de ler content: em recusa o content vem vazio/parcial; nunca fabricar.
+    // GAP conhecido (RAD-230): `mensagem.usage` já reflete tokens gastos aqui, mas a recusa lança
+    // ANTES de devolver `uso` ao caller — o "gasto perdido" segue não medido neste caso (P-20 veredicto).
     if (mensagem.stop_reason === 'refusal') {
       this.logger.warn('[triagem] extração recusada pelo modelo (stop_reason=refusal)', {
         modelo: req.modelo,
@@ -100,12 +105,13 @@ export class AnthropicSdkClient implements LlmClient {
     }
 
     // Truncamento por max_tokens → tool_use possivelmente incompleto: saída não-confiável, não fabrica.
+    // Mesmo GAP do refusal acima: tokens gastos, `uso` não devolvido neste caminho (RAD-230 follow-up).
     if (mensagem.stop_reason === 'max_tokens') {
       throw new SaidaLlmInvalidaError('resposta truncada (max_tokens)');
     }
 
     // Ausência do tool_use forçado também é rejeitada (camada 3, dentro de extrairToolInput).
-    return extrairToolInput(mensagem, req.ferramenta);
+    return { input: extrairToolInput(mensagem, req.ferramenta), uso: usoDeMensagem(mensagem, req.modelo) };
   }
 }
 

@@ -77,7 +77,7 @@ async function main(): Promise<void> {
   for (const entrada of dataset) {
     const req = montarRequisicaoExtracao(entrada);
     editalPorChave.set(chavePorConteudo(req), entrada.editalId);
-    const saidaCrua = await client.extrairViaFerramenta(req, signal); // cache-miss → SDK real → onRecord
+    const { input: saidaCrua } = await client.extrairViaFerramenta(req, signal); // cache-miss → SDK real → onRecord
     // Sanidade (o REPLAY revalida): a saída real passa na camada 3? Só avisa, não interrompe a gravação.
     try {
       interpretarSaidaExtracao(saidaCrua, entrada);

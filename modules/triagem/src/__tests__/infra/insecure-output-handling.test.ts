@@ -80,10 +80,14 @@ function saidaGravadaValida(): any {
 }
 
 /** Dirige uma saída GRAVADA pelo seam do gold set (REPLAY) → pipeline real de defesa (camadas 1–6). */
-function extrairGravado(saida: unknown, entrada: EntradaExtracaoDTO = ENTRADA) {
+async function extrairGravado(saida: unknown, entrada: EntradaExtracaoDTO = ENTRADA) {
   const chave = chavePorConteudo(montarRequisicaoExtracao(entrada));
   const fixtures = new Map<string, unknown>([[chave, saida]]);
-  return new AnthropicLlmGateway(new RecordReplayLlmClient(fixtures)).extrair(entrada, noop);
+  const { extracao } = await new AnthropicLlmGateway(new RecordReplayLlmClient(fixtures)).extrair(
+    entrada,
+    noop,
+  );
+  return extracao;
 }
 
 describe('Insecure output handling (A11 §2 / AB6 / P-73) — saídas gravadas via RecordReplayLlmClient', () => {

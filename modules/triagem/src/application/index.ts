@@ -23,7 +23,10 @@ export type {
   PerfilGateway,
   ResultadoLote,
   TriagemRepository,
+  UsoLlm,
+  UsoLlmLedger,
 } from './ports.js';
+export { calcularCustoUsd, PRECOS_USD_POR_MILHAO_TOKENS } from './precificacao-llm.js';
 export {
   ExtracaoConcluida,
   TriagemAceita,

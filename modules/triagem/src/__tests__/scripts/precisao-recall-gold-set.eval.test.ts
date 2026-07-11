@@ -151,7 +151,7 @@ async function runPipeline(goldSet: GoldSet): Promise<Resultado[]> {
 
   return Promise.all(
     goldSet.editais.map(async (edital) => {
-      const extracao = await gateway.extrair(entradas.get(edital.id)!, signal);
+      const { extracao } = await gateway.extrair(entradas.get(edital.id)!, signal);
       return { edital, extracao };
     }),
   );
@@ -485,8 +485,8 @@ describe('stress — adversarial e edge cases', () => {
     ]);
     const gateway = new AnthropicLlmGateway(new RecordReplayLlmClient(fixtureMap));
     const signal = new AbortController().signal;
-    const e1 = await gateway.extrair(entrada, signal);
-    const e2 = await gateway.extrair(entrada, signal);
+    const { extracao: e1 } = await gateway.extrair(entrada, signal);
+    const { extracao: e2 } = await gateway.extrair(entrada, signal);
     expect(e1.objeto.valor).toBe(e2.objeto.valor);
     expect(e1.objeto.confianca.valor).toBe(e2.objeto.confianca.valor);
     expect(e1.confiancaGlobal().valor).toBe(e2.confiancaGlobal().valor);

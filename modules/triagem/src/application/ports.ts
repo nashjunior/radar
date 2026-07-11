@@ -1,6 +1,7 @@
 import type { ClienteFinalId, EditalId, PerfilId, TenantId } from '@radar/kernel';
 import type { ExtracaoEdital } from '../domain/extracao-edital.js';
 import type { PerfilHabilitacao } from '../domain/perfil-habilitacao.js';
+import type { RegistroUsoLlm } from '../domain/registro-uso-llm.js';
 import type { Triagem } from '../domain/triagem.js';
 import type { EntradaExtracaoDTO } from './dtos.js';
 import type { DomainEvent } from './events.js';
@@ -38,6 +39,16 @@ export interface TriagemRepository {
 }
 
 /**
+ * Ledger de uso de LLM (RAD-230, P-20/P-38) — APPEND-ONLY, propósito de USO/FATURAMENTO
+ * (docs/09 §6.1), distinto da Trilha de Auditoria da Governança (P-100/AB13, acesso a dado
+ * pessoal). Nunca faz UPSERT (ao contrário de `TriagemRepository.salvar`): 1 chamada ao LLM = 1
+ * `registrar`, sempre — `COUNT(*)` sobre a tabela é o número real de execuções, não de agregados.
+ */
+export interface UsoLlmLedger {
+  registrar(registro: RegistroUsoLlm, signal: AbortSignal): Promise<void>;
+}
+
+/**
  * Perfil de Habilitação: leitura de Identidade & Organização via Cliente-Fornecedor (P-43). A
  * Triagem lê, nunca escreve — não é dona do agregado. É **Gateway**, não Repository (decisão P-83,
  * A10 §8): o Repository persiste um agregado do próprio contexto; o Gateway lê o modelo de OUTRO
@@ -59,28 +70,59 @@ export interface ObjectStorage {
 }
 
 /**
+ * Consumo de tokens de UMA chamada ao LLM (RAD-230, P-20/P-38) — sempre devolvido junto do
+ * resultado (nunca só no sucesso final da interpretação): sem isto não há como medir custo por
+ * edital nem por tenant, e P-20 (teto)/P-38 (alarme) ficam inaplicáveis. `cache*` refletem prompt
+ * caching (P-95, ainda não ligado — `paramsExtracao` não seta `cache_control`, então hoje chegam
+ * zerados); presentes desde já para o port não quebrar quando P-95 ligar o cache.
+ *
+ * GAP CONHECIDO (não coberto por esta versão): capturado apenas no caminho de SUCESSO — recusa
+ * (`ExtracaoRecusadaError`) e truncamento (`SaidaLlmInvalidaError` por `max_tokens`) consomem
+ * tokens mas não emitem `UsoLlm` ainda (o "gasto perdido" citado no veredicto P-20 permanece não
+ * medido nesses dois casos; requer decidir o comportamento de truncamento antes, RAD-230 follow-up).
+ */
+export interface UsoLlm {
+  readonly modelo: string;
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+  readonly cacheReadInputTokens: number;
+  readonly cacheCreationInputTokens: number;
+}
+
+/**
  * Fronteira com o LLM (A17 §4.1). O adapter (`AnthropicLlmGateway`) aplica a defesa de injeção
  * (A11 §2) e devolve a extração JÁ validada por schema — o que não bate é rejeitado
  * (`SaidaLlmInvalidaError`), nunca "consertado". Único ponto do contexto que fala com o modelo.
+ * Devolve `uso` (RAD-230) junto da extração — o caller grava no `UsoLlmLedger`.
  */
 export interface LlmGateway {
-  extrair(entrada: EntradaExtracaoDTO, signal: AbortSignal): Promise<ExtracaoEdital>;
+  extrair(
+    entrada: EntradaExtracaoDTO,
+    signal: AbortSignal,
+  ): Promise<{ readonly extracao: ExtracaoEdital; readonly uso: UsoLlm }>;
 }
 
 /**
  * Resultado POR edital de uma extração em lote (não é um `Result<>` de erro; é o desfecho de cada item
  * de um lote parcialmente falho). `ok:false` marca o edital que o provedor não entregou (errored/
- * expired) ou cuja saída não passou no schema — o item cai fora, o lote segue.
+ * expired) ou cuja saída não passou no schema — o item cai fora, o lote segue (sem `uso`: mesmo GAP
+ * do `LlmGateway` síncrono, RAD-230 follow-up).
  */
 export type ResultadoLote =
-  | { readonly editalId: EditalId; readonly ok: true; readonly extracao: ExtracaoEdital }
+  | { readonly editalId: EditalId; readonly ok: true; readonly extracao: ExtracaoEdital; readonly uso: UsoLlm }
   | { readonly editalId: EditalId; readonly ok: false; readonly motivo: string };
 
 /**
- * Fronteira com o LLM em LOTE (RAD-54 · Lever 1 de RAD-53 — Message Batches, −50% de custo). MESMA
+ * Fronteira com o LLM em LOTE (RAD-54 · Lever 1 de RAD-53 — batch inference, −50% de custo). MESMA
  * inferência do `LlmGateway` síncrono (model/system/schema idênticos), só o transporte muda. Cada item
- * é keyed por `editalId` (= `custom_id`, NUNCA por posição — resultados chegam fora de ordem). NÃO é
- * latency-sensitive (P-45): roda assíncrono em `edital.ingerido`, antes de o usuário pedir triagem.
+ * é keyed por `editalId` (NUNCA por posição — resultados chegam fora de ordem e o lote pode ser
+ * parcialmente falho). NÃO é latency-sensitive (P-45): roda assíncrono em `edital.ingerido`, antes de
+ * o usuário pedir triagem.
+ *
+ * O port é PROVIDER-AGNÓSTICO (A10 §4.6): o mecanismo de lote vive no adapter, não aqui. No provedor
+ * decidido (Amazon Bedrock — P-66) o lote é o `CreateModelInvocationJob` (JSONL em S3, ~24h) — a
+ * **Message Batches API da Anthropic não é servida pelo Bedrock** (P-92/RAD-231), e é ela que o
+ * `AnthropicBatchLlmGateway` (`custom_id`) usa: aquele adapter só vale contra a API 1P direta.
  */
 export interface LlmLoteGateway {
   extrairLote(entradas: readonly EntradaExtracaoDTO[], signal: AbortSignal): Promise<ResultadoLote[]>;

@@ -48,7 +48,7 @@ describe('RecordReplayLlmClient — seam do gold set (A17 §7 / A16)', () => {
     const fixtures = new Map<string, unknown>([[chaveDe(ENTRADA), brutoGravado()]]);
     const client = new RecordReplayLlmClient(fixtures);
 
-    const extracao = await new AnthropicLlmGateway(client).extrair(ENTRADA, noop);
+    const { extracao } = await new AnthropicLlmGateway(client).extrair(ENTRADA, noop);
 
     // O agregado saiu da fixture PELO pipeline determinístico (bind de citação, sanitização, confiança).
     expect(extracao.objeto.valor).toBe('Aquisição de notebooks');
@@ -66,7 +66,14 @@ describe('RecordReplayLlmClient — seam do gold set (A17 §7 / A16)', () => {
 
   it('RECORD: cache-miss chama o delegate real UMA vez, entrega a captura a onRecord e devolve', async () => {
     const bruto = brutoGravado();
-    const extrair = vi.fn().mockResolvedValue(bruto);
+    const usoDelegate = {
+      modelo: 'claude-sonnet-5',
+      inputTokens: 1000,
+      outputTokens: 200,
+      cacheReadInputTokens: 0,
+      cacheCreationInputTokens: 0,
+    };
+    const extrair = vi.fn().mockResolvedValue({ input: bruto, uso: usoDelegate });
     const delegate: LlmClient = { extrairViaFerramenta: extrair };
     const gravado = new Map<string, unknown>();
 
@@ -76,11 +83,12 @@ describe('RecordReplayLlmClient — seam do gold set (A17 §7 / A16)', () => {
     });
 
     const req = montarRequisicaoExtracao(ENTRADA);
-    const saida = await client.extrairViaFerramenta(req, noop);
+    const resultado = await client.extrairViaFerramenta(req, noop);
 
     expect(extrair).toHaveBeenCalledOnce();
-    expect(saida).toBe(bruto);
-    expect(gravado.get(chaveDe(ENTRADA))).toBe(bruto); // fixture materializada p/ replays futuros
+    expect(resultado.input).toBe(bruto);
+    expect(resultado.uso).toBe(usoDelegate); // RAD-230: `uso` do delegate real passa direto
+    expect(gravado.get(chaveDe(ENTRADA))).toBe(bruto); // fixture materializada p/ replays futuros — só o INPUT
   });
 
   it('REPLAY tem prioridade sobre o delegate: fixture presente NÃO chama o LLM real (custo zero)', async () => {
@@ -98,7 +106,21 @@ describe('RecordReplayLlmClient — seam do gold set (A17 §7 / A16)', () => {
     const fixtures = new Map<string, unknown>([['caso-42', brutoGravado()]]);
     const client = new RecordReplayLlmClient(fixtures, { chave: () => 'caso-42' });
 
-    const extracao = await new AnthropicLlmGateway(client).extrair(ENTRADA, noop);
+    const { extracao } = await new AnthropicLlmGateway(client).extrair(ENTRADA, noop);
     expect(extracao.objeto.valor).toBe('Aquisição de notebooks');
+  });
+
+  it('REPLAY: `uso` é zero (custo real é zero — não chamou o provedor, RAD-230)', async () => {
+    const fixtures = new Map<string, unknown>([[chaveDe(ENTRADA), brutoGravado()]]);
+    const client = new RecordReplayLlmClient(fixtures);
+
+    const { uso } = await new AnthropicLlmGateway(client).extrair(ENTRADA, noop);
+    expect(uso).toEqual({
+      modelo: 'replay',
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadInputTokens: 0,
+      cacheCreationInputTokens: 0,
+    });
   });
 });

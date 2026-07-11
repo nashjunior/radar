@@ -54,8 +54,8 @@ describe('RecordReplayLlmClient — REPLAY estabilidade (concurrent / sequential
     const client = new RecordReplayLlmClient(fixtures);
 
     for (let i = 0; i < 100; i++) {
-      const saida = await client.extrairViaFerramenta(req(), noop);
-      expect(saida).toBe(FIXTURE_BRUTA); // mesma referência — não copia
+      const { input } = await client.extrairViaFerramenta(req(), noop);
+      expect(input).toBe(FIXTURE_BRUTA); // mesma referência — não copia
     }
   });
 
@@ -69,7 +69,7 @@ describe('RecordReplayLlmClient — REPLAY estabilidade (concurrent / sequential
     );
 
     expect(resultados).toHaveLength(20);
-    resultados.forEach((r) => expect(r).toBe(FIXTURE_BRUTA));
+    resultados.forEach((r) => expect(r.input).toBe(FIXTURE_BRUTA));
   });
 
   it('lookup em mapa grande (1000 fixtures) é O(1) — resolve a chave correta', async () => {
@@ -83,16 +83,16 @@ describe('RecordReplayLlmClient — REPLAY estabilidade (concurrent / sequential
 
     const client = new RecordReplayLlmClient(fixtures, { chave: () => chaveAlvo });
 
-    const saida = await client.extrairViaFerramenta(req(), noop);
-    expect(saida).toBe(valorAlvo);
+    const { input } = await client.extrairViaFerramenta(req(), noop);
+    expect(input).toBe(valorAlvo);
   });
 
   it('chave vazia ("") funciona se fixture tem "" como chave', async () => {
     const fixtures = new Map<string, unknown>([['', FIXTURE_BRUTA]]);
     const client = new RecordReplayLlmClient(fixtures, { chave: () => '' });
 
-    const saida = await client.extrairViaFerramenta(req(), noop);
-    expect(saida).toBe(FIXTURE_BRUTA);
+    const { input } = await client.extrairViaFerramenta(req(), noop);
+    expect(input).toBe(FIXTURE_BRUTA);
   });
 });
 
@@ -170,10 +170,10 @@ describe('RecordReplayLlmClient — AbortSignal (P-78)', () => {
     const delegate: LlmClient = { extrairViaFerramenta: vi.fn() };
 
     const client = new RecordReplayLlmClient(fixtures, { delegate });
-    const saida = await client.extrairViaFerramenta(req(), controller.signal);
+    const { input } = await client.extrairViaFerramenta(req(), controller.signal);
 
     // REPLAY lê do mapa local — AbortSignal não a afeta (sem I/O)
-    expect(saida).toBe(FIXTURE_BRUTA);
+    expect(input).toBe(FIXTURE_BRUTA);
     expect(delegate.extrairViaFerramenta).not.toHaveBeenCalled();
   });
 });

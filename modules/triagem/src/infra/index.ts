@@ -7,16 +7,22 @@ export {
   interpretarSaidaExtracao,
   montarRequisicaoExtracao,
 } from './adapters/anthropic-llm-gateway.js';
-export type { LlmClient, LlmExtracaoRequest } from './adapters/anthropic-llm-gateway.js';
+export type {
+  LlmClient,
+  LlmExtracaoRequest,
+  ResultadoExtracaoClient,
+} from './adapters/anthropic-llm-gateway.js';
 export {
   FERRAMENTA_SCHEMA,
   MAX_TOKENS_EXTRACAO,
   extrairToolInput,
   paramsExtracao,
+  usoDeMensagem,
 } from './adapters/anthropic-extracao-schema.js';
 export type {
   ExtracaoMessageParams,
   MensagemComConteudo,
+  UsageBruto,
 } from './adapters/anthropic-extracao-schema.js';
 export { AnthropicSdkClient, thinkingExtracao } from './adapters/anthropic-sdk-client.js';
 export type {
@@ -45,6 +51,7 @@ export { PerfilHabilitacaoAdapter } from './adapters/perfil-habilitacao-adapter.
 export type { PerfilSource, PerfilSourceData } from './adapters/perfil-habilitacao-adapter.js';
 export { PostgresExtracaoRepository } from './adapters/postgres-extracao-repository.js';
 export { PostgresTriagemRepository } from './adapters/postgres-triagem-repository.js';
+export { PostgresUsoLlmLedger } from './adapters/postgres-uso-llm-ledger.js';
 export { S3ObjectStorage } from './adapters/s3-object-storage.js';
 export { SqsEventPublisher } from './adapters/sqs-event-publisher.js';
 export { TriagemBatchWorker } from './queue/triagem-batch-worker.js';

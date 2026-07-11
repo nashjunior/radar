@@ -1,5 +1,6 @@
 import { ClienteFinalId, EditalId, PerfilId, TenantId } from '@radar/kernel';
 import { SaidaLlmInvalidaError } from '../../domain/errors/index.js';
+import type { ExtracaoEdital } from '../../domain/extracao-edital.js';
 import { PerfilHabilitacao } from '../../domain/perfil-habilitacao.js';
 import type { PerfilHabilitacaoProps } from '../../domain/perfil-habilitacao.js';
 import { Triagem } from '../../domain/triagem.js';
@@ -115,10 +116,10 @@ export async function avaliarCasoAdversarial(caso: CasoAdversarial): Promise<Ver
   verificarPrompt(caso, entrada, req, violacoes);
 
   // ── Camadas 3–6 (lado da saída): processa a saída subvertida pela defesa real. ──
-  let extracao: Awaited<ReturnType<AnthropicLlmGateway['extrair']>> | undefined;
+  let resultado: Awaited<ReturnType<AnthropicLlmGateway['extrair']>> | undefined;
   let rejeitada = false;
   try {
-    extracao = await new AnthropicLlmGateway(clienteFixo(caso.saidaSubvertida)).extrair(entrada, SEM_ABORT);
+    resultado = await new AnthropicLlmGateway(clienteFixo(caso.saidaSubvertida)).extrair(entrada, SEM_ABORT);
   } catch (e) {
     if (e instanceof SaidaLlmInvalidaError) rejeitada = true;
     else throw e;
@@ -128,12 +129,12 @@ export async function avaliarCasoAdversarial(caso: CasoAdversarial): Promise<Ver
     if (!rejeitada) violacoes.push(`${caso.id} · camada 3: saída fora do schema NÃO foi rejeitada`);
     return veredicto(caso, violacoes); // rejeitada na camada 3 → nada mais a inspecionar
   }
-  if (rejeitada || extracao === undefined) {
+  if (rejeitada || resultado === undefined) {
     violacoes.push(`${caso.id} · camada 3: saída rejeitada de forma inesperada`);
     return veredicto(caso, violacoes);
   }
 
-  verificarSaida(caso, extracao, violacoes);
+  verificarSaida(caso, resultado.extracao, violacoes);
   return veredicto(caso, violacoes);
 }
 
@@ -187,7 +188,7 @@ function verificarPrompt(
 
 function verificarSaida(
   caso: CasoAdversarial,
-  extracao: Awaited<ReturnType<AnthropicLlmGateway['extrair']>>,
+  extracao: ExtracaoEdital,
   violacoes: string[],
 ): void {
   const textuais = camposTextuais(extracao);
@@ -230,9 +231,7 @@ function userContentEsperado(entrada: EntradaExtracaoDTO): string {
   return `<edital_nao_confiavel>\n${entrada.texto}${anexos}\n</edital_nao_confiavel>`;
 }
 
-function camposTextuais(
-  extracao: Awaited<ReturnType<AnthropicLlmGateway['extrair']>>,
-): Array<{ nome: string; valor: string }> {
+function camposTextuais(extracao: ExtracaoEdital): Array<{ nome: string; valor: string }> {
   return [
     { nome: 'objeto', valor: extracao.objeto.valor },
     ...extracao.requisitos.map((r, i) => ({ nome: `requisitos[${i}].descricao`, valor: r.descricao })),
@@ -245,8 +244,20 @@ function temMarcacaoExecutavel(s: string): boolean {
   return /<[^>]*>/.test(s) || /[\u0000-\u001f\u007f]/.test(s);
 }
 
+/** `uso` fixo — o corpus roda o pipeline determinístico (sem rede/custo), nunca uma chamada real. */
 function clienteFixo(resposta: unknown): LlmClient {
-  return { extrairViaFerramenta: async () => resposta };
+  return {
+    extrairViaFerramenta: async () => ({
+      input: resposta,
+      uso: {
+        modelo: 'red-team',
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadInputTokens: 0,
+        cacheCreationInputTokens: 0,
+      },
+    }),
+  };
 }
 
 function veredicto(caso: CasoAdversarial, violacoes: string[]): VeredictoRedTeam {

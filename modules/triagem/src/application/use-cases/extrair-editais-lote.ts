@@ -1,7 +1,9 @@
 import type { EditalId } from '@radar/kernel';
 import { avaliarElegibilidadeExtracao } from '../../domain/elegibilidade-extracao.js';
+import { RegistroUsoLlm } from '../../domain/registro-uso-llm.js';
 import type { EntradaExtracaoDTO } from '../dtos.js';
-import type { ExtracaoRepository, LlmLoteGateway, ObjectStorage } from '../ports.js';
+import { calcularCustoUsd } from '../precificacao-llm.js';
+import type { ExtracaoRepository, LlmLoteGateway, ObjectStorage, UsoLlmLedger } from '../ports.js';
 import { prepararEntradaExtracao } from '../preparar-entrada-extracao.js';
 
 /**
@@ -43,6 +45,7 @@ export class ExtrairEditaisEmLoteUseCase {
     private readonly llmLote: LlmLoteGateway,
     private readonly extracoes: ExtracaoRepository,
     private readonly storage: ObjectStorage,
+    private readonly usoLedger: UsoLlmLedger,
   ) {}
 
   async executar(
@@ -83,9 +86,29 @@ export class ExtrairEditaisEmLoteUseCase {
     let falhas = 0;
     for (const resultado of resultados) {
       if (!resultado.ok) {
-        falhas++;
+        falhas++; // sem `uso` (RAD-230 GAP: item errored/expired/schema-inválido não mede tokens)
         continue;
       }
+
+      // Grava o CUSTO real independente do piso de confiança abaixo — pré-extração GLOBAL (P-45),
+      // sem tenant a atribuir (docs/98 P-20 veredicto RAD-227).
+      await this.usoLedger.registrar(
+        RegistroUsoLlm.criar({
+          editalId: resultado.editalId,
+          tenantId: null,
+          clienteFinalId: null,
+          perfilId: null,
+          modelo: resultado.uso.modelo,
+          inputTokens: resultado.uso.inputTokens,
+          outputTokens: resultado.uso.outputTokens,
+          cacheReadInputTokens: resultado.uso.cacheReadInputTokens,
+          cacheCreationInputTokens: resultado.uso.cacheCreationInputTokens,
+          custoUsd: calcularCustoUsd(resultado.uso),
+          ocorridoEm: new Date(),
+        }),
+        signal,
+      );
+
       // Piso de confiança: nenhum campo crítico com citação utilizável → leitura assistida (docs/10 §6).
       if (resultado.extracao.confiancaGlobal().valor === 0) {
         insuficientes++;

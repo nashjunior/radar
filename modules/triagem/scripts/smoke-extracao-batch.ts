@@ -65,7 +65,7 @@ async function main(): Promise<void> {
   // O composition root liga o SDK ao seam `MessagesClient` (P-74; `anthropic.messages` casa estruturalmente).
   const syncClient = new AnthropicSdkClient(anthropic.messages as unknown as MessagesClient);
   console.log('→ extração SÍNCRONA (baseline · AnthropicSdkClient)…');
-  const sync = await new AnthropicLlmGateway(syncClient).extrair(entrada, signal);
+  const { extracao: sync } = await new AnthropicLlmGateway(syncClient).extrair(entrada, signal);
 
   // --- Caminho em LOTE (RAD-54): mesma inferência, transporte via Message Batches ---
   console.log('→ extração em LOTE (Message Batches)… pode levar minutos');

@@ -174,14 +174,23 @@ describe('Gate A07 · AB1/P-51 — matriz de autorização por objeto', () => {
   });
 
   it('TRIAGEM escrever: TriarEditalUseCase nega perfil de outro cliente antes de LLM/persistência', async () => {
-    const llm = { extrair: vi.fn().mockResolvedValue(extracao()) };
+    const uso = {
+      modelo: 'claude-sonnet-5',
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadInputTokens: 0,
+      cacheCreationInputTokens: 0,
+    };
+    const llm = { extrair: vi.fn().mockResolvedValue({ extracao: extracao(), uso }) };
     const triagens = { salvar: vi.fn(), porEditalEPerfil: vi.fn() };
+    const usoLedger = { registrar: vi.fn() };
     const uc = new TriarEditalUseCase(
       { porEdital: vi.fn().mockResolvedValue(null), salvar: vi.fn() },
       { porId: vi.fn().mockResolvedValue(perfilTriagem(CLIENTE_B)) },
       llm,
       triagens,
       { publicar: vi.fn() },
+      usoLedger,
     );
 
     await expect(uc.executar({

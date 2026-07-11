@@ -7,6 +7,8 @@ import type {
   LlmLoteGateway,
   ObjectStorage,
   ResultadoLote,
+  UsoLlm,
+  UsoLlmLedger,
 } from '../../application/ports.js';
 import { ExtracaoEdital } from '../../domain/extracao-edital.js';
 import { CampoExtraido } from '../../domain/value-objects/campo-extraido.js';
@@ -14,6 +16,14 @@ import { Citacao } from '../../domain/value-objects/citacao.js';
 import { Confianca } from '../../domain/value-objects/confianca.js';
 
 const noop = new AbortController().signal;
+
+const USO_FAKE: UsoLlm = {
+  modelo: 'claude-sonnet-5',
+  inputTokens: 1000,
+  outputTokens: 200,
+  cacheReadInputTokens: 0,
+  cacheCreationInputTokens: 0,
+};
 
 function extracao(id: string, confObjeto: number): ExtracaoEdital {
   return ExtracaoEdital.montar({
@@ -58,16 +68,18 @@ function deps(resultados: ResultadoLote[], existentePorId: Record<string, Extrac
   const salvar = vi.fn().mockResolvedValue(undefined);
   const obterTextoAnexo = vi.fn().mockResolvedValue('texto do anexo');
   const extrairLote = vi.fn().mockResolvedValue(resultados);
+  const registrar = vi.fn().mockResolvedValue(undefined);
   const extracoes: ExtracaoRepository = { porEdital, salvar };
   const storage: ObjectStorage = { obterTextoAnexo };
   const llmLote: LlmLoteGateway = { extrairLote };
-  return { extracoes, storage, llmLote, porEdital, salvar, obterTextoAnexo, extrairLote };
+  const usoLedger: UsoLlmLedger = { registrar };
+  return { extracoes, storage, llmLote, usoLedger, porEdital, salvar, obterTextoAnexo, extrairLote, registrar };
 }
 
 describe('ExtrairEditaisEmLoteUseCase', () => {
   it('cache-hit por edital (P-45): não vai ao lote, conta cacheHits', async () => {
     const d = deps([], { A: extracao('A', 0.9) });
-    const res = await new ExtrairEditaisEmLoteUseCase(d.llmLote, d.extracoes, d.storage).executar(
+    const res = await new ExtrairEditaisEmLoteUseCase(d.llmLote, d.extracoes, d.storage, d.usoLedger).executar(
       [item('A')],
       noop,
     );
@@ -77,7 +89,7 @@ describe('ExtrairEditaisEmLoteUseCase', () => {
 
   it('sem texto após OCR → ignorado (docs/10 §6), não entra no lote', async () => {
     const d = deps([]);
-    const res = await new ExtrairEditaisEmLoteUseCase(d.llmLote, d.extracoes, d.storage).executar(
+    const res = await new ExtrairEditaisEmLoteUseCase(d.llmLote, d.extracoes, d.storage, d.usoLedger).executar(
       [item('A', { temTextoSelecionavel: false, texto: '   ' })],
       noop,
     );
@@ -86,8 +98,8 @@ describe('ExtrairEditaisEmLoteUseCase', () => {
   });
 
   it('resolve anexos, extrai em lote e salva as extrações suficientes; propaga o signal (P-78)', async () => {
-    const d = deps([{ editalId: EditalId('A'), ok: true, extracao: extracao('A', 0.9) }]);
-    const res = await new ExtrairEditaisEmLoteUseCase(d.llmLote, d.extracoes, d.storage).executar(
+    const d = deps([{ editalId: EditalId('A'), ok: true, uso: USO_FAKE, extracao: extracao('A', 0.9) }]);
+    const res = await new ExtrairEditaisEmLoteUseCase(d.llmLote, d.extracoes, d.storage, d.usoLedger).executar(
       [item('A', { anexosRefs: ['anexo-1'] })],
       noop,
     );
@@ -101,8 +113,8 @@ describe('ExtrairEditaisEmLoteUseCase', () => {
   });
 
   it('confiança agregada 0 → insuficiente (leitura assistida, docs/10 §6), NÃO salva', async () => {
-    const d = deps([{ editalId: EditalId('A'), ok: true, extracao: extracao('A', 0) }]);
-    const res = await new ExtrairEditaisEmLoteUseCase(d.llmLote, d.extracoes, d.storage).executar(
+    const d = deps([{ editalId: EditalId('A'), ok: true, uso: USO_FAKE, extracao: extracao('A', 0) }]);
+    const res = await new ExtrairEditaisEmLoteUseCase(d.llmLote, d.extracoes, d.storage, d.usoLedger).executar(
       [item('A')],
       noop,
     );
@@ -113,10 +125,10 @@ describe('ExtrairEditaisEmLoteUseCase', () => {
 
   it('item ok:false do lote conta como falha e não derruba os demais', async () => {
     const d = deps([
-      { editalId: EditalId('A'), ok: true, extracao: extracao('A', 0.9) },
+      { editalId: EditalId('A'), ok: true, uso: USO_FAKE, extracao: extracao('A', 0.9) },
       { editalId: EditalId('B'), ok: false, motivo: 'lote: expired' },
     ]);
-    const res = await new ExtrairEditaisEmLoteUseCase(d.llmLote, d.extracoes, d.storage).executar(
+    const res = await new ExtrairEditaisEmLoteUseCase(d.llmLote, d.extracoes, d.storage, d.usoLedger).executar(
       [item('A'), item('B')],
       noop,
     );
@@ -127,7 +139,7 @@ describe('ExtrairEditaisEmLoteUseCase', () => {
 
   it('lista vazia → retorna zeros sem chamar o LLM', async () => {
     const d = deps([]);
-    const res = await new ExtrairEditaisEmLoteUseCase(d.llmLote, d.extracoes, d.storage).executar([], noop);
+    const res = await new ExtrairEditaisEmLoteUseCase(d.llmLote, d.extracoes, d.storage, d.usoLedger).executar([], noop);
     expect(res).toEqual({ extraidos: 0, cacheHits: 0, ignorados: 0, insuficientes: 0, falhas: 0 });
     expect(d.extrairLote).not.toHaveBeenCalled();
   });
@@ -135,8 +147,8 @@ describe('ExtrairEditaisEmLoteUseCase', () => {
   it('temTextoSelecionavel:true + texto vazio → vai ao LLM (OCR pode encontrar texto nos anexos)', async () => {
     // Documenta comportamento intencional: o guard `!temTextoSelecionavel && texto.trim() === ''` usa AND,
     // então um item com temTextoSelecionavel=true e texto vazio passa para o lote mesmo sem texto.
-    const d = deps([{ editalId: EditalId('A'), ok: true, extracao: extracao('A', 0.9) }]);
-    const res = await new ExtrairEditaisEmLoteUseCase(d.llmLote, d.extracoes, d.storage).executar(
+    const d = deps([{ editalId: EditalId('A'), ok: true, uso: USO_FAKE, extracao: extracao('A', 0.9) }]);
+    const res = await new ExtrairEditaisEmLoteUseCase(d.llmLote, d.extracoes, d.storage, d.usoLedger).executar(
       [item('A', { temTextoSelecionavel: true, texto: '' })],
       noop,
     );
@@ -149,13 +161,13 @@ describe('ExtrairEditaisEmLoteUseCase', () => {
     // cache-hit(C), ignorado(D), ok(A), insuficiente(B), falha(E)
     const d = deps(
       [
-        { editalId: EditalId('A'), ok: true, extracao: extracao('A', 0.9) },
-        { editalId: EditalId('B'), ok: true, extracao: extracao('B', 0) },
+        { editalId: EditalId('A'), ok: true, uso: USO_FAKE, extracao: extracao('A', 0.9) },
+        { editalId: EditalId('B'), ok: true, uso: USO_FAKE, extracao: extracao('B', 0) },
         { editalId: EditalId('E'), ok: false, motivo: 'timeout' },
       ],
       { C: extracao('C', 0.8) },
     );
-    const res = await new ExtrairEditaisEmLoteUseCase(d.llmLote, d.extracoes, d.storage).executar(
+    const res = await new ExtrairEditaisEmLoteUseCase(d.llmLote, d.extracoes, d.storage, d.usoLedger).executar(
       [
         item('A'),
         item('B'),

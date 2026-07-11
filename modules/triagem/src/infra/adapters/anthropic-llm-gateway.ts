@@ -9,7 +9,7 @@ import type { CategoriaHabilitacao } from '../../domain/value-objects/requisito.
 import { Risco } from '../../domain/value-objects/risco.js';
 import type { Severidade } from '../../domain/value-objects/risco.js';
 import type { EntradaExtracaoDTO } from '../../application/dtos.js';
-import type { LlmGateway } from '../../application/ports.js';
+import type { LlmGateway, UsoLlm } from '../../application/ports.js';
 
 /**
  * Requisição crua ao modelo. `system` é a instrução FIXA; `userContent` já traz o edital como DADO
@@ -23,9 +23,20 @@ export interface LlmExtracaoRequest {
 }
 
 /**
+ * Saída crua do `LlmClient` (RAD-230): `input` é o output NÃO-confiável da ferramenta (vai para
+ * `interpretarSaidaExtracao`); `uso` é o consumo de tokens da MESMA chamada, sempre presente —
+ * mesmo quando `input` depois falha a camada 3, os tokens já foram gastos.
+ */
+export interface ResultadoExtracaoClient {
+  readonly input: unknown;
+  readonly uso: UsoLlm;
+}
+
+/**
  * Seam testável do LLM (A17 §7): a ÚNICA peça específica de tecnologia. Devolve o INPUT da
- * ferramenta como `unknown` — saída NÃO-confiável, validada pela camada 3 do gateway. O gold set
- * troca esta implementação por um `RecordReplayLlmClient` (grava/reproduz sem custo nem flakiness).
+ * ferramenta como `unknown` — saída NÃO-confiável, validada pela camada 3 do gateway — junto do
+ * `uso` de tokens da chamada (RAD-230). O gold set troca esta implementação por um
+ * `RecordReplayLlmClient` (grava/reproduz sem custo nem flakiness).
  *
  * A impl concreta é o `AnthropicSdkClient` (apps/api — composition root), que mantém `@anthropic-ai/sdk`
  * FORA do boundary do módulo (P-74). Ele reusa `paramsExtracao`/`FERRAMENTA_SCHEMA` (com `strict: true`)
@@ -35,7 +46,7 @@ export interface LlmExtracaoRequest {
  * `RecordReplayLlmClient` (grava/reproduz sem custo nem flakiness).
  */
 export interface LlmClient {
-  extrairViaFerramenta(req: LlmExtracaoRequest, signal: AbortSignal): Promise<unknown>;
+  extrairViaFerramenta(req: LlmExtracaoRequest, signal: AbortSignal): Promise<ResultadoExtracaoClient>;
 }
 
 /** Nome da ferramenta de saída estruturada (structured output) — camada 3. */
@@ -68,9 +79,15 @@ export const INSTRUCAO_EXTRACAO = [
 export class AnthropicLlmGateway implements LlmGateway {
   constructor(private readonly client: LlmClient) {}
 
-  async extrair(entrada: EntradaExtracaoDTO, signal: AbortSignal): Promise<ExtracaoEdital> {
-    const bruto = await this.client.extrairViaFerramenta(montarRequisicaoExtracao(entrada), signal);
-    return interpretarSaidaExtracao(bruto, entrada);
+  async extrair(
+    entrada: EntradaExtracaoDTO,
+    signal: AbortSignal,
+  ): Promise<{ readonly extracao: ExtracaoEdital; readonly uso: UsoLlm }> {
+    const { input: bruto, uso } = await this.client.extrairViaFerramenta(
+      montarRequisicaoExtracao(entrada),
+      signal,
+    );
+    return { extracao: interpretarSaidaExtracao(bruto, entrada), uso };
   }
 }
 

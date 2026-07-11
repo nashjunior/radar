@@ -18,7 +18,11 @@
  * (RECORD mode) persiste a saída como fixture e o REPLAY roda sem CLI.
  */
 import { spawnSync } from 'node:child_process';
-import type { LlmClient, LlmExtracaoRequest } from '../src/infra/adapters/anthropic-llm-gateway.js';
+import type {
+  LlmClient,
+  LlmExtracaoRequest,
+  ResultadoExtracaoClient,
+} from '../src/infra/adapters/anthropic-llm-gateway.js';
 
 export interface ClaudeCliLlmClientOpts {
   /** Caminho do executável. Default: 'claude' (deve estar no PATH). */
@@ -81,7 +85,7 @@ export class ClaudeCliLlmClient implements LlmClient {
     this.timeoutMs = opts.timeoutMs ?? 120_000;
   }
 
-  extrairViaFerramenta(req: LlmExtracaoRequest, _signal: AbortSignal): Promise<unknown> {
+  extrairViaFerramenta(req: LlmExtracaoRequest, _signal: AbortSignal): Promise<ResultadoExtracaoClient> {
     const prompt = `${req.system}\n\n${INSTRUCAO_FORMATO}\n\n${req.userContent}`;
     const args = [
       '--print',
@@ -144,7 +148,20 @@ export class ClaudeCliLlmClient implements LlmClient {
     }
 
     try {
-      return Promise.resolve(JSON.parse(match[0]) as unknown);
+      const input = JSON.parse(match[0]) as unknown;
+      // Sem `tool_choice`/API estruturada, o CLI não expõe `usage` neste modo — zero é DESCONHECIDO,
+      // não "sem custo" (diferente do REPLAY do gold set); path de dev sem ANTHROPIC_API_KEY (RAD-139),
+      // fora do escopo de medição de produção do RAD-230 (que mede o `AnthropicSdkClient` real).
+      return Promise.resolve({
+        input,
+        uso: {
+          modelo: this.modelo,
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadInputTokens: 0,
+          cacheCreationInputTokens: 0,
+        },
+      });
     } catch {
       throw new Error(`claude CLI retornou JSON malformado: ${match[0].slice(0, 400)}`);
     }

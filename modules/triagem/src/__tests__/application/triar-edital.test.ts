@@ -11,6 +11,8 @@ import type {
   LlmGateway,
   PerfilGateway,
   TriagemRepository,
+  UsoLlm,
+  UsoLlmLedger,
 } from '../../application/ports.js';
 import { ConfiancaInsuficienteError, PerfilNaoEncontradoError } from '../../domain/errors/index.js';
 import { ExtracaoEdital } from '../../domain/extracao-edital.js';
@@ -72,6 +74,14 @@ const INPUT: TriarEditalInput = {
   limiarConfianca: 0.5,
 };
 
+const USO_FAKE: UsoLlm = {
+  modelo: 'claude-sonnet-5',
+  inputTokens: 1000,
+  outputTokens: 200,
+  cacheReadInputTokens: 0,
+  cacheCreationInputTokens: 0,
+};
+
 const PERFIL_HAB = PerfilHabilitacao.de({
   id: PERFIL,
   clienteFinalId: CLIENTE,
@@ -88,24 +98,26 @@ function deps(opts: {
 }) {
   const porEdital = vi.fn().mockResolvedValue(opts.existente ?? null);
   const salvarExtracao = vi.fn().mockResolvedValue(undefined);
-  const extrair = vi.fn().mockResolvedValue(opts.extraida ?? extracao());
+  const extrair = vi.fn().mockResolvedValue({ extracao: opts.extraida ?? extracao(), uso: USO_FAKE });
   const porId = vi.fn().mockResolvedValue(opts.perfil === undefined ? PERFIL_HAB : opts.perfil);
   const salvarTriagem = vi.fn().mockResolvedValue(undefined);
   const publicar = vi.fn().mockResolvedValue(undefined);
+  const registrar = vi.fn().mockResolvedValue(undefined);
 
   const extracoes: ExtracaoRepository = { porEdital, salvar: salvarExtracao };
   const perfis: PerfilGateway = { porId };
   const llm: LlmGateway = { extrair };
   const triagens: TriagemRepository = { salvar: salvarTriagem, porEditalEPerfil: vi.fn() };
   const eventos: EventPublisher = { publicar };
+  const usoLedger: UsoLlmLedger = { registrar };
 
-  const uc = new TriarEditalUseCase(extracoes, perfis, llm, triagens, eventos);
-  return { uc, porEdital, salvarExtracao, extrair, porId, salvarTriagem, publicar };
+  const uc = new TriarEditalUseCase(extracoes, perfis, llm, triagens, eventos, usoLedger);
+  return { uc, porEdital, salvarExtracao, extrair, porId, salvarTriagem, publicar, registrar };
 }
 
 describe('TriarEditalUseCase', () => {
   it('cache-miss: chama o LLM, salva a extração e conclui a triagem (publica triagem.concluida)', async () => {
-    const { uc, extrair, salvarExtracao, salvarTriagem, publicar } = deps({ existente: null });
+    const { uc, extrair, salvarExtracao, salvarTriagem, publicar, registrar } = deps({ existente: null });
     const dto = await uc.executar(INPUT, noop);
 
     expect(extrair).toHaveBeenCalledWith(CONTEUDO, noop);
@@ -119,6 +131,16 @@ describe('TriarEditalUseCase', () => {
     expect(evento.type).toBe('triagem.concluida');
     expect(evento.payload.riscos).toEqual(['não atende: Registro CREA']); // string[] no evento
     expect(evento.payload.clienteFinalId).toBe(CLIENTE);
+
+    // RAD-230: único caller com tenant/perfil conhecidos no momento da chamada ao LLM.
+    expect(registrar).toHaveBeenCalledTimes(1);
+    expect(registrar.mock.calls[0]![0]).toMatchObject({
+      editalId: EDITAL,
+      tenantId: TENANT,
+      clienteFinalId: CLIENTE,
+      perfilId: PERFIL,
+      modelo: USO_FAKE.modelo,
+    });
   });
 
   it('cache-hit por edital (P-45): NÃO chama o LLM', async () => {

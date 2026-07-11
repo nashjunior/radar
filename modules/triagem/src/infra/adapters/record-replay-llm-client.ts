@@ -1,4 +1,4 @@
-import type { LlmClient, LlmExtracaoRequest } from './anthropic-llm-gateway.js';
+import type { LlmClient, LlmExtracaoRequest, ResultadoExtracaoClient } from './anthropic-llm-gateway.js';
 
 /**
  * Chave determinística de um caso do gold set a partir da requisição. Default: o `userContent`
@@ -32,6 +32,18 @@ export interface RecordReplayLlmClientOpts {
 }
 
 /**
+ * REPLAY não chama o provedor — não há chamada real a medir. Zero é o valor CORRETO (RAD-230), não
+ * um placeholder: o gold set existe justamente para rodar sem custo (docstring da classe).
+ */
+const USO_REPLAY_ZERO = {
+  modelo: 'replay',
+  inputTokens: 0,
+  outputTokens: 0,
+  cacheReadInputTokens: 0,
+  cacheCreationInputTokens: 0,
+} as const;
+
+/**
  * `RecordReplayLlmClient` — o seam do gold set (A17 §7 / A16 §2.3) prometido em
  * `anthropic-llm-gateway.ts`: roda o pipeline REAL de extração (`montarRequisicaoExtracao` →
  * `interpretarSaidaExtracao`, camadas 1–6) contra saídas de LLM GRAVADAS, sem custo nem flakiness
@@ -59,16 +71,19 @@ export class RecordReplayLlmClient implements LlmClient {
     this.chave = opts.chave ?? chavePorConteudo;
   }
 
-  async extrairViaFerramenta(req: LlmExtracaoRequest, signal: AbortSignal): Promise<unknown> {
+  async extrairViaFerramenta(
+    req: LlmExtracaoRequest,
+    signal: AbortSignal,
+  ): Promise<ResultadoExtracaoClient> {
     const chave = this.chave(req);
     if (this.fixtures.has(chave)) {
-      return this.fixtures.get(chave);
+      return { input: this.fixtures.get(chave), uso: USO_REPLAY_ZERO };
     }
     const { delegate, onRecord } = this.opts;
     if (delegate !== undefined) {
-      const saida = await delegate.extrairViaFerramenta(req, signal);
-      onRecord?.(chave, saida);
-      return saida;
+      const resultado = await delegate.extrairViaFerramenta(req, signal);
+      onRecord?.(chave, resultado.input); // fixture grava só o INPUT — `uso` não é reproduzível no REPLAY
+      return resultado;
     }
     throw new FixtureDeGoldSetAusenteError(chave);
   }

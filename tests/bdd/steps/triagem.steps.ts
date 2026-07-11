@@ -21,6 +21,8 @@ import type {
   LlmGateway,
   PerfilGateway,
   TriagemDTO,
+  UsoLlm,
+  UsoLlmLedger,
 } from '@radar/triagem';
 import { ctx as matchingCtx } from './matching.steps.js';
 import { getFixture } from '../support/hooks.js';
@@ -29,16 +31,33 @@ import { getFixture } from '../support/hooks.js';
 // Stubs de gateways externos (LLM e Perfil nunca chamam serviços reais — A04 §4)
 // ---------------------------------------------------------------------------
 
+const USO_STUB: UsoLlm = {
+  modelo: 'stub',
+  inputTokens: 0,
+  outputTokens: 0,
+  cacheReadInputTokens: 0,
+  cacheCreationInputTokens: 0,
+};
+
 class StubLlmGateway implements LlmGateway {
   callCount = 0;
   private next: ExtracaoEdital | null = null;
   preparar(e: ExtracaoEdital): void { this.next = e; }
-  async extrair(_entrada: EntradaExtracaoDTO, _signal: AbortSignal): Promise<ExtracaoEdital> {
+  async extrair(
+    _entrada: EntradaExtracaoDTO,
+    _signal: AbortSignal,
+  ): Promise<{ extracao: ExtracaoEdital; uso: UsoLlm }> {
     this.callCount++;
     if (!this.next) throw new Error('LLM stub não configurado');
-    return this.next;
+    return { extracao: this.next, uso: USO_STUB };
   }
 }
+
+const usoLedgerStub: UsoLlmLedger = {
+  async registrar(_registro, _signal) {
+    /* stub — BDD não exercita o ledger de custo (RAD-230) */
+  },
+};
 
 class StubPerfilGateway implements PerfilGateway {
   private perfis = new Map<string, PerfilHabilitacao>();
@@ -145,6 +164,7 @@ function buildTriarUseCase(publisher: EventPublisher): TriarEditalUseCase {
     tctx.llmGateway,
     new PostgresTriagemRepository(db),
     publisher,
+    usoLedgerStub,
   );
 }
 

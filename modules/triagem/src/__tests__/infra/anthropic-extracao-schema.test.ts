@@ -13,6 +13,7 @@ import {
   MAX_TOKENS_EXTRACAO,
   extrairToolInput,
   paramsExtracao,
+  usoDeMensagem,
 } from '../../infra/adapters/anthropic-extracao-schema.js';
 import { SaidaLlmInvalidaError } from '../../domain/errors/index.js';
 import type { EntradaExtracaoDTO } from '../../application/dtos.js';
@@ -43,10 +44,12 @@ describe('anthropic-extracao-schema — peças compartilhadas síncrono ↔ lote
     expect(schema['properties'].riscos.items.properties.severidade.enum).toEqual([...SEVERIDADES]);
   });
 
+  const USAGE_ZERO = { input_tokens: 0, output_tokens: 0 };
+
   it('extrairToolInput devolve o input do bloco tool_use da ferramenta', () => {
     const input = { objeto: 'x' };
     const bruto = extrairToolInput(
-      { content: [{ type: 'tool_use', name: FERRAMENTA_EXTRACAO, input }] },
+      { content: [{ type: 'tool_use', name: FERRAMENTA_EXTRACAO, input }], usage: USAGE_ZERO },
       FERRAMENTA_EXTRACAO,
     );
     expect(bruto).toBe(input);
@@ -54,7 +57,7 @@ describe('anthropic-extracao-schema — peças compartilhadas síncrono ↔ lote
 
   it('extrairToolInput rejeita resposta sem o tool_use esperado (camada 3)', () => {
     expect(() =>
-      extrairToolInput({ content: [{ type: 'text' }] }, FERRAMENTA_EXTRACAO),
+      extrairToolInput({ content: [{ type: 'text' }], usage: USAGE_ZERO }, FERRAMENTA_EXTRACAO),
     ).toThrow(SaidaLlmInvalidaError);
   });
 
@@ -78,6 +81,7 @@ describe('anthropic-extracao-schema — peças compartilhadas síncrono ↔ lote
             },
           },
         ],
+        usage: USAGE_ZERO,
       },
       FERRAMENTA_EXTRACAO,
     );
@@ -85,5 +89,36 @@ describe('anthropic-extracao-schema — peças compartilhadas síncrono ↔ lote
     expect(extracao.editalId).toBe(EditalId('edital-1'));
     expect(extracao.objeto.valor).toBe('Aquisição de notebooks');
     expect(extracao.paginas).toBe(3);
+  });
+
+  it('usoDeMensagem (RAD-230): mapeia usage snake_case → UsoLlm, cache ausente vira zero', () => {
+    const uso = usoDeMensagem(
+      { content: [], usage: { input_tokens: 1000, output_tokens: 200 } },
+      'claude-sonnet-5',
+    );
+    expect(uso).toEqual({
+      modelo: 'claude-sonnet-5',
+      inputTokens: 1000,
+      outputTokens: 200,
+      cacheReadInputTokens: 0,
+      cacheCreationInputTokens: 0,
+    });
+  });
+
+  it('usoDeMensagem propaga tokens de cache quando presentes (P-95)', () => {
+    const uso = usoDeMensagem(
+      {
+        content: [],
+        usage: {
+          input_tokens: 1000,
+          output_tokens: 200,
+          cache_read_input_tokens: 300,
+          cache_creation_input_tokens: 50,
+        },
+      },
+      'claude-opus-4-8',
+    );
+    expect(uso.cacheReadInputTokens).toBe(300);
+    expect(uso.cacheCreationInputTokens).toBe(50);
   });
 });

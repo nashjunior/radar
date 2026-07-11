@@ -7,7 +7,7 @@ import {
   interpretarSaidaExtracao,
   montarRequisicaoExtracao,
 } from './anthropic-llm-gateway.js';
-import { extrairToolInput, paramsExtracao } from './anthropic-extracao-schema.js';
+import { extrairToolInput, paramsExtracao, usoDeMensagem } from './anthropic-extracao-schema.js';
 import type { ExtracaoMessageParams, MensagemComConteudo } from './anthropic-extracao-schema.js';
 
 /**
@@ -117,12 +117,16 @@ export class AnthropicBatchLlmGateway implements LlmLoteGateway {
   private interpretarItem(entrada: EntradaExtracaoDTO, item: BatchResultItem): ResultadoLote {
     const editalId = EditalId(entrada.editalId);
     if (item.result.type !== 'succeeded') {
+      // errored/canceled/expired: sem `message`, logo sem `usage` a medir (RAD-230 GAP, mesmo do síncrono).
       return { editalId, ok: false, motivo: `lote: ${item.result.type}` };
     }
     try {
       const bruto = extrairToolInput(item.result.message, FERRAMENTA_EXTRACAO);
       const extracao = interpretarSaidaExtracao(bruto, entrada);
-      return { editalId, ok: true, extracao };
+      // Mesmo `model` que montou a requisição deste item (`montarRequisicaoExtracao` é pura e
+      // determinística sobre `entrada` — reconstruir aqui evita carregar estado extra por custom_id).
+      const uso = usoDeMensagem(item.result.message, montarRequisicaoExtracao(entrada).modelo);
+      return { editalId, ok: true, extracao, uso };
     } catch (err) {
       // Saída fora do schema (camada 3) é falha ESPERADA (DomainError): o item cai, o lote segue.
       // Qualquer outra exceção é bug real — propaga, não vira `ok:false` silencioso.

@@ -44,6 +44,7 @@ function sucesso(customId: string, objeto: string, inputOverride?: unknown): Bat
         content: [
           { type: 'tool_use', name: FERRAMENTA_EXTRACAO, input: inputOverride ?? toolInput(objeto) },
         ],
+        usage: { input_tokens: 1000, output_tokens: 200 },
       },
     },
   };
@@ -88,6 +89,14 @@ describe('AnthropicBatchLlmGateway — transporte em lote (RAD-54)', () => {
     const rb = res.find((r) => r.editalId === EditalId('B'));
     expect(ra?.ok && ra.extracao.objeto.valor).toBe('Aquisição de notebooks');
     expect(rb?.ok && rb.extracao.objeto.valor).toBe('Contratação de limpeza');
+    // RAD-230: `uso` acompanha CADA item (mesma inferência do síncrono — reconstrói o modelo por entrada).
+    expect(ra?.ok && ra.uso).toEqual({
+      modelo: 'claude-sonnet-5',
+      inputTokens: 1000,
+      outputTokens: 200,
+      cacheReadInputTokens: 0,
+      cacheCreationInputTokens: 0,
+    });
   });
 
   it('monta a requisição igual ao caminho síncrono (custom_id, system, tool, tool_choice)', async () => {

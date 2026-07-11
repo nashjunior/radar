@@ -9,6 +9,7 @@ import {
   ExtrairEditaisEmLoteUseCase,
   type ExtracaoRepository,
   type ObjectStorage,
+  type UsoLlmLedger,
 } from '@radar/triagem';
 import {
   AnthropicBatchLlmGateway,
@@ -42,6 +43,13 @@ const extracaoStubWorkers: ExtracaoRepository = {
 const objectStorageStub: ObjectStorage = {
   async obterTextoAnexo(_ref, _signal) {
     return '';
+  },
+};
+
+/** Stub no-op de UsoLlmLedger — substituir por PostgresUsoLlmLedger quando DB provisionado (RAD-230). */
+const usoLedgerStub: UsoLlmLedger = {
+  async registrar(_registro, _signal) {
+    /* stub */
   },
 };
 
@@ -88,6 +96,7 @@ export function iniciarWorkers(): WorkersHandle | null {
     batchGateway,
     extracaoStubWorkers,
     objectStorageStub,
+    usoLedgerStub,
   );
 
   const documentosGateway = new DocumentosEditalAclAdapter(documentosPortStub);
