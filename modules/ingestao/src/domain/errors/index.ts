@@ -72,6 +72,18 @@ export class UrlBloqueadaPorSsrfError extends DomainError {
 }
 
 /**
+ * anoCompra/sequencialCompra ausentes ou não-positivos — chave (com cnpj) dos endpoints de
+ * detalhe/arquivos do PNCP (A02 §2). Nunca deve chegar zerado numa gravação nova; só ocorre em
+ * linha legada anterior a RAD-198 cujo backfill ainda não rodou (migração 004, colunas NULLABLE).
+ */
+export class IdentificadorCompraInvalidoError extends DomainError {
+  readonly code = 'IDENTIFICADOR_COMPRA_INVALIDO' as const;
+  constructor(campo: string, valor: number) {
+    super(`identificador de compra inválido: '${campo}' = ${valor} (esperado > 0)`);
+  }
+}
+
+/**
  * Operação rejeitada porque o circuit breaker está aberto (arq/04 §7, P-34).
  * Degradação graciosa: o chamador deve servir o estado atual sem tocar na fonte.
  */

@@ -2,6 +2,7 @@ import type {
   ArquivoPncpData,
   ContratacaoData,
   PncpGateway,
+  PncpIdentificadorCompra,
 } from '../../application/ports.js';
 import {
   FonteIndisponivelError,
@@ -9,10 +10,19 @@ import {
 } from '../../domain/errors/index.js';
 import { SsrfGuard, type SsrfGuardConfig } from './ssrf-guard.js';
 
-/** URL base da API pública de consulta do PNCP. [A VALIDAR — Swagger] */
+/**
+ * URL base da API pública de CONSULTA do PNCP (contratações, detalhe). Confirmada contra o
+ * OpenAPI oficial (2026-07-11) — ver `arquitetura/02` §2.
+ */
 const BASE_URL = 'https://pncp.gov.br/api/consulta';
 
-/** Teto de registros por página. [A VALIDAR — documentar no Swagger] */
+/**
+ * URL base da API de DADOS do PNCP — arquivos/anexos vivem aqui, não em `/api/consulta`
+ * (confirmado 2026-07-11; era o bug do item 4 de RAD-198).
+ */
+const ARQUIVOS_BASE_URL = 'https://pncp.gov.br/api/pncp';
+
+/** Teto de registros por página: 10–50, confirmado (2026-07-11). */
 const TAMANHO_PAGINA = 50;
 
 /** Allowlist de egress padrão para o PNCP (P-58). Sobreposta via config em produção. */
@@ -82,11 +92,12 @@ export class PncpHttpGateway implements PncpGateway {
   }
 
   async buscarContratacaoPorNumero(
-    numeroControlePncp: string,
+    identificador: PncpIdentificadorCompra,
     signal: AbortSignal,
   ): Promise<ContratacaoData | null> {
-    // TODO: confirmar endpoint no Swagger — forma esperada abaixo [A VALIDAR]
-    const url = `${BASE_URL}/v1/contratacoes/${encodeURIComponent(numeroControlePncp)}`;
+    // Não existe GET /v1/contratacoes/{numeroControle} na API real — o único detalhe
+    // individual é por cnpj/ano/sequencial (confirmado contra o OpenAPI oficial, 2026-07-11).
+    const url = `${BASE_URL}${caminhoDaCompra(identificador)}`;
     const resposta = await this.fetchComRetry(url, signal);
     if (resposta.status === 404) return null;
     const json = await resposta.json() as unknown;
@@ -94,14 +105,35 @@ export class PncpHttpGateway implements PncpGateway {
   }
 
   async buscarArquivos(
-    numeroControlePncp: string,
+    identificador: PncpIdentificadorCompra,
     signal: AbortSignal,
   ): Promise<ArquivoPncpData[]> {
-    // TODO: derivar cnpj/ano/sequencial do numeroControlePncp e montar o path correto
-    // Endpoint esperado: GET /v1/orgaos/{cnpj}/compras/{ano}/{sequencial}/arquivos [A VALIDAR]
-    void numeroControlePncp;
-    void signal;
-    throw new Error('buscarArquivos: não implementado — aguardando confirmação do endpoint no Swagger');
+    // Arquivos vivem na API de DADOS (/api/pncp), não em /api/consulta — confirmado
+    // 2026-07-11 (era o bug do item 4 de RAD-198).
+    const url = `${ARQUIVOS_BASE_URL}${caminhoDaCompra(identificador)}/arquivos`;
+    const resposta = await this.fetchComRetry(url, signal);
+    const json = await resposta.json() as unknown;
+    if (!Array.isArray(json)) {
+      throw new SchemaDriftError('arquivos', 'resposta de /arquivos não é um array');
+    }
+    // [A VALIDAR — Swagger] Só o endpoint/base de /arquivos foi confirmado por chamada real
+    // nesta verificação (2026-07-11) — o corpo de cada item, não. Nomes de campo abaixo são
+    // best-effort pela convenção do resto da API (uri do arquivo, título do documento);
+    // tamanhoBytes/tipoMime não aparecem nesse endpoint tipicamente — confirmar e ajustar
+    // antes de operar contra o PNCP real (mesmo tratamento do restante do arquivo: falha
+    // aberta/loud via SchemaDriftError quando falta o essencial, nunca grava lixo).
+    return (json as PncpArquivoRaw[]).map((raw) => {
+      const urlOrigem = raw.uri ?? raw.url;
+      if (!urlOrigem) {
+        throw new SchemaDriftError('arquivos[].uri', 'item de /arquivos sem URL de origem');
+      }
+      return {
+        nome: raw.titulo ?? raw.nomeArquivo ?? urlOrigem.split('/').pop() ?? 'arquivo',
+        urlOrigem,
+        tamanhoBytes: 0,
+        tipoMime: 'application/octet-stream',
+      };
+    });
   }
 
   async downloadArquivo(urlOrigem: string, signal: AbortSignal): Promise<Uint8Array> {
@@ -133,7 +165,10 @@ export class PncpHttpGateway implements PncpGateway {
           await aguardar(1000 * 2 ** tentativa, signal);
           continue;
         }
-        if (!resp.ok) {
+        // 404 não é falha transiente de fonte — é resposta válida ("compra não encontrada"),
+        // que buscarContratacaoPorNumero trata como null. Lançar aqui tornaria esse caminho
+        // morto (bug encontrado pelo teste de RAD-198: 404 nunca chegava ao chamador).
+        if (!resp.ok && resp.status !== 404) {
           throw new FonteIndisponivelError('PNCP', `HTTP ${resp.status}`);
         }
         return resp;
@@ -177,6 +212,15 @@ function isAbortError(err: unknown): boolean {
   return err instanceof Error && err.name === 'AbortError';
 }
 
+/**
+ * Path do único endpoint de detalhe individual real: `GET /v1/orgaos/{cnpj}/compras/{ano}/{sequencial}`
+ * (`/arquivos` é o mesmo path + sufixo). Não existe `/v1/contratacoes/{numeroControle}` na API real.
+ */
+function caminhoDaCompra(identificador: PncpIdentificadorCompra): string {
+  return `/v1/orgaos/${encodeURIComponent(identificador.cnpj)}/compras/` +
+    `${identificador.anoCompra}/${identificador.sequencialCompra}`;
+}
+
 // ---------------------------------------------------------------------------
 // Tipos do PNCP (apenas neste arquivo — não vazam para fora do ACL)
 // ---------------------------------------------------------------------------
@@ -191,7 +235,10 @@ interface PncpPaginaRaw {
 
 interface PncpContratacaoRaw {
   numeroControlePNCP: string;
-  modalidade: { codigo: number; nome: string };
+  anoCompra: number;
+  sequencialCompra: number;
+  modalidadeId: number;
+  modalidadeNome: string;
   situacaoCompraNome: string;
   objetoCompra: string;
   valorTotalEstimado?: number | null;
@@ -199,13 +246,24 @@ interface PncpContratacaoRaw {
   dataPublicacaoPncp: string;
   dataAtualizacao: string;
   orgaoEntidade: { cnpj: string; razaoSocial: string };
-  unidadeOrgao: { ufNome: string; municipioNome: string };
+  unidadeOrgao: { ufSigla: string; municipioNome: string };
   itens?: Array<{
     numeroItem: number;
     descricao: string;
     quantidade: number;
     valorUnitarioEstimado?: number | null;
   }>;
+}
+
+/**
+ * [A VALIDAR — Swagger] Corpo de cada item de `/arquivos` não confirmado por chamada real
+ * (só o endpoint/base foram, 2026-07-11) — nomes best-effort pela convenção do resto da API.
+ */
+interface PncpArquivoRaw {
+  uri?: string;
+  url?: string;
+  titulo?: string;
+  nomeArquivo?: string;
 }
 
 function validarPaginacao(json: unknown): PncpPaginaRaw {
@@ -224,8 +282,10 @@ function validarPaginacao(json: unknown): PncpPaginaRaw {
 function traduzirContratacao(raw: PncpContratacaoRaw): ContratacaoData {
   return {
     numeroControlePncp: raw.numeroControlePNCP,
-    modalidadeCodigo: raw.modalidade.codigo,
-    modalidadeNome: raw.modalidade.nome,
+    anoCompra: raw.anoCompra,
+    sequencialCompra: raw.sequencialCompra,
+    modalidadeCodigo: raw.modalidadeId,
+    modalidadeNome: raw.modalidadeNome,
     faseAtual: raw.situacaoCompraNome,
     objeto: raw.objetoCompra,
     valorEstimado: raw.valorTotalEstimado ?? null,
@@ -237,7 +297,9 @@ function traduzirContratacao(raw: PncpContratacaoRaw): ContratacaoData {
     orgao: {
       cnpj: raw.orgaoEntidade.cnpj,
       nome: raw.orgaoEntidade.razaoSocial,
-      uf: raw.unidadeOrgao.ufNome,
+      // UF em sigla (2 letras), não nome por extenso — consumido pelo filtro de
+      // Matching (regiaoUf) via evento cross-context edital.ingerido (RAD-198 item 3).
+      uf: raw.unidadeOrgao.ufSigla,
       municipio: raw.unidadeOrgao.municipioNome,
     },
     itens: (raw.itens ?? []).map(i => ({

@@ -40,7 +40,11 @@ export class AtualizarFaseEditalUseCase {
     }
 
     const dadoNovo = await this.pncpGateway.buscarContratacaoPorNumero(
-      input.numeroControlePncp,
+      {
+        cnpj: editalAtual.orgao.cnpj.valor,
+        anoCompra: editalAtual.anoCompra,
+        sequencialCompra: editalAtual.sequencialCompra,
+      },
       signal,
     );
     if (dadoNovo === null) {

@@ -7,6 +7,8 @@ const CNPJ_VALIDO = '11222333000181';
 const baseProps = {
   id: EditalId('edital-001'),
   numeroControlePncp: '00394502000167-1-000001/2024',
+  anoCompra: 2024,
+  sequencialCompra: 1,
   modalidadeCodigo: 6,
   modalidadeNome: 'Concorrência',
   faseAtual: 'Publicado',

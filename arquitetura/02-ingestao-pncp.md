@@ -12,7 +12,7 @@ Decisão fechada: no MVP a coleta é **só via API pública de consulta do PNCP*
 
 - **Base (consulta pública, sem autenticação):** `https://pncp.gov.br/api/consulta`
 - **Swagger:** `https://pncp.gov.br/api/consulta/swagger-ui/index.html` · spec OpenAPI: `/v3/api-docs`
-- **Formato:** JSON, com **paginação** (campos `totalRegistros`, `totalPaginas`, `paginaAtual`, `paginasRestantes`, `empty` — docs/03, §7).
+- **Formato:** JSON, com **paginação** (campos `totalRegistros`, `totalPaginas`, `numeroPagina`, `paginasRestantes`, `empty` — docs/03, §7). Confirmado contra o OpenAPI oficial (2026-07-11, RAD-198): o campo é `numeroPagina`, não `paginaAtual`.
 - **Identificador único:** `numeroControlePNCP` — formato `{cnpj}-{sequencialCompra}/{anoCompra}` (ex.: `80881915000192-1-000044/2026`) — chave para deduplicação e idempotência (§4).
 
 Endpoints relevantes ao MVP (contratos confirmados no Swagger e por chamada real — 2026-07-05):
@@ -22,7 +22,8 @@ Endpoints relevantes ao MVP (contratos confirmados no Swagger e por chamada real
 | Contratações por **data de publicação** | `GET /v1/contratacoes/publicacao` | `dataInicial`, `dataFinal` (yyyyMMdd), `codigoModalidadeContratacao` (int) | `codigoModoDisputa`, `uf`, `codigoMunicipioIbge`, `cnpj`, `pagina`, `tamanhoPagina` | |
 | Contratações por **data de atualização global** | `GET /v1/contratacoes/atualizacao` | `dataInicial`, `dataFinal` (yyyyMMdd), `codigoModalidadeContratacao` (int) | mesmos opcionais acima | Retorna ~2,6× mais registros que `/publicacao` no mesmo dia |
 | Contratações com **proposta em aberto** | `GET /v1/contratacoes/proposta` | `dataFinal` (yyyyMMdd), `pagina` | `codigoModalidadeContratacao`, `tamanhoPagina`, filtros de órgão | Confirmado por chamada real (2026-07-06); `pagina` é obrigatório pelo spec — ausência causa 422 |
-| **Arquivos/anexos** de uma contratação | `GET /v1/orgaos/{cnpj}/compras/{ano}/{sequencial}/arquivos` | path params | — | Listado no spec; não testado |
+| **Detalhe individual** de uma contratação | `GET /v1/orgaos/{cnpj}/compras/{ano}/{sequencial}` | path params | — | Único endpoint de detalhe — não existe `GET /v1/contratacoes/{numeroControlePNCP}`. Confirmado 2026-07-05; reforçado no código em RAD-198 (o gateway usava o endpoint inexistente). |
+| **Arquivos/anexos** de uma contratação | `GET /v1/orgaos/{cnpj}/compras/{ano}/{sequencial}/arquivos` | path params | — | Base é a API de **DADOS** (`https://pncp.gov.br/api/pncp`), **não** `/api/consulta` (§2 acima) — confirmado 2026-07-11 (RAD-198); o corpo de cada item ainda não foi confirmado por chamada real `[A VALIDAR — Swagger]`. |
 
 **Paginação:** `tamanhoPagina` aceito: 10–50 (limite máximo = **50**; valores > 50 retornam 400). Padrão: 10. Iterar modalidade a modalidade; toda varredura por dia requer ~120 requests com `tamanhoPagina=50`.
 
@@ -73,6 +74,8 @@ Três regimes:
 1. **Carga inicial (backfill):** varrer janelas de data para trás até o horizonte desejado, por modalidade. Roda uma vez.
 2. **Incremental (frescor):** o agendador dispara em intervalo curto o suficiente para o p95 ≤ 30 min (docs/12) — usando `publicacao` para novos editais e `atualizacao` para mudanças de fase/prazo. `[A VALIDAR — cadência exata]`
 3. **Reconciliação (cobertura):** varredura periódica mais ampla (ex.: diária) para pegar o que o incremental perdeu e garantir ≥ 99% (docs/12). Divergência entre reconciliação e incremental é sinal de alerta.
+
+**Detalhe individual (regimes 2 e 3).** Tanto o incremental (mudança de fase) quanto a reconciliação consultam o estado atual de um edital específico já catalogado — via `GET /v1/orgaos/{cnpj}/compras/{ano}/{sequencial}` (§2), chaveado por `cnpj`+`anoCompra`+`sequencialCompra` já carregados no registro local, nunca parseado de `numeroControlePNCP` (formato irregular — RAD-198). **Não existe** `GET /v1/contratacoes/{numeroControlePNCP}`.
 
 **Iteração por modalidade.** Como `/publicacao` exige `codigoModalidadeContratacao`, o coletor faz um laço sobre a tabela de modalidades da Lei 14.133 — pregão, concorrência, concurso, leilão, diálogo competitivo, e as hipóteses de contratação direta (docs/02, §2). Os **códigos** foram confirmados por chamada real à API (2026-07-05):
 

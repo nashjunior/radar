@@ -18,6 +18,8 @@ function criarEdital(fase = 'Publicado'): Edital {
   return Edital.criar({
     id: EditalId('edital-001'),
     numeroControlePncp: NUMERO_CONTROLE,
+    anoCompra: 2024,
+    sequencialCompra: 1,
     modalidadeCodigo: 6,
     modalidadeNome: 'Concorrência',
     faseAtual: fase,
@@ -35,6 +37,8 @@ function criarEdital(fase = 'Publicado'): Edital {
 function dadoPncp(fase = 'Homologado'): ContratacaoData {
   return {
     numeroControlePncp: NUMERO_CONTROLE,
+    anoCompra: 2024,
+    sequencialCompra: 1,
     modalidadeCodigo: 6,
     modalidadeNome: 'Concorrência',
     faseAtual: fase,

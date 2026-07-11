@@ -58,7 +58,11 @@ export class ReconciliarCatalogoUseCase {
           verificados++;
 
           const dadoAtual = await this.pncpGateway.buscarContratacaoPorNumero(
-            editalLocal.numeroControlePncp.valor,
+            {
+              cnpj: editalLocal.orgao.cnpj.valor,
+              anoCompra: editalLocal.anoCompra,
+              sequencialCompra: editalLocal.sequencialCompra,
+            },
             signal,
           );
 

@@ -10,6 +10,10 @@ import type { DomainEvent } from './events.js';
 
 export interface ContratacaoData {
   numeroControlePncp: string;
+  /** Ano da compra no PNCP — chave (com cnpj/sequencialCompra) do endpoint de detalhe/arquivos. */
+  anoCompra: number;
+  /** Sequencial da compra no PNCP — idem. Nunca derivar de numeroControlePncp (formato irregular). */
+  sequencialCompra: number;
   modalidadeCodigo: number;
   modalidadeNome: string;
   faseAtual: string;
@@ -39,6 +43,18 @@ export interface ArquivoPncpData {
   tipoMime: string;
 }
 
+/**
+ * Identifica uma compra para os endpoints de detalhe/arquivos do PNCP
+ * (`GET /v1/orgaos/{cnpj}/compras/{ano}/{sequencial}[/arquivos]`). Vem sempre de um
+ * `ContratacaoData`/`Edital` já carregado — nunca parseado de `numeroControlePncp`
+ * (formato irregular, ex.: `80881915000192-1-000044/2026`).
+ */
+export interface PncpIdentificadorCompra {
+  cnpj: string;
+  anoCompra: number;
+  sequencialCompra: number;
+}
+
 // ---------------------------------------------------------------------------
 // Ports de saída (implementados na infra/) — nomenclatura por papel (A10, §8)
 // ---------------------------------------------------------------------------
@@ -62,15 +78,15 @@ export interface PncpGateway {
     signal: AbortSignal,
   ): AsyncGenerator<ContratacaoData[]>;
 
-  /** Busca uma contratação específica pelo número de controle. */
+  /** Busca uma contratação específica pelo identificador (cnpj/ano/sequencial). */
   buscarContratacaoPorNumero(
-    numeroControlePncp: string,
+    identificador: PncpIdentificadorCompra,
     signal: AbortSignal,
   ): Promise<ContratacaoData | null>;
 
   /** Lista metadados dos arquivos/anexos de uma contratação. */
   buscarArquivos(
-    numeroControlePncp: string,
+    identificador: PncpIdentificadorCompra,
     signal: AbortSignal,
   ): Promise<ArquivoPncpData[]>;
 

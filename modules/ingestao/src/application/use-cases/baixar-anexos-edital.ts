@@ -44,7 +44,11 @@ export class BaixarAnexosEditalUseCase {
     }
 
     const arquivos = await this.pncpGateway.buscarArquivos(
-      edital.numeroControlePncp.valor,
+      {
+        cnpj: edital.orgao.cnpj.valor,
+        anoCompra: edital.anoCompra,
+        sequencialCompra: edital.sequencialCompra,
+      },
       signal,
     );
 

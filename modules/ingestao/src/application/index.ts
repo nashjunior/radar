@@ -22,6 +22,7 @@ export type {
   IdProvider,
   ObjectStorage,
   PncpGateway,
+  PncpIdentificadorCompra,
   ProvenienciaRepository,
 } from './ports.js';
 export {

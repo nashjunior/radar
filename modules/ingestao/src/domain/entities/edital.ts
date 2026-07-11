@@ -4,6 +4,7 @@ import { Modalidade } from '../value-objects/modalidade.js';
 import { NumeroControlePncp } from '../value-objects/numero-controle-pncp.js';
 import { Proveniencia } from '../value-objects/proveniencia.js';
 import { ValorMonetario } from '../value-objects/valor-monetario.js';
+import { IdentificadorCompraInvalidoError } from '../errors/index.js';
 import { ItemEdital } from './item-edital.js';
 
 /** Órgão contratante, com CNPJ validado. */
@@ -17,6 +18,9 @@ export interface EditalOrgao {
 export interface CriarEditalProps {
   id: EditalId;
   numeroControlePncp: string;
+  /** Ano/sequencial da compra no PNCP — chave do endpoint de detalhe/arquivos (A02 §2). */
+  anoCompra: number;
+  sequencialCompra: number;
   modalidadeCodigo: number;
   modalidadeNome: string;
   faseAtual: string;
@@ -51,6 +55,8 @@ export class Edital {
   private constructor(
     readonly id: EditalId,
     readonly numeroControlePncp: NumeroControlePncp,
+    readonly anoCompra: number,
+    readonly sequencialCompra: number,
     readonly modalidade: Modalidade,
     readonly faseAtual: string,
     readonly objeto: string,
@@ -64,6 +70,12 @@ export class Edital {
   ) {}
 
   static criar(props: CriarEditalProps): Edital {
+    if (!Number.isInteger(props.anoCompra) || props.anoCompra <= 0) {
+      throw new IdentificadorCompraInvalidoError('anoCompra', props.anoCompra);
+    }
+    if (!Number.isInteger(props.sequencialCompra) || props.sequencialCompra <= 0) {
+      throw new IdentificadorCompraInvalidoError('sequencialCompra', props.sequencialCompra);
+    }
     const orgao: EditalOrgao = {
       cnpj: Cnpj.criar(props.orgao.cnpj),
       nome: props.orgao.nome,
@@ -73,6 +85,8 @@ export class Edital {
     return new Edital(
       props.id,
       NumeroControlePncp.criar(props.numeroControlePncp),
+      props.anoCompra,
+      props.sequencialCompra,
       Modalidade.criar(props.modalidadeCodigo, props.modalidadeNome),
       props.faseAtual,
       props.objeto,
@@ -91,6 +105,8 @@ export class Edital {
     return new Edital(
       this.id,
       this.numeroControlePncp,
+      this.anoCompra,
+      this.sequencialCompra,
       this.modalidade,
       novaFase,
       this.objeto,

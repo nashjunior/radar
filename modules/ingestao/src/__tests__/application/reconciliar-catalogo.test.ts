@@ -20,6 +20,8 @@ function criarEdital(fase = 'Publicado', dataAt = new Date('2024-01-10T10:00:00Z
   return Edital.criar({
     id: EditalId('edital-001'),
     numeroControlePncp: NUMERO_CONTROLE,
+    anoCompra: 2024,
+    sequencialCompra: 1,
     modalidadeCodigo: 6,
     modalidadeNome: 'Concorrência',
     faseAtual: fase,
@@ -37,6 +39,8 @@ function criarEdital(fase = 'Publicado', dataAt = new Date('2024-01-10T10:00:00Z
 function dadoPncp(fase = 'Publicado', dataAt = new Date('2024-01-10T10:00:00Z')): ContratacaoData {
   return {
     numeroControlePncp: NUMERO_CONTROLE,
+    anoCompra: 2024,
+    sequencialCompra: 1,
     modalidadeCodigo: 6,
     modalidadeNome: 'Concorrência',
     faseAtual: fase,

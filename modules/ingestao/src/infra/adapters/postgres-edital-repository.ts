@@ -21,6 +21,8 @@ interface ItemJson {
 interface Row {
   id: string;
   numero_controle_pncp: string;
+  ano_compra: number;
+  sequencial_compra: number;
   modalidade_codigo: number;
   modalidade_nome: string;
   fase_atual: string;
@@ -43,6 +45,8 @@ function rowToEdital(row: Row): Edital {
   return EditalEntity.criar({
     id: row.id as EditalId,
     numeroControlePncp: row.numero_controle_pncp,
+    anoCompra: Number(row.ano_compra),
+    sequencialCompra: Number(row.sequencial_compra),
     modalidadeCodigo: Number(row.modalidade_codigo),
     modalidadeNome: row.modalidade_nome,
     faseAtual: row.fase_atual,
@@ -82,23 +86,27 @@ export class PostgresEditalRepository implements EditalRepository {
   async upsertPorNumeroControle(edital: Edital, signal: AbortSignal): Promise<void> {
     await this.db.query(
       `INSERT INTO editais
-         (id, numero_controle_pncp, modalidade_codigo, modalidade_nome,
+         (id, numero_controle_pncp, ano_compra, sequencial_compra, modalidade_codigo, modalidade_nome,
           fase_atual, objeto, valor_estimado, prazo_proposta,
           data_publicacao, data_atualizacao,
           orgao_cnpj, orgao_nome, orgao_uf, orgao_municipio,
           prov_fonte, prov_base_legal, prov_coletado_em, itens)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18::jsonb)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::jsonb)
        ON CONFLICT (numero_controle_pncp) DO UPDATE SET
-         fase_atual       = EXCLUDED.fase_atual,
-         objeto           = EXCLUDED.objeto,
-         valor_estimado   = EXCLUDED.valor_estimado,
-         prazo_proposta   = EXCLUDED.prazo_proposta,
-         data_atualizacao = EXCLUDED.data_atualizacao,
-         prov_coletado_em = EXCLUDED.prov_coletado_em,
-         itens            = EXCLUDED.itens`,
+         ano_compra        = EXCLUDED.ano_compra,
+         sequencial_compra = EXCLUDED.sequencial_compra,
+         fase_atual        = EXCLUDED.fase_atual,
+         objeto            = EXCLUDED.objeto,
+         valor_estimado    = EXCLUDED.valor_estimado,
+         prazo_proposta    = EXCLUDED.prazo_proposta,
+         data_atualizacao  = EXCLUDED.data_atualizacao,
+         prov_coletado_em  = EXCLUDED.prov_coletado_em,
+         itens             = EXCLUDED.itens`,
       [
         edital.id,
         edital.numeroControlePncp.valor,
+        edital.anoCompra,
+        edital.sequencialCompra,
         edital.modalidade.codigo,
         edital.modalidade.nome,
         edital.faseAtual,
@@ -129,7 +137,7 @@ export class PostgresEditalRepository implements EditalRepository {
 
   async porId(id: EditalId, signal: AbortSignal): Promise<Edital | null> {
     const { rows } = await this.db.query<Row>(
-      `SELECT id, numero_controle_pncp, modalidade_codigo, modalidade_nome,
+      `SELECT id, numero_controle_pncp, ano_compra, sequencial_compra, modalidade_codigo, modalidade_nome,
               fase_atual, objeto, valor_estimado, prazo_proposta,
               data_publicacao, data_atualizacao,
               orgao_cnpj, orgao_nome, orgao_uf, orgao_municipio,
@@ -147,7 +155,7 @@ export class PostgresEditalRepository implements EditalRepository {
     signal: AbortSignal,
   ): Promise<Edital | null> {
     const { rows } = await this.db.query<Row>(
-      `SELECT id, numero_controle_pncp, modalidade_codigo, modalidade_nome,
+      `SELECT id, numero_controle_pncp, ano_compra, sequencial_compra, modalidade_codigo, modalidade_nome,
               fase_atual, objeto, valor_estimado, prazo_proposta,
               data_publicacao, data_atualizacao,
               orgao_cnpj, orgao_nome, orgao_uf, orgao_municipio,
@@ -169,7 +177,7 @@ export class PostgresEditalRepository implements EditalRepository {
     // eslint-disable-next-line no-constant-condition
     while (true) {
       const { rows } = await this.db.query<Row>(
-        `SELECT id, numero_controle_pncp, modalidade_codigo, modalidade_nome,
+        `SELECT id, numero_controle_pncp, ano_compra, sequencial_compra, modalidade_codigo, modalidade_nome,
                 fase_atual, objeto, valor_estimado, prazo_proposta,
                 data_publicacao, data_atualizacao,
                 orgao_cnpj, orgao_nome, orgao_uf, orgao_municipio,
