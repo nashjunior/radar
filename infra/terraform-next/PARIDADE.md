@@ -136,3 +136,41 @@ enxerga o estado real e, pós-swap, o `apply` continua sobre o mesmo estado, sem
 - **Owner do unblock:** decisão de conta/creds AWS = usuário/Nash (interação
   `interaction:RAD-134:aws-account-decision`, RAD-130); execução do gate = runner
   tofu-enabled co-localizado (frente RAD-134/RAD-130).
+
+### Pré-flight estático estendido (2026-07-10, Artur — RAD-182)
+
+Além da paridade de **endereço** acima, rodei um gate estático mais fundo — a camada que o
+`tofu validate` cobriria (indisponível: sem tooling) e que antecipa o que o `plan -exit 0`
+vai confirmar. **Todos passaram.** Método reproduzível (grep/diff + parser Python de blocos,
+sem credencial):
+
+1. **Endereços de recurso (9/9 módulos):** conjunto `resource`/`data` `<tipo>.<nome>`
+   idêntico byte-a-byte old↔next. Sem add/remove/rename/move → sem destroy/create.
+2. **Instâncias de módulo (3/3 stacks):** mesmas 9 instâncias por env; mesmas chaves de
+   `for_each` (`functions`: ingestao/matching/notificacao; `pools` do `db_proxy` internos e
+   preservados).
+3. **Literais de config resolvida (`main.tf`, comentários/`description` removidos):** 7/9
+   módulos byte-idênticos. Os 3 deltas restantes são **inócuos**:
+   - `compute`: `${var.ecr_image_uri}` → `${var.container_image_uri}` (rename puro, mesmo valor).
+   - `serverless`/`db_proxy`: `${var.aws_region}` → `${var.region}` no host do endpoint
+     Secrets Manager (rename puro, mesmo valor).
+   - `database`: `min_capacity = var.env == "prod" ? 0.5 : 0.5` → `min_capacity = 0.5`
+     (ternário no-op colapsado; **resolve a `0.5` em todo env**, antes e depois → zero diff).
+4. **Substituto do `tofu validate` (consistência de rename, o que faria o gate falhar cedo):**
+   - Nenhum `var.X` referenciado dentro de um módulo sem `variable "X"` declarado (9/9).
+   - Todo input top-level que o stack passa mapeia para uma `variable` do módulo (3 env × 9 mód).
+   - Todo `module.<inst>.<output>` referenciado nos stacks resolve para um `output` real.
+   → sem rename meio-aplicado / referência pendente.
+5. **Fronteira back↔front (regra CLAUDE.md):** nomes de output do `identity`
+   (`issuer_url`/`jwks_uri`/`tenant_claim`, consumidos pelo BFF) e os outputs de stack
+   **inalterados** → **nenhum aviso ao front necessário** (Flávia).
+6. **Guardrails P-41 (RAD-165):** literais de `max_connections_percent`/`max_idle`/
+   `connection_borrow_timeout` do `db_proxy` e os pisos do parameter group
+   (`max_connections`/`work_mem`/`idle_in_transaction`/`statement_timeout`/`lock_timeout`)
+   **byte-idênticos**; seam serverless `enabled=false`/`count` gated-off preservado.
+
+**Conclusão:** a paridade se sustenta por construção *e* por auditoria estática de valores
+resolvidos, não só de endereços. Quando o runner credenciado (RAD-134) rodar
+`tofu plan -detailed-exitcode` com o lock pinado em 5.100.0, o resultado esperado é **exit 0**
+nos 3 envs; qualquer `exit 2` seria skew de provider (ver seção acima), não quebra de contrato.
+O swap continua **gated** só nesse `plan` objetivo + creds.
