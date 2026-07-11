@@ -115,6 +115,13 @@ module "db_proxy" {
   db_credentials_secret_ref = module.secrets.db_credentials_secret_ref
   encryption_key_ref        = var.kms_key_arn
   debug_logging             = true
+
+  # Custo (dev): 1 proxy só, em vez dos 5 bulkheads default — RDS Proxy é cobrado POR proxy.
+  # Os bulkheads por workload existem pra isolar rajada sob carga em PROD; dev não tem essa
+  # carga. Colapso sancionado pelo módulo (db_proxy/variables.tf §pools). Prod mantém os 5.
+  pools = {
+    ingestao = { max_connections_percent = 40 }
+  }
 }
 
 # Seam serverless de P-27 — gated off (workers em Fargate no MVP-Now, P-96).
@@ -140,18 +147,20 @@ module "serverless" {
       proxy_endpoint       = module.db_proxy.proxy_endpoints["ingestao"]
       queue_arn            = null
     }
+    # dev colapsa pra 1 proxy (ver módulo db_proxy acima): todos os workers do seam gated-off
+    # apontam pro pool único "ingestao". Prod mantém os pools por-workload.
     matching = {
       handler              = "dist/workers/matching.handler"
       reserved_concurrency = 8
-      pool                 = "matching"
-      proxy_endpoint       = module.db_proxy.proxy_endpoints["matching"]
+      pool                 = "ingestao"
+      proxy_endpoint       = module.db_proxy.proxy_endpoints["ingestao"]
       queue_arn            = module.queue_ingestao.queue_ref
     }
     notificacao = {
       handler              = "dist/workers/notificacao.handler"
       reserved_concurrency = 4
-      pool                 = "triagem"
-      proxy_endpoint       = module.db_proxy.proxy_endpoints["triagem"]
+      pool                 = "ingestao"
+      proxy_endpoint       = module.db_proxy.proxy_endpoints["ingestao"]
       queue_arn            = module.queue_alertas.queue_ref
     }
   }

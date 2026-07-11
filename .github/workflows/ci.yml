@@ -249,6 +249,17 @@ jobs:
         with:
           sarif_file: semgrep.sarif
 
+      - name: Trivy — SCA filesystem (crítico+alto bloqueia) — debug
+        uses: aquasecurity/trivy-action@c07df6fec6fa692e6fd1200d50aaa1fdd66f03c8 # master
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: CRITICAL,HIGH
+          exit-code: "0"
+          format: table
+        continue-on-error: true
+
       - name: Trivy — SCA filesystem (crítico+alto bloqueia)
         uses: aquasecurity/trivy-action@c07df6fec6fa692e6fd1200d50aaa1fdd66f03c8 # master
         with:
@@ -260,6 +271,7 @@ jobs:
           format: sarif
           output: trivy-fs.sarif
         continue-on-error: false
+
 
       - name: Upload SARIF Trivy FS
         if: always()

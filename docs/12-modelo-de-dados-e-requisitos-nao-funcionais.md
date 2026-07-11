@@ -29,6 +29,9 @@ erDiagram
     CASO ||--o{ FASE : percorre
     TENANT ||--o{ AUDIT_LOG : registra
     CLIENTE_FINAL ||--o{ SOLICITACAO_TITULAR : recebe
+    TENANT ||--o{ ATRIBUICAO_PAPEL : escopa
+    USUARIO ||--o{ ATRIBUICAO_PAPEL : recebe
+    ATRIBUICAO_PAPEL }o--|| PAPEL : confere
 
     EDITAL {
         uuid id
@@ -116,6 +119,16 @@ erDiagram
         string estado
         date proximoPrazo
     }
+    PAPEL {
+        string codigo PK
+        string nome
+    }
+    ATRIBUICAO_PAPEL {
+        string sub PK
+        uuid tenantId FK
+        string papel FK
+        json clienteFinalIds
+    }
 ```
 
 ## 2. Atributos de primeira classe (não são detalhe)
@@ -132,6 +145,7 @@ erDiagram
 - **Anexo com estado de confiança (trust-gating)** — `ANEXO_EDITAL` carrega um `estadoConfianca` (`pendente` → `limpo`/`rejeitado`): o anexo entra em **quarentena** e só é consumível após scan AV assíncrono; a porta de consumo **recusa não-`limpo`** e resolve por objeto de domínio, não por chave de storage crua do cliente. O eixo **confiança** é ortogonal à **temperatura** de retenção (arquitetura/06; P-30). Controle **somado**, não substitui SSRF (P-58) nem injeção (arquitetura/11); documento 05, §4; arquitetura/07 AB14; **P-104**.
 - **Cripto de campo na classe crítica** — em `CRITERIO_MONITORAMENTO`, a faixa de valor-alvo (`valorMin`/`valorMax`) é **estratégia comercial do cliente** (classe crítica, documento 05, §9): além do isolamento por `tenantId`/`clienteFinalId`, é **cifrada em nível de aplicação em repouso** (colunas cifradas, chave em KMS por trás de *port*). A cripto **soma-se** à autorização por objeto, nunca a substitui (**P-59**; arquitetura/07).
 - **Triagem com ciclo de vida** — `TRIAGEM.status` distingue estados **não-concluídos** (a triagem roda em worker assíncrono disparado por `triagem.solicitada`) da triagem concluída; `aderencia`/`recomendacao` só existem quando **concluída** (nulas antes). Reflete o caminho assíncrono de arquitetura/03, §§1,3 e arquitetura/17.
+- **Autorização em duas camadas — RBAC somado à posse do objeto** — o acesso do usuário passa por **dois controles cumulativos**, nenhum substitui o outro e a **ausência de papel nega por padrão**: (a) **RBAC** — a matriz declarativa `podeExecutar(papel, recurso, acao)` (documento 05, §4) responde *"este papel pode tentar esta ação"*; (b) **autorização por objeto** (`tenantId`/`clienteFinalId`, **P-51**/AB1) responde *"este usuário tem posse deste objeto"*. `ATRIBUICAO_PAPEL` é **agregado raiz próprio** de Identidade & Organização (não parte de `TENANT`; o `tenantId` é **referência** de *Shared Kernel* — documento 13, §5 —, não continência) — sua identidade é o **`sub` verificado do IdP** (Cognito), lida em **toda requisição** por `ResolverContextoAutorizacaoUseCase` via `PermissaoRepository` (documento 13, §3; documento 14, §6). Três invariantes: **papel não vem do token** (o JWT carrega só `sub` + `custom:tenantId` verificados; papel e escopo `clienteFinalIds[]` são **dado de domínio**, e o `tenantId` da atribuição tem de **bater** com o claim); **RBAC mora na borda** (middleware de `apps/api` — Matching/Triagem/Notificação **não conhecem `PAPEL`**; o que atravessa para dentro é `clienteFinalIds[]`, já linguagem do domínio); **negação é auditável** (`403` sem vazar existência do objeto, documento 05, §3). `USUARIO` **não é agregado** deste contexto — seu ciclo de vida é do IdP (P-98); o que o contexto possui do usuário é a atribuição de papel e o escopo de `clienteFinalId`. **Conceitual, não físico:** a atribuição é hoje **semeada/provisionada** (config/seed, sem tabela Postgres) e a matriz é **declarativa**; a administração (CRUD de usuários/papéis) é escopo posterior (**P-52**).
 
 ## 3. Requisitos não-funcionais (NFRs / SLAs)
 
@@ -157,6 +171,7 @@ Este modelo é o substrato comum: os **fluxos** (documento 03) movem estas entid
 ## 5. Pendências
 
 - Lista de entidades e cardinalidades validada (Eng) — `NOTIFICACAO`/`PREFERENCIA_NOTIFICACAO` incorporadas ao modelo; núcleo já fechado por P-45–P-50. `Resolvido (P-24, 2026-07-05)`
+- Modelo de autorização (RBAC) incorporado ao §1/§2 — `PAPEL`, `ATRIBUICAO_PAPEL` (agregado raiz próprio, identidade = `sub` do IdP) e o controle em duas camadas (RBAC somado à posse do objeto, P-51); espelha documento 13 §3 e documento 14 §6. `Resolvido (P-52, 2026-07-11)`
 - NFRs de arquitetura fixados (§3): latência de triagem p95 ≤ 3 min, disponibilidade ≥ 99,5% no caminho crítico, escalabilidade dimensionada por P-31; retenção agora aponta para a matriz de 05 §5 (P-05/P-44 resolvidas). Custo de IA (P-20) segue com seu dono. `Resolvido (P-24, 2026-07-05)`
 - Definir o esquema de eventos de instrumentação (documento 08, §6) sobre estas entidades. `[A VALIDAR]`
 
