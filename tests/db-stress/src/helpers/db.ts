@@ -8,11 +8,11 @@ const { Pool } = pg;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const SCHEMA_SQL = readFileSync(join(__dirname, '../../schema.sql'), 'utf8');
+const SCHEMA_SQL = readFileSync(join(__dirname, '../schema.sql'), 'utf8');
 
 /**
  * Wrapper sobre pg.Pool compatível com o contrato DbClient dos adapters Postgres
- * (modules/*/src/infra/adapters). AbortSignal é best-effort; pg não cancela queries.
+ * (modules/{módulo}/src/infra/adapters). AbortSignal é best-effort; pg não cancela queries.
  */
 export class PgDbClient {
   constructor(readonly pool: pg.Pool) {}
@@ -71,25 +71,33 @@ const GUCS: Record<string, WorkloadGUCs> = {
   },
 };
 
-/** Aplica os GUCs do workload em cada conexão nova do pool. */
-function applyGucs(pool: pg.Pool, gucs: WorkloadGUCs): void {
-  pool.on('connect', (client: pg.PoolClient) => {
-    const sets = [
-      `SET statement_timeout = '${gucs.statement_timeout}'`,
-      gucs.lock_timeout ? `SET lock_timeout = '${gucs.lock_timeout}'` : null,
-      gucs.idle_in_transaction_session_timeout
-        ? `SET idle_in_transaction_session_timeout = '${gucs.idle_in_transaction_session_timeout}'`
-        : null,
-      gucs.work_mem ? `SET work_mem = '${gucs.work_mem}'` : null,
-    ]
-      .filter(Boolean)
-      .join('; ');
+/**
+ * Aplica GUCs como padrão permanente do banco de teste via `ALTER DATABASE SET`.
+ * Mais fiável que pool.on('connect') (fire-and-forget async + race no pg@8) e
+ * que `options` (não respeitado pelo pg Pool). Todo novo `pool.connect()` herda
+ * automaticamente, sem SET explícito por conexão.
+ */
+async function applyGucsToBanco(
+  client: { query(sql: string, params?: unknown[]): Promise<unknown> },
+  dbName: string,
+  gucs: WorkloadGUCs,
+): Promise<void> {
+  const stmts = [
+    `ALTER DATABASE "${dbName}" SET statement_timeout = '${gucs.statement_timeout}'`,
+    gucs.lock_timeout
+      ? `ALTER DATABASE "${dbName}" SET lock_timeout = '${gucs.lock_timeout}'`
+      : null,
+    gucs.idle_in_transaction_session_timeout
+      ? `ALTER DATABASE "${dbName}" SET idle_in_transaction_session_timeout = '${gucs.idle_in_transaction_session_timeout}'`
+      : null,
+    gucs.work_mem
+      ? `ALTER DATABASE "${dbName}" SET work_mem = '${gucs.work_mem}'`
+      : null,
+  ].filter(Boolean) as string[];
 
-    client.query(sets).catch(() => {
-      // GUC failure is non-fatal for the pool but should not go silent in tests
-      console.warn(`[db.ts] Falha ao aplicar GUCs (${sets})`);
-    });
-  });
+  for (const stmt of stmts) {
+    await client.query(stmt);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -99,20 +107,29 @@ function applyGucs(pool: pg.Pool, gucs: WorkloadGUCs): void {
 async function criarFixture(max: number, gucs?: WorkloadGUCs): Promise<DbFixture> {
   const container = await new PostgreSqlContainer('postgres:16-alpine').start();
 
-  const pool = new Pool({
+  const connBase = {
     host: container.getHost(),
     port: container.getMappedPort(5432),
     database: container.getDatabase(),
     user: container.getUsername(),
     password: container.getPassword(),
+  };
+
+  // 1. Setup: schema + GUCs via ALTER DATABASE usando client dedicado (antes do pool).
+  //    ALTER DATABASE SET persiste em pg_db_role_setting; toda nova conexão ao banco herda.
+  const setupClient = new pg.Client(connBase);
+  await setupClient.connect();
+  await setupClient.query(SCHEMA_SQL);
+  if (gucs) await applyGucsToBanco(setupClient, container.getDatabase(), gucs);
+  await setupClient.end();
+
+  // 2. Pool de trabalho — conexões herdam os GUCs definidos acima sem SET explícito.
+  const pool = new Pool({
+    ...connBase,
     max,
     idleTimeoutMillis: 5_000,
     connectionTimeoutMillis: 10_000,
   });
-
-  if (gucs) applyGucs(pool, gucs);
-
-  await pool.query(SCHEMA_SQL);
 
   return { db: new PgDbClient(pool), pool, container };
 }

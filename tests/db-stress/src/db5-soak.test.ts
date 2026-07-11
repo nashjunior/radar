@@ -201,9 +201,10 @@ describe('DB5 — Soak: 300 rounds de carga mista (upsert + lookup)', () => {
       const poolTotal = fx.pool.totalCount;
       const poolIdle = fx.pool.idleCount;
 
-      // Confirma o GUC idle_in_transaction_session_timeout está configurado no pool
+      // Confirma o GUC idle_in_transaction_session_timeout está configurado na sessão
+      // (SHOW retorna coluna nomeada pelo parâmetro, não "setting" — usar current_setting)
       const { rows: gucRows } = await fx.pool.query<{ setting: string }>(
-        `SHOW idle_in_transaction_session_timeout`,
+        `SELECT current_setting('idle_in_transaction_session_timeout') AS setting`,
         [],
       );
       const gucValue = gucRows[0]?.setting ?? '0';

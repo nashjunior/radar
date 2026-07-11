@@ -41,8 +41,12 @@ const MESES: MesInfo[] = [
 const POR_PARTIÇÃO = 1_000; // 1.000 editais por mês → total de 3.000 (simula 10× do seed inicial)
 
 function gerarEditalParticao(mesInfo: MesInfo, i: number) {
-  // data_publicacao: distribui ao longo do mês (a cada ~44 min para 1.000 registros/mês)
-  const dpMs = Date.UTC(mesInfo.ano, mesInfo.mes, 1) + i * 44 * 60 * 1_000;
+  // data_publicacao: distribui ao longo do mês usando o tamanho real do mês,
+  // garantindo que todos os POR_PARTIÇÃO registros caiam na partição correta.
+  const startMs = Date.UTC(mesInfo.ano, mesInfo.mes, 1);
+  const endMs   = Date.UTC(mesInfo.ano, mesInfo.mes + 1, 1);  // exclusivo
+  const stepMs  = Math.floor((endMs - startMs) / POR_PARTIÇÃO);
+  const dpMs = startMs + i * stepMs;
   const dp = new Date(dpMs).toISOString();
   const seqGlobal = mesInfo.mes * POR_PARTIÇÃO + i;
   return {
