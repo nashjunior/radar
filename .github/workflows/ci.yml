@@ -155,14 +155,13 @@ jobs:
       - name: pnpm build
         run: pnpm build
 
-      - name: Testes unitários e de integração (excl. BDD — step defs pendentes)
+      - name: Testes unitários e de integração (excl. BDD e E2E — Testcontainers em steps dedicados)
         run: pnpm turbo test --filter=!@radar/bdd --filter=!@radar/e2e --filter=!@radar/security-gates
 
       - name: Gate AB1/AB10/AB13/AB14 — segurança A07 (P-51/P-62)
         run: pnpm --filter @radar/security-gates test
 
-      - name: Testes BDD (cucumber — informacional, não bloqueia até step defs prontos)
-        continue-on-error: true
+      - name: Testes BDD (cucumber — 21 cenários, bloqueante)
         run: pnpm --filter @radar/bdd test
 
   # ─── Gate 5: stress (A04/A05) — só em push para main ──────────────────────
