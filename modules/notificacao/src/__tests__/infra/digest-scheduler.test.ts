@@ -150,5 +150,41 @@ describe('DigestScheduler', () => {
         vi.useRealTimers();
       }
     });
+
+    it('regressao RAD-195: autolimpa os dois setInterval quando o signal aborta, mesmo sem chamar a funcao de parada retornada', () => {
+      vi.useFakeTimers();
+      const clearIntervalSpy = vi.spyOn(global, 'clearInterval');
+      try {
+        const ctrl = new AbortController();
+        const executar = vi.fn().mockResolvedValue({ enviados: 0, agrupados: 0, total: 0 });
+        const scheduler = new DigestScheduler(
+          { executar } as Pick<EnviarDigestUseCase, 'executar'>,
+          {
+            ciclos: {
+              DIARIA: { destinatarios: [], intervaloMs: DIA_MS, tamanhoJanelaMs: DIA_MS },
+              SEMANAL: { destinatarios: [], intervaloMs: SEMANA_MS, tamanhoJanelaMs: SEMANA_MS },
+            },
+            agora: () => new Date('2026-07-05T12:00:00.000Z'),
+          },
+        );
+
+        const executarCicloSpy = vi.spyOn(scheduler, 'executarCiclo');
+
+        scheduler.iniciar(ctrl.signal); // funcao de teardown deliberadamente descartada
+        expect(vi.getTimerCount()).toBe(2);
+        expect(executarCicloSpy).toHaveBeenCalledTimes(2); // tick imediato dos dois ciclos
+
+        ctrl.abort();
+
+        expect(clearIntervalSpy).toHaveBeenCalledTimes(2);
+        expect(vi.getTimerCount()).toBe(0); // sem o autolimpo (bug original) os 2 setInterval vazariam
+
+        vi.advanceTimersByTime(SEMANA_MS * 2);
+        expect(executarCicloSpy).toHaveBeenCalledTimes(2); // nenhum ciclo novo apos o abort
+      } finally {
+        clearIntervalSpy.mockRestore();
+        vi.useRealTimers();
+      }
+    });
   });
 });

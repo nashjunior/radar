@@ -1,4 +1,4 @@
-import type { TenantId } from '@radar/kernel';
+import { iniciarAgendadorAbortavel, type TenantId } from '@radar/kernel';
 import type { DigestDTO } from '../../application/dtos.js';
 import type { EnviarDigestUseCase } from '../../application/use-cases/enviar-digest.js';
 import type { UsuarioId } from '../../domain/entities/notificacao.js';
@@ -66,18 +66,13 @@ export class DigestScheduler {
 
   iniciar(signal: AbortSignal): () => void {
     const frequencias: readonly FrequenciaDigest[] = ['DIARIA', 'SEMANAL'];
-    const paradas = frequencias.map(frequencia => {
-      const executar = (): void => {
-        if (signal.aborted) return;
-        void this.executarCiclo(frequencia, signal).catch((erro: unknown) => {
-          if (!signal.aborted) this.config.aoFalhar?.(erro);
-        });
-      };
-
-      executar();
-      const handle = setInterval(executar, this.config.ciclos[frequencia].intervaloMs);
-      return () => clearInterval(handle);
-    });
+    const paradas = frequencias.map(frequencia =>
+      iniciarAgendadorAbortavel(
+        s => this.executarCiclo(frequencia, s),
+        { intervaloMs: this.config.ciclos[frequencia].intervaloMs, aoFalhar: this.config.aoFalhar },
+        signal,
+      ),
+    );
 
     return () => paradas.forEach(parar => parar());
   }

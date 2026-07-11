@@ -244,6 +244,7 @@ Todo erro carrega um `code` estável; o mapeamento vive **só na borda** (§4.6)
 
 - **`shared/contracts/` — proto (gRPC), language-independent.** A verdade dos contratos cross-domain; gera stubs por linguagem no CI (P-70). É o que torna o **seam para Go** (A08 §9) viável sem reescrever contrato.
 - **`shared/kernel/` — o mínimo compartilhado** (documento 13: `tenantId`/`clienteFinalId` como *Shared Kernel*), IDs e classes-base de VO/erro. Por linguagem (ex.: `ts/`). Manter **mínimo** — é o único acoplamento permitido entre contextos.
+  - `scheduler.ts` (RAD-195): `iniciarAgendadorAbortavel<T>(executarCiclo, config, signal)` — controle de fluxo/temporização puro (loop de `setInterval` abortável com auto-cleanup via listener de `abort`), sem tocar `DomainEvent`/port/entidade de nenhum módulo. Composto por `PncpPollingScheduler` (ingestão) e `DigestScheduler` (notificação) em vez de cada um reimplementar o mesmo `iniciar()`; `executarCiclo` e a `Config` específica (janela, modalidades, destinatários...) continuam locais a cada scheduler.
 
 ## 8. Convenção de nomes — ports vs. adapters
 

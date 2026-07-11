@@ -1,3 +1,4 @@
+import { iniciarAgendadorAbortavel } from '@radar/kernel';
 import type { IngerirAtualizacoesUseCase } from '../../application/use-cases/ingerir-atualizacoes.js';
 import type { IngerirEditaisUseCase } from '../../application/use-cases/ingerir-editais.js';
 import { PipelineCicloConcluido } from '../../application/events.js';
@@ -148,22 +149,10 @@ export class PncpPollingScheduler {
   }
 
   iniciar(signal: AbortSignal): () => void {
-    const executar = (): void => {
-      if (signal.aborted) return;
-      void this.executarCiclo(signal).catch((erro: unknown) => {
-        if (!signal.aborted) this.config.aoFalhar?.(erro);
-      });
-    };
-
-    if (signal.aborted) return () => {};
-
-    executar();
-    const handle = setInterval(executar, this.config.intervaloMs);
-    const limpar = (): void => {
-      clearInterval(handle);
-      signal.removeEventListener('abort', limpar);
-    };
-    signal.addEventListener('abort', limpar, { once: true });
-    return limpar;
+    return iniciarAgendadorAbortavel(
+      s => this.executarCiclo(s),
+      { intervaloMs: this.config.intervaloMs, aoFalhar: this.config.aoFalhar },
+      signal,
+    );
   }
 }
