@@ -37,7 +37,7 @@ output "field_crypto_key_secret_arn" {
 }
 
 output "db_proxy_endpoints" {
-  description = "Endpoints do RDS Proxy por pool — HOST do DATABASE_URL de cada workload (P-41)"
+  description = "Endpoints do RDS Proxy por pool — HOST do DATABASE_URL (dev colapsa em 1 pool único; prod = 5 por workload, P-41)"
   value       = module.db_proxy.proxy_endpoints
 }
 
