@@ -61,10 +61,14 @@ export class AderenciaMatching {
   }
 
   // Postura recall-alto (docs/11 §2): limiar baixo intencionalmente.
-  // O teto exato é [A VALIDAR] → P-21.
+  // P-21 (2026-07-11) fixou a barra como métrica — recall ≥ 90% no conjunto de controle —,
+  // não como número: 0.3 é o ponto de partida a calibrar contra o gold set (A16).
   get superaLimiar(): boolean { return this.valor >= 0.3; }
 
-  get ehAlta(): boolean { return this.valor >= 0.7; }
+  // "Alta aderência" = ≥ 0,80 — decisão de Produto P-81 (docs/11 §4). É o mesmo corte
+  // que dispara alerta imediato na Notificação (A14 §2.1). Não confundir com a
+  // `Aderencia` da Triagem (ehAlta ≥ 0,7, go/no-go — docs/10 §4, A17 §2): outro conceito (P-45).
+  get ehAlta(): boolean { return this.valor >= 0.8; }
 }
 ```
 
@@ -530,14 +534,14 @@ Toda mensagem carrega `tenantId`, mesmo no MVP single-tenant (A01 §6).
 - **Faixa de valor por decreto (docs/02 §2):** lida de `FaixaValorReferencia` (port) → `faixaValorCodigo` no input, nunca constante.
 - **AbortSignal em toda operação (P-78 / A10 §1):** todos os use cases e ports recebem `signal?: AbortSignal`.
 - **tenantId desde o dia 1 (A01 §6):** presente em `CriterioDeMonitoramento` e `Alerta`.
-- **Recall-alto (docs/11 §2):** `aderencia.superaLimiar` usa limiar baixo; limiares exatos ficam para P-21.
+- **Recall-alto (docs/11 §2):** `aderencia.superaLimiar` usa limiar baixo; P-21 fixou a barra em recall ≥ 90% / precisão ≥ 60% — o número (0.3) é calibrado contra o gold set (A16), não decidido no código.
 - **Eventos mantidos (A03):** `alerta.gerado` e `feedback.alerta` publicados via `EventPublisher` (port), não chamada direta.
 
 ## 9. Pendências
 
 | Referência | Pendência |
 |------------|-----------|
-| P-21 | Fixar limiares de recall/precisão (`superaLimiar`, `ehAlta`) e política de digest |
+| P-21 / P-81 | **Resolvidos (Produto, 2026-07-11, RAD-200).** Barra: recall ≥ 90% / precisão ≥ 60% (calibrar `superaLimiar` contra o gold set — A16). `ehAlta` = **0,80**, o corte de alerta imediato de P-81 (A14 §§2.1, 7). Política de digest: A14 §7 |
 | P-40 | Estratégia de fan-out em escala (scan → percolator) |
 | P-49 | `clienteFinalId` em CRITERIO e ALERTA — ativar isolamento no Next multi-tenant |
 | P-51 | Testes de autorização por objeto como gate de release |

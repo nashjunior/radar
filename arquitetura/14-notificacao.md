@@ -50,16 +50,37 @@ export class Frequencia {
 }
 
 // domain/value-objects/criticidade.ts
-// Calculada a partir da proximidade do prazo da proposta (docs/11, §4)
+// Decisão de Produto P-81 / docs/11 §4: um alerta é CRÍTICO se o prazo final estiver
+// em até 3 dias corridos OU se a aderência for ≥ 0,80. Crítico entrega imediatamente,
+// independentemente da preferência de frequência do usuário.
+export interface LimiaresCriticidade {
+  diasAtePrazo: number;   // padrão 3 (dias corridos)
+  aderencia: number;      // padrão 0,80
+}
+
+export const LIMIARES_CRITICIDADE_PADRAO: LimiaresCriticidade = {
+  diasAtePrazo: 3,
+  aderencia: 0.8,
+};
+
 export class Criticidade {
   private constructor(readonly urgente: boolean) {}
-  static deAlerta(diasAtePrazo: number): Criticidade {
-    return new Criticidade(diasAtePrazo <= 3);  // ≤ 3 dias → imediato
+
+  /** Os limiares são injetados (config — ver §11) e têm o padrão de P-81 como default. */
+  static deAlerta(
+    alerta: { diasAtePrazo: number; aderencia: number },
+    limiares: LimiaresCriticidade = LIMIARES_CRITICIDADE_PADRAO,
+  ): Criticidade {
+    const prazoCurto = alerta.diasAtePrazo <= limiares.diasAtePrazo;
+    const altaAderencia = alerta.aderencia >= limiares.aderencia;
+    return new Criticidade(prazoCurto || altaAderencia);   // OU, não E
   }
-  get canalForçado(): CanalTipo { return this.urgente ? 'EMAIL' : 'EMAIL'; }
+
   get exigeImediato(): boolean { return this.urgente; }
 }
 ```
+
+> **Linguagem ubíqua — "alta aderência":** o corte ≥ 0,80 é o de P-81 e vale para o alerta do Matching (A15 §2, `AderenciaMatching.ehAlta`). **Não** é a `Aderencia` da Triagem, cujo `ehAlta ≥ 0,7` sustenta a sugestão go/no-go (docs/10 §4, A17 §2) e é outro conceito (docs/13 §3, P-45) — não unificar os dois.
 
 ### 2.2 Agregado raiz — Notificação
 
@@ -125,10 +146,36 @@ export class CanalInvalidoError extends DomainError {
 // Consulta alertas pendentes de envio para um usuário em uma janela de tempo
 export interface AlertaRepository {
   porId(id: AlertaId, signal: AbortSignal): Promise<AlertaResumoDTO | null>;
+
+  /**
+   * Alertas ainda não notificados do usuário na janela (docs/11 §4).
+   * Contrato:
+   *  - EXCLUI alertas que já geraram NOTIFICACAO ENVIADA — é o que faz o alerta crítico,
+   *    já entregue de imediato, não ocupar vaga no cap do digest (P-81);
+   *  - ordena por prazo (mais próximo primeiro) e, em empate, por aderência desc;
+   *  - `limite` é o cap da frequência, passado pelo use case — a política é da application,
+   *    o repositório só respeita a borda (query limitada: fan-out de A04 S4 não pode virar
+   *    um SELECT de milhares de linhas por usuário/ciclo);
+   *  - o excedente volta AGREGADO por critério/órgão, nunca item a item.
+   */
   pendentesDigest(
-    params: { usuarioId: UsuarioId; aPartirDe: Date },
+    params: { usuarioId: UsuarioId; aPartirDe: Date; limite: number },
     signal: AbortSignal,
-  ): Promise<AlertaResumoDTO[]>;
+  ): Promise<DigestPendentesDTO>;
+}
+
+// application/dtos.ts
+export interface DigestPendentesDTO {
+  selecionados: AlertaResumoDTO[];        // no máximo `limite`, já ordenados
+  excedentes: ExcedenteAgrupadoDTO[];     // agrupamento do que passou do cap
+  totalPendentes: number;                 // selecionados + excedentes
+}
+
+export interface ExcedenteAgrupadoDTO {
+  criterioId: CriterioId;
+  criterioNome: string;
+  orgao: string;
+  quantidade: number;
 }
 
 // Lê e persiste preferências de notificação do usuário
@@ -215,6 +262,7 @@ export class NotificarAlertaUseCase {
     private readonly eventos: EventPublisher,
     private readonly ids: IdProvider,
     private readonly clienteFinalGateway: ClienteFinalGateway,
+    private readonly limiares: LimiaresCriticidade = LIMIARES_CRITICIDADE_PADRAO,
   ) {}
 
   async executar(input: NotificarAlertaInput, signal: AbortSignal): Promise<void> {
@@ -231,9 +279,12 @@ export class NotificarAlertaUseCase {
     ]);
     if (!alerta) return;  // edital removido/reconciliado — descarta silenciosamente
 
-    const criticidade = Criticidade.criar(alerta.diasAtePrazo);
+    // P-81: crítico = prazo ≤ 3 dias corridos OU aderência ≥ 0,80
+    const criticidade = Criticidade.deAlerta(alerta, this.limiares);
 
-    // Urgente OU preferência imediata → entrega agora; caso contrário, aguarda o digest
+    // Crítico OU preferência imediata → entrega agora; caso contrário, aguarda o digest.
+    // Ao NÃO registrar Notificacao aqui, o alerta continua pendente e o digest o pega depois;
+    // ao registrar (caminho crítico), ele sai do pool do digest — logo não consome cap (P-81).
     if (!criticidade.exigeImediato && preferencia?.frequencia !== 'IMEDIATA') return;
 
     const canal = Canal.criar(preferencia?.canais[0] ?? 'EMAIL');
@@ -268,13 +319,19 @@ export class NotificarAlertaUseCase {
 
 ### 4.3 `EnviarDigestUseCase`
 
-Trigger: scheduler (diário ou semanal). Agrupa alertas pendentes do período e envia em uma única mensagem; aplica cap anti-fadiga (docs/11, §4).
+Trigger: scheduler (diário ou semanal). Agrupa alertas pendentes do período e envia em uma única mensagem; aplica o cap anti-fadiga de P-81 (docs/11, §4).
+
+O cap **depende da frequência** — 10 no digest diário, 25 no semanal, por usuário. Alertas críticos não chegam aqui: já foram entregues e registrados pelo `NotificarAlertaUseCase`, e o `pendentesDigest` só devolve o que ainda não foi notificado (§3).
 
 ```ts
+// domain/value-objects/frequencia.ts (complemento)
+// Cap por frequência — decisão de Produto P-81 (docs/11 §4).
+export const CAP_DIGEST: Record<'DIARIA' | 'SEMANAL', number> = {
+  DIARIA: 10,
+  SEMANAL: 25,
+};
+
 // application/use-cases/enviar-digest.ts
-
-const CAP_ALERTAS_DIGEST = 20;  // `[A VALIDAR]` → P-81
-
 export class EnviarDigestUseCase {
   constructor(
     private readonly alertas: AlertaRepository,
@@ -282,28 +339,26 @@ export class EnviarDigestUseCase {
     private readonly notificacoes: NotificacaoRepository,
     private readonly notifier: Notifier,
     private readonly eventos: EventPublisher,
+    private readonly caps: Record<'DIARIA' | 'SEMANAL', number> = CAP_DIGEST,
   ) {}
 
-  async executar(input: EnviarDigestInput, signal?: AbortSignal): Promise<DigestDTO> {
+  async executar(input: EnviarDigestInput, signal: AbortSignal): Promise<DigestDTO> {
     const preferencia = await this.preferencias.porUsuario(input.usuarioId, signal);
 
     // Usuário com preferência imediata ou sem preferência recebe por alerta individual
     if (!preferencia || preferencia.frequencia === 'IMEDIATA') {
-      return { enviados: 0, agrupados: 0 };
+      return { enviados: 0, agrupados: 0, total: 0 };
     }
 
-    const pendentes = await this.alertas.pendentesDigest({
-      usuarioId: input.usuarioId,
-      aPartirDe: input.janela.inicio,
+    // A política (qual cap) é da application; o repositório só recebe o limite (§3)
+    const limite = this.caps[preferencia.frequencia];
+
+    const { selecionados, excedentes, totalPendentes } = await this.alertas.pendentesDigest(
+      { usuarioId: input.usuarioId, aPartirDe: input.janela.inicio, limite },
       signal,
-    });
+    );
 
-    if (pendentes.length === 0) return { enviados: 0, agrupados: 0 };
-
-    // Anti-fadiga: limita ao cap e ordena por aderência decrescente (docs/11, §4)
-    const selecionados = pendentes
-      .sort((a, b) => b.aderencia - a.aderencia)
-      .slice(0, CAP_ALERTAS_DIGEST);
+    if (totalPendentes === 0) return { enviados: 0, agrupados: 0, total: 0 };
 
     const canal = Canal.criar(preferencia.canais[0] ?? 'EMAIL');
     const notificacao = Notificacao.criar({
@@ -317,7 +372,7 @@ export class EnviarDigestUseCase {
         canal,
         destinatario: input.emailDestinatario,
         assunto: `${selecionados.length} novo(s) alerta(s) — Radar de Licitações`,
-        corpo: montarCorpoDigest(selecionados, pendentes.length),
+        corpo: montarCorpoDigest(selecionados, excedentes),
         signal,
       });
       notificacao.marcarEnviada();
@@ -329,23 +384,37 @@ export class EnviarDigestUseCase {
     }
 
     await this.eventos.publicar(new NotificacaoEnviada(notificacao), signal);
-    return { enviados: selecionados.length, agrupados: pendentes.length };
+    return {
+      enviados: selecionados.length,
+      agrupados: excedentes.reduce((n, e) => n + e.quantidade, 0),
+      total: totalPendentes,
+    };
   }
 }
 ```
 
-**Montagem do corpo do digest** (helper de domínio — sem lógica de negócio):
+**Montagem do corpo do digest** (helper — sem lógica de negócio). Os selecionados chegam já ordenados por prazo e aderência (§3); o excedente vira linhas agregadas por critério/órgão, **nunca** e-mails individuais (docs/11, §4):
 
 ```ts
 // application/helpers/montar-corpo-digest.ts
-function montarCorpoDigest(alertas: AlertaResumoDTO[], total: number): string {
+function montarCorpoDigest(
+  alertas: AlertaResumoDTO[],
+  excedentes: ExcedenteAgrupadoDTO[],
+): string {
   const linhas = alertas.map(a =>
     `• ${a.objeto} · ${a.orgao} · Prazo: ${a.prazoProposta} · Aderência: ${(a.aderencia * 100).toFixed(0)}%`
   );
-  const rodape = total > alertas.length
-    ? `\n(+ ${total - alertas.length} alerta(s) não exibido(s) — acesse o painel para ver todos)`
-    : '';
-  return linhas.join('\n') + rodape;
+  if (excedentes.length === 0) return linhas.join('\n');
+
+  const total = excedentes.reduce((n, e) => n + e.quantidade, 0);
+  const grupos = excedentes.map(e =>
+    `• ${e.quantidade} em "${e.criterioNome}" · ${e.orgao}`
+  );
+  return [
+    ...linhas,
+    `\n+ ${total} alerta(s) além do limite desta edição — agrupados abaixo, todos disponíveis no painel:`,
+    ...grupos,
+  ].join('\n');
 }
 ```
 
@@ -439,16 +508,28 @@ erDiagram
 
 Índice crítico: `(alerta_id, usuario_id, status)` em `NOTIFICACAO` — consulta de idempotência no `jaNotificado`.
 
-## 7. Anti-fadiga e agrupamento (docs/11, §4)
+## 7. Anti-fadiga e agrupamento (docs/11, §4 · P-81)
+
+Os números abaixo são **decisão de Produto fechada** (Produto/Priscila, 2026-07-11, RAD-200 → docs/98 P-81). Esta seção só diz onde cada um vive no código — não reabre a decisão.
 
 | Mecanismo | Onde é implementado | Detalhe |
 |-----------|---------------------|---------|
-| **Canal por criticidade** | `NotificarAlertaUseCase` | Urgente (≤ 3 dias) → entrega imediata, mesmo que preferência seja digest |
-| **Cap de alertas no digest** | `EnviarDigestUseCase` | Máx `CAP_ALERTAS_DIGEST` por envio; excedente indicado no rodapé |
-| **Ordenação por aderência** | `EnviarDigestUseCase` | Os mais relevantes aparecem primeiro no digest |
-| **Idempotência de entrega** | `NotificacaoRepository.jaNotificado` | Não reenvia para o mesmo alerta em caso de retry da fila |
+| **Entrega imediata por criticidade** | `Criticidade` (VO) + `NotificarAlertaUseCase` | Crítico = prazo final em até **3 dias corridos** **OU** aderência **≥ 0,80** (condição **OU**). Entrega na hora, mesmo com preferência de digest |
+| **Cap por frequência** | `EnviarDigestUseCase` (`CAP_DIGEST`) | **10** itens no digest diário, **25** no semanal, por usuário |
+| **Crítico fora do cap** | `AlertaRepository.pendentesDigest` | O crítico já entregue tem `NOTIFICACAO ENVIADA` e é excluído do pool do digest — não espera o digest nem ocupa vaga no cap |
+| **Ordenação** | `pendentesDigest` (borda) + contrato do §3 | Prazo mais próximo primeiro; empate desempata por aderência desc |
+| **Excedente agrupado** | `montarCorpoDigest` + `ExcedenteAgrupadoDTO` | O que passa do cap volta agregado por **critério/órgão** (contagem) e fica acessível no painel; nunca vira e-mail individual |
+| **Frequência configurável** | `DefinirPreferenciasNotificacaoUseCase` | Padrão **DIÁRIA**; usuário pode mudar para SEMANAL ou IMEDIATA |
+| **Idempotência de entrega** | `NotificacaoRepository.jaNotificado` | Não reenvia o mesmo alerta em retry da fila |
 
-O limiar de dias para "urgente" e o cap numérico são `[A VALIDAR]` → P-81.
+**Ordem de preservação sob pressão.** Quando o volume estoura (fan-out de matching — A04 §4 S4, A06 §ALERTA), a degradação é **nesta ordem, de baixo para cima** — corta-se sempre o de baixo primeiro:
+
+1. **Alerta crítico** (prazo ≤ 3 dias ou aderência ≥ 0,80) — nunca é degradado para digest, nunca é cortado por cap, nunca é agrupado. É o último a cair; se ele não sai, o produto falhou.
+2. **Top-cap do digest** (10 diário / 25 semanal), ordenado por prazo → aderência: o usuário sempre vê o mais urgente e mais aderente em detalhe.
+3. **Excedente**: perde o detalhe, vira contagem agrupada por critério/órgão no corpo do digest + acesso no painel.
+4. **Nada** vira e-mail individual não-crítico. Sob pressão, o sistema aumenta o agrupamento — nunca o número de mensagens.
+
+A consequência arquitetural é que a query do digest é **limitada por construção** (`limite` no `pendentesDigest`, §3): 5.000 alertas pendentes para um usuário produzem uma leitura de 10 linhas + um agregado, não 5.000 linhas em memória.
 
 ## 8. Canais no MVP e evolução
 
@@ -504,12 +585,12 @@ export class NotificacaoWorker {
 - **AbortSignal em todo use case (arquitetura/10, §1):** todos os 3 use cases propagam o sinal.
 - **Port sem tecnologia no nome (arquitetura/10, §8):** `Notifier`, `PreferenciaRepository` — nunca `SesClient` ou `PostgresRepository`.
 - **Idempotência na fila (arquitetura/03, §3):** `jaNotificado` antes de enviar.
-- **Anti-fadiga e digest (docs/11, §4):** cap + ordenação por aderência no `EnviarDigestUseCase`.
+- **Anti-fadiga e digest (docs/11, §4 · P-81):** criticidade por prazo **ou** aderência no `NotificarAlertaUseCase`; cap por frequência (10/25), ordenação prazo→aderência e excedente agrupado no `EnviarDigestUseCase` — com a ordem de preservação sob pressão do §7.
 
 ## 11. Pendências
 
 - Provedor de e-mail transacional (SES vs. SendGrid vs. Postmark) e DPA de sub-operador (docs/02, §9). `[A VALIDAR]` → P-80
-- Limiar de criticidade (dias até o prazo) e cap de alertas no digest. `[A VALIDAR]` → P-81
+- **P-81 — RESOLVIDO (Produto/Priscila, 2026-07-11, RAD-200; alinhamento arquitetural: RAD-206).** Criticidade = prazo ≤ 3 dias corridos **ou** aderência ≥ 0,80; digest padrão diário, configurável para semanal; cap 10 (diário) / 25 (semanal) por usuário; excedente agrupado por critério/órgão; crítico não espera digest nem conta no cap. Refletido nos §§2.1, 3, 4.2, 4.3, 7, 10. Os quatro números (3 dias, 0,80, 10, 25) são **config injetada** (`LimiaresCriticidade`, `CAP_DIGEST`), não literais espalhados: mudança de política é mudança de configuração, não de código. Delta de implementação em `modules/notificacao` → Eng.
 - Canal webhook e in-app: escopo e adapter no *Next*. `[A VALIDAR]` → P-82
 - **Contrato `alerta.gerado` alinhado (2026-07-05):** o evento carrega `clienteFinalId` (escopo), **não** `usuarioId`/`emailDestinatario` — o destinatário (usuário + e-mail) é **resolvido aqui** a partir de `clienteFinalId` via leitura cross-contexto de Identidade/preferência (Gateway; MVP 1:1, P-25). O worker (§9) e o `NotificarAlertaUseCase` precisam refletir isso — ver contrato autoritativo em [arquitetura/03](03-desenho-da-solucao.md), §3 e RAD-24.
 

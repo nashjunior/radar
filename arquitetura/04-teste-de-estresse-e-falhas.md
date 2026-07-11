@@ -23,7 +23,7 @@ A arquitetura passa no teste quando, sob a carga-alvo (§3): **mantém os NFRs**
 | **S1** | Burst de publicação do PNCP | pico de editais/min em horário de pico | Frescor | p95 publicação→alerta ≤ 30 min **no pico** · carga-alvo: ~500 editais/hora (média diária ÷ 12h úteis) · pico estimado: 2–3× = **1.000–1.500 editais/hora** |
 | **S2** | Reconciliação + incremental concorrentes | dupla varredura simultânea | Frescor + rate-limit da fonte | sem 429 sustentado; frescor mantido · ~120 requests/varredura com `tamanhoPagina=50` |
 | **S3** | Enxurrada de triagens | N usuários pedem triagem ao mesmo tempo | Latência da triagem + custo | fila drena; custo/edital ≤ teto; **0 pedidos perdidos** |
-| **S4** | Fan-out de matching | 1 edital casa com N mil critérios | Notificação + dedup | alertas sem duplicar; digest aplica o cap |
+| **S4** | Fan-out de matching | 1 edital casa com N mil critérios | Notificação + dedup | alertas sem duplicar; digest aplica o cap (10 diário / 25 semanal — P-81); **alerta crítico sai mesmo assim** (A14 §7) |
 | **S5** | Soak (resistência) | carga média por horas/dias | Estabilidade | sem vazamento de memória/conexões · escala: ~6.000 editais/dia + ~15.000 atualizações/dia |
 | **S6** | "Pior dia" (spike + falha) | burst do PNCP **e** LLM lento juntos | Degradação graciosa | ingestão+alerta vivos; triagem degrada |
 | **S7** | Anexos pesados / OCR | muitos PDFs grandes ou imagem | Storage + latência da triagem | throughput mantido; fallback de OCR (docs/10, §6) |
@@ -50,7 +50,7 @@ O coração deste documento. Para cada falha: como se detecta, o que o sistema f
 | **LLM (Claude) indisponível/lento** | Timeout + taxa de erro no worker de triagem | *Circuit breaker* abre; triagem cai para **leitura assistida** (docs/10, §6); fila retém pedidos | Verificar provedor; reprocessar fila ao normalizar |
 | **Custo de IA estoura o teto** | Alarme de custo/edital acima do guardrail (docs/08, §4) | *Circuit breaker de custo*: throttle de triagens; priorizar editais de alta aderência | Acionar negócio; decidir teto/plano (liga P-20) |
 | **Banco sobrecarregado** | Latência de query, conexões saturadas | Throttle da ingestão; usar réplicas de leitura | Revisar índices/consultas; escalar |
-| **Explosão de alertas (fan-out)** | Nº de alertas por edital muito alto | Dedup; **forçar digest**; aplicar cap por usuário (docs/11, §4) | Revisar critério ruidoso com o usuário |
+| **Explosão de alertas (fan-out)** | Nº de alertas por edital muito alto | Dedup; **forçar digest**; aplicar cap por usuário (docs/11, §4 · P-81). Ordem de preservação: **crítico → top-cap → excedente agrupado**, nunca mais e-mails (A14, §7) | Revisar critério ruidoso com o usuário |
 | **Prompt-injection via edital** | Padrões suspeitos no conteúdo (docs/05, §4) | Tratar edital como dado; quarentena; não executar nada extraído | Acionar segurança; revisar amostra |
 | **Vazamento cross-tenant** (o pior) | Alerta de acesso anômalo; teste de isolamento | **Parar o fluxo afetado**; isolar | **Incidente LGPD** (docs/05, §6): avaliar comunicação à ANPD/titulares |
 
