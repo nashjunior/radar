@@ -90,16 +90,16 @@ Toda decisão já tomada continua valendo byte-a-byte (é o que a paridade prova
 |---|---|---|---|---|
 | `database` | ✅ | ✅ | ✅ | **referência** |
 | `db_proxy` | ✅ | ✅ | ✅ | **referência** |
-| `vpc` | ⏳ | ⏳ | ⏳ | RAD-182 |
-| `queue` | ⏳ | ⏳ | ⏳ | RAD-182 |
-| `storage` | ⏳ | ⏳ | ⏳ | RAD-182 |
-| `secrets` | ⏳ | ⏳ | ⏳ | RAD-182 |
-| `identity` | ⏳ | ⏳ | ⏳ | RAD-182 |
-| `compute` | ⏳ | ⏳ | ⏳ | RAD-182 |
-| `serverless` | ⏳ | ⏳ | ⏳ | RAD-182 |
-| stacks dev/staging/prod | ⏳ | ⏳ | — | RAD-182 |
+| `vpc` | ✅ | ✅ | ✅ | RAD-182 ✅ |
+| `queue` | ✅ | ✅ | ✅ | RAD-182 ✅ |
+| `storage` | ✅ | ✅ | ✅ | RAD-182 ✅ |
+| `secrets` | ✅ | ✅ | ✅ | RAD-182 ✅ |
+| `identity` | ✅ | ✅ | ✅ | RAD-182 ✅ |
+| `compute` | ✅ | ✅ | ✅ | RAD-182 ✅ |
+| `serverless` | ✅ | ✅ | ✅ | RAD-182 ✅ |
+| stacks dev/staging/prod | ✅ | ✅ | — | RAD-182 ✅ |
 
-`database` + `db_proxy` (o núcleo P-41, onde o guardrail PRESERVAR mais pesa) são a
-**referência viva** do método: vocabulário, convenção `_ref`, e o README de exit-cost. Os
-demais módulos + stacks aplicam o mesmo padrão — mecânico, mas melhor feito onde dá pra
-`tofu validate` (pós-unblock AWS). Ver [`PARIDADE.md`](PARIDADE.md) para o gate e o swap.
+Parte A (RAD-182) completa — todos os módulos escritos com vocabulário neutro + READMEs
+de exit-cost + stacks wireados. Parte B (paridade via `tofu plan -detailed-exitcode`)
+bloqueada pela mesma frente de credenciais AWS de RAD-134/RAD-130. Ver
+[`PARIDADE.md`](PARIDADE.md) para o gate e o swap.
