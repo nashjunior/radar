@@ -66,5 +66,5 @@ falha o apply quando a task morre no boot; o serviço só fica com 0 task sã). 
    A08 §5 desenha "API Gateway / WAF"). Sem borda o serviço processa fila mas não serve HTTP
    — e a política de escala por requisição (`request_scaling_target_ref`) fica inativa.
 
-Esses três pré-requisitos são **RAD-193**, que é quem wirea este módulo. Autoscaling por
+Esses três pré-requisitos são **RAD-199**, que é quem wirea este módulo. Autoscaling por
 CPU/memória e as policies de IAM já estão prontas aqui e passam a valer no mesmo apply.

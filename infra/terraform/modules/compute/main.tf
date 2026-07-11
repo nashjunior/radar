@@ -199,7 +199,7 @@ resource "aws_iam_role_policy" "ecs_task_queues" {
 # ⚠️ O módulo NÃO está instanciado em nenhum stack, de propósito: as sub-redes privadas ainda
 # não têm rota de saída (sem NAT, sem VPC endpoint), então a task não puxaria a imagem do ECR
 # nem leria o segredo — e o `apply` sairia 0 mesmo assim, com 0 task sã. Os pré-requisitos
-# (egress, imagem/ECR, borda) estão em RAD-193; é lá que este módulo é wireado.
+# (egress, imagem/ECR, borda) estão em RAD-199; é lá que este módulo é wireado.
 
 resource "aws_security_group" "tasks" {
   name        = "${var.project}-${var.env}-tasks-sg"
