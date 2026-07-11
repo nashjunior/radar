@@ -50,6 +50,9 @@ export const alertaStub: AlertaRepository = {
   async salvar(_alerta, _signal) {
     /* sem persistência no stub */
   },
+  async salvarEmLote(_alertas, _signal) {
+    /* sem persistência no stub */
+  },
   async porId(_id: AlertaId, _signal: AbortSignal) {
     return null;
   },

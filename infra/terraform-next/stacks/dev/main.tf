@@ -97,6 +97,7 @@ module "serverless" {
   count                    = var.enable_serverless_workers ? 1 : 0
   project                  = "radar"
   env                      = "dev"
+  region                   = var.aws_region
   network_id               = module.vpc.network_id
   private_subnet_ids       = module.vpc.private_subnet_ids
   proxy_firewall_group_ref = module.db_proxy.firewall_group_ref

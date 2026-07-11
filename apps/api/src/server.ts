@@ -40,6 +40,7 @@ import { preferenciaStub } from './infra/notificacao-stub.js';
 import {
   criterioStub,
   alertaStub,
+  auditCriterioStub,
   editalCatalogoStub,
   faixaValorStub,
   eventPublisherStub,
@@ -74,6 +75,7 @@ export function criarApp(): Hono {
     eventPublisherStub,
     new CryptoCriterioIdProvider(),
     systemClock,
+    auditCriterioStub,
   );
   const registrarFeedbackAlerta = new RegistrarFeedbackAlertaUseCase(alertaStub, eventPublisherStub);
   const consultarAlertas = new ConsultarAlertasTenantUseCase(alertaStub, editalCatalogoStub);

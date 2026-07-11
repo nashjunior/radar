@@ -78,10 +78,17 @@ tofu plan -detailed-exitcode -var-file=...
 
 ## Swap atômico (só após exit 0 nos três envs)
 
+`infra/terraform/scripts/` (runbooks + `ab3-evidence.sh`) **não** foi reescrito — segue
+válido e precisa **sobreviver ao swap**. Um `git rm -r infra/terraform` cego o apagaria
+(o `-next` só tem `modules/` + `stacks/`). Por isso o swap **preserva `scripts/`**:
+
 ```sh
+# 1. Carrega os scripts (não-reescritos) para dentro do -next antes do swap:
+git mv infra/terraform/scripts infra/terraform-next/scripts
+# 2. Troca módulos+stacks pelos do -next:
 git rm -r infra/terraform
 git mv infra/terraform-next infra/terraform
-# reapontar quaisquer paths em CI (.github/workflows) e scripts/ que citem terraform-next
+# 3. Reapontar quaisquer paths em CI (.github/workflows) e scripts/ que citem terraform-next.
 ```
 
 O `-next` compartilha o `backend.tf` (mesmo estado) dos stacks atuais — por isso o `plan`
