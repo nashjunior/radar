@@ -1,7 +1,9 @@
-import type { ClienteFinalId, PerfilId, TenantId } from '@radar/kernel';
+import type { ClienteFinalId, DomainEvent, PerfilId, TenantId } from '@radar/kernel';
+
+export type { DomainEvent };
 
 /** Published Language (docs/14 §6): emitido após criar/atualizar Perfil de Habilitação. */
-export class PerfilAtualizado {
+export class PerfilAtualizado implements DomainEvent {
   readonly type = 'perfil.atualizado' as const;
   readonly occurredAt: Date;
 

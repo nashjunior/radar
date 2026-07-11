@@ -1,9 +1,6 @@
-import type { EditalId } from '@radar/kernel';
+import type { DomainEvent, EditalId } from '@radar/kernel';
 
-export interface DomainEvent {
-  readonly type: string;
-  readonly occurredAt: Date;
-}
+export type { DomainEvent };
 
 // ---------------------------------------------------------------------------
 // Estado dos circuit breakers (P-34)

@@ -1,11 +1,7 @@
-import type { ClienteFinalId, EditalId, PerfilId, TenantId } from '@radar/kernel';
+import type { ClienteFinalId, DomainEvent, EditalId, PerfilId, TenantId } from '@radar/kernel';
 import type { Recomendacao } from '../domain/triagem.js';
 
-/** Contrato mínimo de evento de domínio (mesma forma dos demais contextos — A03 §3). */
-export interface DomainEvent {
-  readonly type: string;
-  readonly occurredAt: Date;
-}
+export type { DomainEvent };
 
 /**
  * Comando publicado por `SolicitarTriagemUseCase` (API) → consumido pelo worker `TriarEditalUseCase`

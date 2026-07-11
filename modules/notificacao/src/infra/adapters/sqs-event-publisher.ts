@@ -1,33 +1,7 @@
-import type { DomainEvent } from '../../application/events.js';
-import type { EventPublisher } from '../../application/ports.js';
-
-interface SqsClient {
-  sendMessage(
-    params: {
-      QueueUrl: string;
-      MessageBody: string;
-    },
-    opts: { abortSignal: AbortSignal },
-  ): Promise<void>;
-}
-
-export class SqsEventPublisher implements EventPublisher {
-  constructor(
-    private readonly sqs: SqsClient,
-    private readonly queueUrl: string,
-  ) {}
-
-  async publicar(evento: DomainEvent, signal: AbortSignal): Promise<void> {
-    await this.sqs.sendMessage(
-      {
-        QueueUrl: this.queueUrl,
-        MessageBody: JSON.stringify({
-          type: evento.type,
-          occurredAt: evento.occurredAt.toISOString(),
-          payload: (evento as DomainEvent & { payload?: unknown }).payload,
-        }),
-      },
-      { abortSignal: signal },
-    );
-  }
-}
+/**
+ * `QueueClient`/`SqsEventPublisher` (genérico, propaga `AbortSignal` até o último hop — P-78,
+ * arq/10 §10) vivem em `@radar/kernel` (RAD-194); mesma implementação usada por
+ * matching/triagem. Re-exportado deste caminho para não mudar os call sites existentes (testes).
+ */
+export { SqsEventPublisher } from '@radar/kernel';
+export type { QueueClient } from '@radar/kernel';

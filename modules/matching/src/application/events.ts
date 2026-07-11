@@ -1,9 +1,6 @@
-import type { AlertaId, ClienteFinalId, CriterioId, EditalId, TenantId } from '@radar/kernel';
+import type { AlertaId, ClienteFinalId, CriterioId, DomainEvent, EditalId, TenantId } from '@radar/kernel';
 
-export interface DomainEvent {
-  readonly type: string;
-  readonly occurredAt: Date;
-}
+export type { DomainEvent };
 
 /**
  * Publicado após geração de alerta para um critério ativo.

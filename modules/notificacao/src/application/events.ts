@@ -1,10 +1,7 @@
-import type { AlertaId, TenantId } from '@radar/kernel';
+import type { AlertaId, DomainEvent, TenantId } from '@radar/kernel';
 import type { NotificacaoId, UsuarioId } from '../domain/entities/notificacao.js';
 
-export interface DomainEvent {
-  readonly type: string;
-  readonly occurredAt: Date;
-}
+export type { DomainEvent };
 
 /**
  * Publicado após envio bem-sucedido de uma notificação.

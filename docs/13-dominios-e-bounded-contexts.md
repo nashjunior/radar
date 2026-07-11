@@ -33,8 +33,10 @@ Insight de DDD para este projeto: o "princípio transversal" (documento 00 — t
 | **Gestão da Participação** | Acompanhar cada disputa por fase e prazo | Caso, Fase, Prazo, Checklist, Recurso, Homologação | **Caso** | 3 · Next |
 | **Inteligência de Mercado** | Agregar histórico, preços de referência, estatística | Resultado, Preço de Referência, Fornecedor, Taxa de Disputa | *read models* (CQRS) | 4 · Later |
 | **Governança & Conformidade** | Base legal, proveniência, direitos do titular, auditoria, retenção | Base Legal, Proveniência, Titular, Trilha de Auditoria, Retenção | **RegistroDeProveniência**, **SolicitaçãoDeTitular** | transversal |
-| **Identidade & Organização** | Tenant, usuário, cliente-final, perfil da empresa | Tenant, Usuário, Cliente-final, Perfil de Habilitação | **Tenant**, **PerfilDeHabilitação** | transversal |
+| **Identidade & Organização** | Tenant, usuário, cliente-final, perfil da empresa, papel | Tenant, Usuário, Cliente-final, Perfil de Habilitação, Papel, Atribuição de Papel | **Tenant**, **PerfilDeHabilitação**, **AtribuiçãoDePapel** | transversal |
 | **Notificação** | Entregar alerta/digest por canal e preferência | Notificação, Canal, Digest, Preferência | **Notificação** | 1 · Now |
+
+Nota de agregado (P-52): **AtribuiçãoDePapel** é raiz própria, não parte do agregado **Tenant**. Sua identidade é o `sub` verificado do IdP (Cognito) — não gerada aqui —, seu ciclo de vida é independente (revogar/reatribuir papel não versiona nem trava o Tenant), ela é lida **em toda requisição** pela borda (`ResolverContextoAutorizacaoUseCase`, documento 14, §6) e tem Repository dedicado (`PermissaoRepository`). Compô-la em Tenant embutiria uma coleção ilimitada (todos os usuários do tenant) num só agregado; aqui o `tenantId` é **referência** (*Shared Kernel*, §5), não continência. Pelo mesmo motivo **Usuário não é agregado** deste contexto: o ciclo de vida do usuário é do IdP (P-98); o que este contexto possui do usuário é a atribuição de papel e escopo de `clienteFinalId`.
 
 Nota de fronteira: **Aderência** aparece em dois contextos com significados diferentes — no Matching é "quão relevante para o critério" (barato, estrutural); na Triagem é "quão apto a empresa está" (caro, por IA). Mesmo termo, modelos distintos: é exatamente a fronteira que um *bounded context* protege.
 
