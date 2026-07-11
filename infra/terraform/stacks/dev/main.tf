@@ -271,15 +271,26 @@ module "compute" {
 # Stop/start agendado fora do horário comercial (RAD-225).
 # Economia: Aurora (~$50) + Fargate (~$18) só rodam ~40-50h/semana das 168.
 # ⚠️ Decisão pós-apply: se o auto-pause (min_capacity_acu=0) engatar no RDS Proxy, pode-se
-#    remover este módulo para o Aurora e manter apenas o schedule do ECS. Se NÃO engatar,
-#    este módulo cobre o compute inteiro e min_capacity_acu deve ser revertido para 0.5.
+#    remover os schedules do Aurora e manter só os do ECS. Se NÃO engatar, este módulo cobre
+#    o compute inteiro e min_capacity_acu deve ser revertido para 0.5 (não deixar config morta).
 module "scheduled_shutdown" {
   source = "../../modules/scheduled_shutdown"
 
-  project          = "radar"
-  env              = "dev"
-  region           = var.aws_region
-  aurora_cluster_id = module.database.cluster_ref
-  ecs_cluster_name  = module.compute.cluster_name
-  ecs_service_name  = module.compute.service_name
+  project = "radar"
+  env     = "dev"
+  region  = var.aws_region
+
+  aurora_cluster_ref = module.database.cluster_ref
+  ecs_cluster_name   = module.compute.cluster_name
+  ecs_service_name   = module.compute.service_name
+
+  # Devem espelhar o min/max do módulo compute acima: é para ESTES valores que o religar
+  # das 08:00 restaura o scalable target depois de zerá-lo à noite.
+  ecs_min_capacity_on = 1
+  ecs_max_capacity_on = 2
+
+  # O scheduled action age sobre o scalable target que o `compute` registra, mas referencia-o
+  # por string ("service/<cluster>/<service>") — o grafo não enxerga essa aresta sozinho, e sem
+  # isto o apply pode tentar criar o agendamento antes do target existir.
+  depends_on = [module.compute]
 }

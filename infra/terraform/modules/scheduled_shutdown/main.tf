@@ -4,20 +4,25 @@
 # engatar com RDS Proxy anexado, ver comentário em stacks/dev/main.tf).
 # Economia: Aurora (~$50) + Fargate (~$18) só rodam ~40-50h/semana das 168.
 #
-# Binding: AWS — usa aws_scheduler_schedule (EventBridge Scheduler) com Universal Targets
-# (AWS SDK) para invocar StopDBCluster/StartDBCluster e UpdateService sem Lambda intermediário.
+# Binding: AWS. Dois mecanismos DIFERENTES, um por serviço — ver README §Por que dois:
+#   - Aurora → EventBridge Scheduler + Universal Target (aws-sdk:rds), sem Lambda.
+#   - ECS    → Application Auto Scaling scheduled action, NÃO UpdateService.
 
 locals {
   name_prefix = "${var.project}-${var.env}"
 
-  # ARN de serviço usado na policy IAM e nas targets dos schedulers
-  aurora_cluster_arn = "arn:aws:rds:${var.region}:${data.aws_caller_identity.current.account_id}:cluster:${var.aurora_cluster_id}"
-  ecs_service_arn    = "arn:aws:ecs:${var.region}:${data.aws_caller_identity.current.account_id}:service/${var.ecs_cluster_name}/${var.ecs_service_name}"
+  aurora_cluster_arn = "arn:aws:rds:${var.region}:${data.aws_caller_identity.current.account_id}:cluster:${var.aurora_cluster_ref}"
+
+  # Endereço do scalable target que o módulo compute registra (aws_appautoscaling_target.api).
+  ecs_scalable_target_id = "service/${var.ecs_cluster_name}/${var.ecs_service_name}"
 }
 
 data "aws_caller_identity" "current" {}
 
-# ── IAM ──────────────────────────────────────────────────────────────────────
+# ── Aurora: EventBridge Scheduler ────────────────────────────────────────────
+#
+# Aurora não tem "scalable target"; parar o cluster é uma chamada de API. O Scheduler
+# invoca o SDK direto (Universal Target), sem Lambda intermediário para manter.
 
 resource "aws_iam_role" "scheduler" {
   name = "${local.name_prefix}-scheduler-shutdown"
@@ -38,101 +43,88 @@ resource "aws_iam_role_policy" "scheduler" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "AuroraStopStart"
-        Effect = "Allow"
-        Action = [
-          "rds:StopDBCluster",
-          "rds:StartDBCluster"
-        ]
-        Resource = local.aurora_cluster_arn
-      },
-      {
-        Sid    = "ECSUpdateService"
-        Effect = "Allow"
-        Action = ["ecs:UpdateService"]
-        Resource = local.ecs_service_arn
-      }
-    ]
+    Statement = [{
+      Sid    = "AuroraStopStart"
+      Effect = "Allow"
+      Action = [
+        "rds:StopDBCluster",
+        "rds:StartDBCluster",
+      ]
+      Resource = local.aurora_cluster_arn
+    }]
   })
 }
 
-# ── Schedules ────────────────────────────────────────────────────────────────
-
-# Schedule group isolado para facilitar visibilidade/cleanup
 resource "aws_scheduler_schedule_group" "shutdown" {
   name = "${local.name_prefix}-shutdown"
 }
 
-# --- Aurora stop (fim de expediente) ---
 resource "aws_scheduler_schedule" "aurora_stop" {
   name       = "${local.name_prefix}-aurora-stop"
   group_name = aws_scheduler_schedule_group.shutdown.name
 
   schedule_expression          = var.cron_stop
-  schedule_expression_timezone = "America/Sao_Paulo"
+  schedule_expression_timezone = var.timezone
   flexible_time_window { mode = "OFF" }
 
   target {
     arn      = "arn:aws:scheduler:::aws-sdk:rds:stopDBCluster"
     role_arn = aws_iam_role.scheduler.arn
-    input    = jsonencode({ DbClusterIdentifier = var.aurora_cluster_id })
+    input    = jsonencode({ DbClusterIdentifier = var.aurora_cluster_ref })
   }
 }
 
-# --- Aurora start (início de expediente) ---
 resource "aws_scheduler_schedule" "aurora_start" {
   name       = "${local.name_prefix}-aurora-start"
   group_name = aws_scheduler_schedule_group.shutdown.name
 
   schedule_expression          = var.cron_start
-  schedule_expression_timezone = "America/Sao_Paulo"
+  schedule_expression_timezone = var.timezone
   flexible_time_window { mode = "OFF" }
 
   target {
     arn      = "arn:aws:scheduler:::aws-sdk:rds:startDBCluster"
     role_arn = aws_iam_role.scheduler.arn
-    input    = jsonencode({ DbClusterIdentifier = var.aurora_cluster_id })
+    input    = jsonencode({ DbClusterIdentifier = var.aurora_cluster_ref })
   }
 }
 
-# --- ECS stop (zerar desired_count) ---
-resource "aws_scheduler_schedule" "ecs_stop" {
-  name       = "${local.name_prefix}-ecs-stop"
-  group_name = aws_scheduler_schedule_group.shutdown.name
+# ── ECS: Application Auto Scaling scheduled actions ──────────────────────────
+#
+# NÃO usar ecs:UpdateService com DesiredCount=0 aqui: o módulo compute registra um
+# aws_appautoscaling_target com min_capacity=1, e o Application Auto Scaling reconcilia
+# a capacidade de volta para dentro de [min, max]. Zerar o serviço por UpdateService seria
+# desfeito pelo autoscaling em minutos — a economia do Fargate simplesmente não ocorreria.
+#
+# O mecanismo correto é mover o PRÓPRIO min/max do scalable target: com min=max=0 o
+# autoscaling drena o serviço a zero e o mantém lá; no religar, min=1 o traz de volta.
 
-  schedule_expression          = var.cron_stop
-  schedule_expression_timezone = "America/Sao_Paulo"
-  flexible_time_window { mode = "OFF" }
+resource "aws_appautoscaling_scheduled_action" "ecs_stop" {
+  name               = "${local.name_prefix}-ecs-stop"
+  service_namespace  = "ecs"
+  resource_id        = local.ecs_scalable_target_id
+  scalable_dimension = "ecs:service:DesiredCount"
 
-  target {
-    arn      = "arn:aws:scheduler:::aws-sdk:ecs:updateService"
-    role_arn = aws_iam_role.scheduler.arn
-    input = jsonencode({
-      Cluster      = var.ecs_cluster_name
-      Service      = var.ecs_service_name
-      DesiredCount = 0
-    })
+  schedule = var.cron_stop
+  timezone = var.timezone
+
+  scalable_target_action {
+    min_capacity = 0
+    max_capacity = 0
   }
 }
 
-# --- ECS start (religar 1 task) ---
-resource "aws_scheduler_schedule" "ecs_start" {
-  name       = "${local.name_prefix}-ecs-start"
-  group_name = aws_scheduler_schedule_group.shutdown.name
+resource "aws_appautoscaling_scheduled_action" "ecs_start" {
+  name               = "${local.name_prefix}-ecs-start"
+  service_namespace  = "ecs"
+  resource_id        = local.ecs_scalable_target_id
+  scalable_dimension = "ecs:service:DesiredCount"
 
-  schedule_expression          = var.cron_start
-  schedule_expression_timezone = "America/Sao_Paulo"
-  flexible_time_window { mode = "OFF" }
+  schedule = var.cron_start
+  timezone = var.timezone
 
-  target {
-    arn      = "arn:aws:scheduler:::aws-sdk:ecs:updateService"
-    role_arn = aws_iam_role.scheduler.arn
-    input = jsonencode({
-      Cluster      = var.ecs_cluster_name
-      Service      = var.ecs_service_name
-      DesiredCount = 1
-    })
+  scalable_target_action {
+    min_capacity = var.ecs_min_capacity_on
+    max_capacity = var.ecs_max_capacity_on
   }
 }

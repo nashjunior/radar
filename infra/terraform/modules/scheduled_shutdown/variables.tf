@@ -10,7 +10,7 @@ variable "env" {
 
   validation {
     condition     = var.env == "dev"
-    error_message = "scheduled_shutdown é exclusivo do ambiente dev."
+    error_message = "scheduled_shutdown é exclusivo do ambiente dev — prod/staging não desligam."
   }
 }
 
@@ -19,33 +19,54 @@ variable "region" {
   type        = string
 }
 
-variable "aurora_cluster_id" {
-  description = "Cluster identifier do Aurora a ser parado/iniciado. Binding: aws_rds_cluster.cluster_identifier"
+variable "aurora_cluster_ref" {
+  description = "Cluster identifier do Aurora a parar/iniciar. Binding: aws_rds_cluster.cluster_identifier"
   type        = string
 }
 
 variable "ecs_cluster_name" {
-  description = "Nome do ECS cluster a ter o serviço zerado. Binding: aws_ecs_cluster.name"
+  description = "Nome do ECS cluster do serviço a drenar. Binding: aws_ecs_cluster.name"
   type        = string
 }
 
 variable "ecs_service_name" {
-  description = "Nome do ECS service cujo desired_count vai a 0. Binding: aws_ecs_service.name"
+  description = "Nome do ECS service a drenar. Binding: aws_ecs_service.name"
   type        = string
 }
 
-# Horários em America/Sao_Paulo (UTC-3):
-#   - Ligar   08:00 BRT → 11:00 UTC  → cron(0 11 ? * MON-FRI *)
-#   - Desligar 20:00 BRT → 23:00 UTC → cron(0 23 ? * MON-FRI *)
-#   - Sexta 20:00 BRT já está coberta pelo weekday cron; fim-de-semana nunca liga.
-variable "cron_stop" {
-  description = "Cron expression (UTC) para desligar fora do horário comercial"
+variable "ecs_min_capacity_on" {
+  description = "min_capacity restaurado no religar. DEVE bater com o min_capacity do módulo compute"
+  type        = number
+  default     = 1
+}
+
+variable "ecs_max_capacity_on" {
+  description = "max_capacity restaurado no religar. DEVE bater com o max_capacity do módulo compute"
+  type        = number
+  default     = 2
+}
+
+variable "timezone" {
+  description = "Timezone em que os crons abaixo são interpretados (IANA)"
   type        = string
-  default     = "cron(0 23 ? * MON-FRI *)" # 20:00 BRT → 23:00 UTC
+  default     = "America/Sao_Paulo"
+}
+
+# Os crons são interpretados em `var.timezone` (America/Sao_Paulo), NÃO em UTC — tanto o
+# EventBridge Scheduler (schedule_expression_timezone) quanto o Application Auto Scaling
+# (timezone) recebem o fuso explicitamente. Escreva os horários como o time os lê no relógio;
+# não pré-converta para UTC (fazer as duas coisas desliga o dev no meio do expediente).
+#
+# Cobertura do fim de semana: o stop de SEX 20:00 vale até o start de SEG 08:00 — sábado e
+# domingo não têm start, então nada religa. Não é preciso um schedule de fim de semana.
+variable "cron_stop" {
+  description = "Cron (em var.timezone) do desligamento — fim do expediente"
+  type        = string
+  default     = "cron(0 20 ? * MON-FRI *)" # 20:00, seg-sex
 }
 
 variable "cron_start" {
-  description = "Cron expression (UTC) para religar no início do horário comercial"
+  description = "Cron (em var.timezone) do religamento — início do expediente"
   type        = string
-  default     = "cron(0 11 ? * MON-FRI *)" # 08:00 BRT → 11:00 UTC
+  default     = "cron(0 8 ? * MON-FRI *)" # 08:00, seg-sex
 }
