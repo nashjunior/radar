@@ -72,6 +72,26 @@ impacto de `plan`.
 > Os `[*]` são as chaves de `var.pools` (ingestao/matching/triagem/analitico/jobs no default;
 > o que o stack passar). As chaves **não mudam** → mesmos endereços indexados.
 
+> **Delta pós-swap — RAD-224 (2026-07-11).** Trivy (gate A07) achou 24 misconfigurations
+> CRITICAL/HIGH nos módulos Terraform (SG com egress `0.0.0.0/0` irrestrito, subnet pública
+> com auto-assign de IP, etc.) — mudança **intencional**, mesmo padrão do delta RAD-192:
+> - `aws_vpc_security_group_egress_rule.db_all` (`module.database`, tabela do topo): `cidr_ipv4`
+>   deixou de ser `0.0.0.0/0` e virou `var.network_cidr` (Trivy AWS-0104 — o banco nunca
+>   precisava alcançar a internet). Requer input **novo** `network_cidr` no módulo — o mesmo
+>   `vpc_cidr` documentado como "removido" na nota logo abaixo daquela tabela, **reintroduzido**
+>   com uso real. `ModifySecurityGroupRules` in-place, mesmo endereço.
+> - `aws_security_group.proxy` (`module.db_proxy`, tabela logo acima): o único bloco
+>   `egress {}` inline (`-1`/`0.0.0.0/0`) virou **dois** blocos — 5432 escopado a
+>   `var.network_cidr` (cluster) e 443 mantido em `0.0.0.0/0` (Secrets Manager/KMS, sem
+>   VPC endpoint de interface hoje; achado aceito em `.trivyignore.yaml`, mesma decisão de
+>   P-58/docs/98). Blocos inline são atributo do próprio recurso — sem endereço novo.
+> - `aws_subnet.public` (`module.vpc`, fora das duas tabelas acima): `map_public_ip_on_launch`
+>   `true`→`false` (Trivy AWS-0164). Nada na sub-rede depende de auto-assign (NAT usa
+>   `aws_eip` explícito; o ALB do `edge` gerencia sua própria face pública) — atributo
+>   simples, `ModifySubnetAttribute`, mesmo endereço.
+> Nenhum recurso movido/renomeado/recriado. `.trivyignore.yaml` cobre os achados aceitos
+> (borda pública por desenho, TLS-only em prod via `precondition`, ECR MUTABLE dev/staging).
+
 ## Procedimento de validação (requer tofu + credenciais AWS — GATED)
 
 Este ambiente **não tem** `tofu`/`terraform` nem credenciais/estado remoto AWS do Radar

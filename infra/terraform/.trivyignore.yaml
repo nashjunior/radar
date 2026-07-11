@@ -44,3 +44,13 @@ misconfigurations:
     paths:
       - "infra/terraform/modules/registry/main.tf"
     statement: "MUTABLE só em dev/staging por conveniência de ciclo; prod usa IMMUTABLE (stacks/prod/main.tf)."
+
+  # Egress 443 do SG dos workers serverless (Secrets Manager/SQS): mesma classe P-58 do
+  # compute/db_proxy acima. HOJE dormente — o seam serverless é gated-off (count=0,
+  # enable_serverless_workers=false, P-96) e o Trivy resolve o count estaticamente, então
+  # este achado não aparece na varredura enquanto o seam ficar desligado. Entrada preventiva
+  # (revisão guardiao-iac, RAD-224) pra não virar bloqueio surpresa no dia em que o seam ligar.
+  - id: AVD-AWS-0104
+    paths:
+      - "infra/terraform/modules/serverless/main.tf"
+    statement: "Mesma decisão de P-58 (Secrets Manager/SQS são endpoint público da AWS). Módulo gated-off hoje (P-96); entrada preventiva pra quando o seam ativar."

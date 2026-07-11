@@ -9,7 +9,7 @@ Primitiva A08 §4 "Postgres gerenciado". **Contrato** (`variables.tf`/`outputs.t
 | Input | Conceito | AWS |
 |---|---|---|
 | `project`, `env` | prefixo/ambiente | tag |
-| `network_id`, `private_subnet_ids` | rede privada | VPC id, subnet ids |
+| `network_id`, `network_cidr`, `private_subnet_ids` | rede privada | VPC id/cidr, subnet ids |
 | `db_name`, `db_username`, `db_password` | banco/credenciais | RDS master |
 | `encryption_key_ref` | chave de cifra em repouso | KMS key ARN |
 | `max_connections`, `statement_timeout_ms`, `lock_timeout_ms` | pisos P-41 | parâmetros PG |
@@ -26,6 +26,9 @@ Primitiva A08 §4 "Postgres gerenciado". **Contrato** (`variables.tf`/`outputs.t
 
 - **Cifra em repouso** (`storage_encrypted=true`, `kms_key_id`) — LGPD 13.709/2018.
 - **SG do banco sem ingress inline** — só o db_proxy adiciona o ingress 5432 (proxy-only).
+- **Egress do banco escopado a `network_cidr`** (RAD-224, Trivy AWS-0104) — o banco nunca
+  alcança a internet; resposta a cliente já é stateful (SG), o escopo VPC é só cinto e
+  suspensório pra qualquer tráfego intra-cluster.
 - **Parameter group P-41** — `max_connections=200` (pending-reboot), `work_mem=16384`,
   `maintenance_work_mem=524288`, `idle_in_transaction_session_timeout=30000`,
   `statement_timeout=300000` (backstop), `lock_timeout=0` (global; 3 s por role nos quentes).
@@ -58,6 +61,7 @@ Reescrever `main.tf` para GCP Cloud SQL / Azure DB for PostgreSQL exige:
 - `vpc_id`→`network_id`, `subnet_ids`→`private_subnet_ids`, `kms_key_arn`→`encryption_key_ref`;
   outputs `cluster_id`→`cluster_ref`, `security_group_id`→`firewall_group_ref`. **Renome de
   identificador de contrato — mesmo valor, mesmo recurso, `plan` sem diff.**
-- **Removido `vpc_cidr`** (input morto: nenhum recurso o usava depois do proxy-only). Remover
-  input não referenciado = zero impacto de `plan`.
+- `vpc_cidr` foi removido no rewrite original (input morto: nenhum recurso o usava depois do
+  proxy-only) e **reintroduzido como `network_cidr`** em RAD-224 para escopar o egress do
+  banco (Trivy AWS-0104) — mesma convenção de nome do `db_proxy`/`edge`, agora com uso real.
 - `min_capacity = var.env=="prod" ? 0.5 : 0.5` simplificado para `0.5` (resolve idêntico).

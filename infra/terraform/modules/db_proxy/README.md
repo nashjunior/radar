@@ -36,6 +36,10 @@ arquitetura, não neutralizá-lo (A08 §6). A decisão P-41 permanece intacta; a
   `connection_borrow_timeout=120`.
 - **Enforce proxy-only** — `aws_vpc_security_group_ingress_rule.db_from_proxy`: o único
   caminho 5432 ao cluster é do SG do proxy (P-41 fechada na rede, não por convenção).
+- **Egress do proxy segmentado** (RAD-224, Trivy AWS-0104) — 5432 escopado a `network_cidr`
+  (só o cluster); 443 segue `0.0.0.0/0` só pro Secrets Manager/KMS (endpoint público da AWS,
+  sem VPC endpoint de interface hoje — achado aceito e documentado em
+  `infra/terraform/.trivyignore.yaml`, mesma decisão de P-58).
 - **Alarme de pin** por proxy (`DatabaseConnectionsCurrentlySessionPinned > 0`, 3×5 min).
 
 ## Custo real de um exit (o irredutivelmente provider-bound)
