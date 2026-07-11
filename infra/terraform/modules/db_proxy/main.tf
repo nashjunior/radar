@@ -1,14 +1,15 @@
 # Módulo: db_proxy
-# RDS Proxy em MODO TRANSAÇÃO na frente do Aurora PostgreSQL (P-41/RAD-165).
-# Um proxy POR WORKLOAD = o bulkhead físico: a rajada da ingestão não engole o
-# caminho crítico do alerta (DB3, "pool dedicado"). Cada proxy tem seu próprio pool
-# de conexões; `max_connections_percent` fatia o max_connections=200 do banco de modo
+# Pool de conexão gerenciado (A08 §4). Binding hoje: RDS Proxy em MODO TRANSAÇÃO na frente
+# do Aurora PostgreSQL (P-41/RAD-165). Um proxy POR WORKLOAD = o bulkhead físico: a rajada
+# da ingestão não engole o caminho crítico do alerta (DB3, "pool dedicado"). Cada proxy tem
+# seu próprio pool; `max_connections_percent` fatia o max_connections=200 do banco de modo
 # que a SOMA dos pools fique < 200 com folga de admin.
 #
-# Modo transação (multiplexação por transação) é o comportamento NATIVO do RDS Proxy
-# para PostgreSQL — não há toggle. A pegadinha é o PIN: SET de sessão, advisory lock de
-# sessão, prepared statement nomeado e LISTEN/NOTIFY fixam a conexão e derrotam a
-# multiplexação. Vigie `DatabaseConnectionsCurrentlySessionPinned` (alarme abaixo).
+# Modo transação (multiplexação por transação) é o comportamento NATIVO do RDS Proxy para
+# PostgreSQL — não há toggle. A pegadinha é o PIN (ver README). Vigie
+# `DatabaseConnectionsCurrentlySessionPinned` (alarme abaixo).
+#
+# CONTRATO neutro (variables/outputs) · IMPLEMENTAÇÃO provider-bound (este main.tf).
 # Refs: arquitetura/05 §6, arquitetura/08 §§3,4, docs/98 P-41/P-27.
 
 terraform {
@@ -35,7 +36,7 @@ locals {
 }
 
 # IAM: o proxy lê as credenciais {username,password} do Secrets Manager (auth=SECRETS)
-# e decifra o segredo com a KMS do ambiente. Nada de senha em variável de proxy.
+# e decifra o segredo com a chave de cifra do ambiente. Nada de senha em variável de proxy.
 data "aws_iam_policy_document" "assume" {
   statement {
     actions = ["sts:AssumeRole"]
@@ -58,18 +59,18 @@ data "aws_iam_policy_document" "secret_access" {
     actions = ["secretsmanager:GetSecretValue"]
     # Secret compartilhado + qualquer secret por-pool (auth como role do pool, P-41).
     resources = distinct(concat(
-      [var.db_credentials_secret_arn],
-      [for _, p in var.pools : p.secret_arn if p.secret_arn != null],
+      [var.db_credentials_secret_ref],
+      [for _, p in var.pools : p.secret_ref if p.secret_ref != null],
     ))
   }
   statement {
     sid       = "DecryptSecret"
     actions   = ["kms:Decrypt"]
-    resources = [var.kms_key_arn]
+    resources = [var.encryption_key_ref]
     condition {
       test     = "StringEquals"
       variable = "kms:ViaService"
-      values   = ["secretsmanager.${var.aws_region}.amazonaws.com"]
+      values   = ["secretsmanager.${var.region}.amazonaws.com"]
     }
   }
 }
@@ -84,14 +85,14 @@ resource "aws_iam_role_policy" "proxy" {
 resource "aws_security_group" "proxy" {
   name        = "${var.project}-${var.env}-rdsproxy-sg"
   description = "Acesso ao RDS Proxy — somente da VPC interna"
-  vpc_id      = var.vpc_id
+  vpc_id      = var.network_id
 
   ingress {
     description = "Postgres via proxy — clientes internos da VPC"
     from_port   = 5432
     to_port     = 5432
     protocol    = "tcp"
-    cidr_blocks = [var.vpc_cidr]
+    cidr_blocks = [var.network_cidr]
   }
 
   egress {
@@ -108,7 +109,7 @@ resource "aws_security_group" "proxy" {
 # proxy. O SG do banco (módulo database) não tem mais ingress amplo por CIDR — este é o
 # único caminho para o cluster. Break-glass/migração via bastion = regra temporária à parte.
 resource "aws_vpc_security_group_ingress_rule" "db_from_proxy" {
-  security_group_id            = var.db_security_group_id
+  security_group_id            = var.db_firewall_group_ref
   referenced_security_group_id = aws_security_group.proxy.id
   from_port                    = 5432
   to_port                      = 5432
@@ -125,7 +126,7 @@ resource "aws_db_proxy" "this" {
   name           = "${var.project}-${var.env}-${each.key}"
   engine_family  = "POSTGRESQL"
   role_arn       = aws_iam_role.proxy.arn
-  vpc_subnet_ids = var.subnet_ids
+  vpc_subnet_ids = var.private_subnet_ids
 
   # TLS obrigatório cliente→proxy (LGPD 13.709/2018 — dado em trânsito cifrado).
   require_tls = true
@@ -140,7 +141,7 @@ resource "aws_db_proxy" "this" {
   # statement_timeout/lock_timeout por role (ALTER ROLE) sem pinar. Ver README/runbook.
   auth {
     auth_scheme = "SECRETS"
-    secret_arn  = coalesce(each.value.secret_arn, var.db_credentials_secret_arn)
+    secret_arn  = coalesce(each.value.secret_ref, var.db_credentials_secret_ref)
     iam_auth    = "DISABLED"
   }
 
@@ -172,7 +173,7 @@ resource "aws_db_proxy_target" "this" {
 
   db_proxy_name         = aws_db_proxy.this[each.key].name
   target_group_name     = aws_db_proxy_default_target_group.this[each.key].name
-  db_cluster_identifier = var.db_cluster_id
+  db_cluster_identifier = var.cluster_ref
 }
 
 # Pegadinha do modo transação: se qualquer sessão fixar (pin) a conexão, a
@@ -196,8 +197,8 @@ resource "aws_cloudwatch_metric_alarm" "session_pinned" {
     ProxyName = aws_db_proxy.this[each.key].name
   }
 
-  alarm_actions = var.alarm_sns_topic_arn == "" ? [] : [var.alarm_sns_topic_arn]
-  ok_actions    = var.alarm_sns_topic_arn == "" ? [] : [var.alarm_sns_topic_arn]
+  alarm_actions = var.alarm_topic_ref == "" ? [] : [var.alarm_topic_ref]
+  ok_actions    = var.alarm_topic_ref == "" ? [] : [var.alarm_topic_ref]
 
   tags = merge(local.tags, { pool = each.key })
 }

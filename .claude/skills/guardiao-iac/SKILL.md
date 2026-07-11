@@ -2,7 +2,7 @@
 name: guardiao-iac
 description: >-
   Use ao criar/alterar código de infraestrutura (Terraform/IaC) do Radar de Licitações —
-  módulos e stacks em `infra/terraform` (e o rewrite `infra/terraform-next`, RAD-181): valida
+  módulos e stacks em `infra/terraform` (contém o rewrite provider-agnóstico do RAD-181, já swapado): valida
   os invariantes REAIS de A08 no `.tf` — modules-by-primitive sem módulo importando módulo
   (composição só no stack), contratos (`variables`/`outputs`) provider-agnósticos com a
   convenção `_ref`, provider-bound documentado (não fingido neutro), paridade swap-safe (não
@@ -25,14 +25,14 @@ Você valida a infraestrutura como código do **seu próprio diff** antes de fec
 
 O checklist canônico (portabilidade/estrutura A08 §4/§6/§10, paridade swap-safe RAD-181, guardrail PRESERVAR P-41, postura de segurança de infra A08 §5/§7 + docs/05, cheiros, fronteira com os irmãos, formato de saída) vive em **`.claude/agents/guardiao-iac.md`**. **Leia esse arquivo e aplique-o ao seu diff.** Quando as convenções mudarem, elas mudam **lá** — esta skill segue sem edição. Não recopie as regras aqui (é a duplicação que gera drift).
 
-Fontes primárias que o próprio agente cita: `arquitetura/08-infraestrutura-e-implantacao.md` §§4-7/§10 · `docs/98` P-64/P-28/P-27/P-41/P-96/P-08 · `docs/05` §4 (fatia de infra) · referência viva `infra/terraform-next/README.md` + `PARIDADE.md` + `modules/database`/`modules/db_proxy`.
+Fontes primárias que o próprio agente cita: `arquitetura/08-infraestrutura-e-implantacao.md` §§4-7/§10 · `docs/98` P-64/P-28/P-27/P-41/P-96/P-08 · `docs/05` §4 (fatia de infra) · referência viva `infra/terraform/README.md` + `PARIDADE.md` + `modules/database`/`modules/db_proxy`.
 
 ## Como aplicar (Codex valida o PRÓPRIO diff)
 
 1. Colete o diff: `git status --short` e `git diff` (ou `git diff <base>...HEAD`); restrinja a `infra/`.
 2. **Leia `.claude/agents/guardiao-iac.md`** — o checklist completo.
 3. Classifique cada arquivo por módulo/stack e por tipo (`variables.tf`/`outputs.tf` = contrato; `main.tf` = binding; `backend.tf` = estado; `*.tfvars` = valores; `README.md` = exit-cost) e rode o checklist. `grep` para `source =` proibido em módulo, região fora de `sa-east-1`, segredo literal, `publicly_accessible`, `provider "google|azurerm"`; `Read` para inspecionar o recurso.
-4. Antes de marcar quebra de paridade, cheque `infra/terraform-next/PARIDADE.md` (autoridade do que preserva estado); antes de marcar regressão PRESERVAR, confira o valor no `infra/terraform` atual.
+4. Antes de marcar quebra de paridade, cheque `infra/terraform/PARIDADE.md` (autoridade do que preserva estado); antes de marcar regressão PRESERVAR, confira o valor no `infra/terraform` atual.
 5. Reporte no formato do agente e **corrija as ❌ antes de finalizar/PR**:
    - ❌ **Violação** — o que quebra + `arquivo:linha` + a regra/`§` (A08/P-NN) + correção
    - ⚠️ **Cheiro** — padrão suspeito não bloqueante (output cru sem `_ref`, lint genérico gritante)

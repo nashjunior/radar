@@ -1,7 +1,10 @@
 # Módulo: database
-# PostgreSQL gerenciado (RDS Aurora Serverless v2 ou equivalente portável).
-# Topologia: single-AZ no dev/staging, Multi-AZ no prod.
-# Refs: arquitetura/08 §4, docs/98 P-28/P-64
+# Postgres gerenciado (A08 §3/§4 "Postgres gerenciado"). Binding hoje: RDS Aurora
+# Serverless v2 (PG16). Topologia: single-AZ dev/staging, Multi-AZ prod.
+#
+# CONTRATO neutro (variables/outputs) · IMPLEMENTAÇÃO provider-bound (este main.tf).
+# O que um exit para GCP Cloud SQL / Azure DB custaria está no README.md.
+# Refs: arquitetura/08 §4, docs/98 P-28/P-64/P-41.
 
 terraform {
   required_providers {
@@ -14,7 +17,7 @@ terraform {
 
 resource "aws_db_subnet_group" "this" {
   name       = "${var.project}-${var.env}-db-subnet-group"
-  subnet_ids = var.subnet_ids
+  subnet_ids = var.private_subnet_ids
 
   tags = local.tags
 }
@@ -26,7 +29,7 @@ resource "aws_db_subnet_group" "this" {
 resource "aws_security_group" "db" {
   name        = "${var.project}-${var.env}-db-sg"
   description = "Acesso ao banco — somente via RDS Proxy (P-41)"
-  vpc_id      = var.vpc_id
+  vpc_id      = var.network_id
 
   tags = local.tags
 }
@@ -106,7 +109,7 @@ resource "aws_rds_cluster" "this" {
   vpc_security_group_ids = [aws_security_group.db.id]
 
   serverlessv2_scaling_configuration {
-    min_capacity = var.env == "prod" ? 0.5 : 0.5
+    min_capacity = 0.5
     max_capacity = var.env == "prod" ? 16 : 4
   }
 
@@ -115,7 +118,7 @@ resource "aws_rds_cluster" "this" {
 
   # LGPD 13.709/2018 — dados em repouso cifrados obrigatoriamente
   storage_encrypted = true
-  kms_key_id        = var.kms_key_arn
+  kms_key_id        = var.encryption_key_ref
 
   tags = local.tags
 }

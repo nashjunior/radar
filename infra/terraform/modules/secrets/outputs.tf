@@ -1,19 +1,21 @@
-output "database_url_secret_arn" {
-  description = "ARN do segredo DATABASE_URL — usado pelo módulo compute"
+# Saídas neutras. `_ref` = handle opaco do provedor; sem sufixo = valor portável.
+
+output "database_url_secret_ref" {
+  description = "Handle do segredo DATABASE_URL (HOST = endpoint do proxy P-41). AWS: Secrets Manager ARN"
   value       = aws_secretsmanager_secret.database_url.arn
 }
 
-output "pncp_api_key_secret_arn" {
-  description = "ARN do segredo da chave PNCP"
+output "pncp_api_key_secret_ref" {
+  description = "Handle do segredo da chave de acesso ao PNCP. AWS: Secrets Manager ARN"
   value       = aws_secretsmanager_secret.pncp_api_key.arn
 }
 
-output "db_credentials_secret_arn" {
-  description = "ARN do segredo {username,password} usado pela auth do RDS Proxy (P-41)"
+output "db_credentials_secret_ref" {
+  description = "Handle do segredo {username,password} para auth do pool gerenciado (P-41). AWS: Secrets Manager ARN"
   value       = aws_secretsmanager_secret.db_credentials.arn
 }
 
-output "field_crypto_key_secret_arn" {
-  description = "ARN do segredo FIELD_CRYPTO_KEY — chave AES-256-GCM por ambiente"
+output "field_crypto_key_secret_ref" {
+  description = "Handle do segredo FIELD_CRYPTO_KEY (AES-256-GCM, P-59). AWS: Secrets Manager ARN"
   value       = aws_secretsmanager_secret.field_crypto_key.arn
 }

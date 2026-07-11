@@ -1,3 +1,8 @@
+# Contrato do módulo `serverless` — provider-agnóstico (A08 §4/§6, RAD-181).
+# Seam P-27: workers Lambda com reserved_concurrent_executions como TETO de conexões
+# ao banco (P-41). Gated off no MVP-Now (workers coabitam apps/api Fargate, P-96).
+# Ver README.md para o que aqui é irredutivelmente provider-bound.
+
 variable "project" {
   description = "Nome do projeto (prefixo de recursos)"
   type        = string
@@ -12,38 +17,38 @@ variable "env" {
   }
 }
 
-variable "aws_region" {
-  description = "Região AWS (condição kms:ViaService)"
+variable "region" {
+  description = "Região do provedor (condição de escopo do decrypt de secret). AWS: kms:ViaService"
   type        = string
 }
 
-variable "vpc_id" {
-  description = "ID da VPC dos workers"
+variable "network_id" {
+  description = "ID da rede privada dos workers. AWS: VPC id"
   type        = string
 }
 
-variable "subnet_ids" {
-  description = "Subnets privadas dos workers"
+variable "private_subnet_ids" {
+  description = "Sub-redes privadas dos workers. AWS: subnet ids"
   type        = list(string)
 }
 
-variable "proxy_security_group_id" {
-  description = "SG do RDS Proxy — destino do egress 5432 dos workers"
+variable "proxy_firewall_group_ref" {
+  description = "Grupo de firewall do pool gerenciado — destino do egress 5432 dos workers. AWS: Security Group id"
   type        = string
 }
 
-variable "kms_key_arn" {
-  description = "ARN da KMS que cifra os secrets (kms:Decrypt)"
+variable "encryption_key_ref" {
+  description = "Handle da chave de cifra (decrypt dos secrets). AWS: KMS key ARN"
   type        = string
 }
 
-variable "secret_arns" {
-  description = "ARNs dos secrets que os workers leem (database-url, field-crypto-key, etc.)"
+variable "secret_refs" {
+  description = "Handles dos secrets que os workers leem (database-url, field-crypto-key). AWS: Secrets Manager ARNs"
   type        = list(string)
 }
 
-variable "database_url_secret_arn" {
-  description = "ARN do secret DATABASE_URL (HOST = endpoint do proxy do pool)"
+variable "database_url_secret_ref" {
+  description = "Handle do segredo DATABASE_URL (HOST = endpoint do proxy P-41). AWS: Secrets Manager ARN"
   type        = string
 }
 
@@ -63,15 +68,15 @@ variable "enabled" {
 # reserved_concurrency ≈ backends do pool (Ingestão 15 / Matching 10 / Notificação parte
 # do interativo). A validação abaixo é o gate "soma dos tetos < max_connections".
 variable "functions" {
-  description = "Mapa função→config. reserved_concurrency é o teto de conexões ao banco."
+  description = "Mapa função→config. reserved_concurrency é o teto de conexões ao banco (P-41)."
   type = map(object({
     handler              = string
     runtime              = optional(string, "nodejs20.x")
     reserved_concurrency = number
     memory_size          = optional(number, 512)
     timeout              = optional(number, 60)
-    pool                 = string           # pool do proxy que esta função consome
-    proxy_endpoint       = string           # endpoint do RDS Proxy desse pool
+    pool                 = string           # pool do proxy gerenciado que esta função consome
+    proxy_endpoint       = string           # endpoint do pool gerenciado para este workload
     queue_arn            = optional(string) # SQS-driven; null = agendada (ingestão/health)
     batch_size           = optional(number, 10)
     schedule_expression  = optional(string, "rate(1 hour)") # só p/ agendadas (queue_arn=null)

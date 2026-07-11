@@ -1,8 +1,10 @@
-# `infra/terraform-next` — rewrite de contratos provider-agnósticos (RAD-181)
+# `infra/terraform` — contratos provider-agnósticos (RAD-181)
 
-> **Pasta temporária.** NÃO é aplicada, NÃO é o estado vivo. Substitui `infra/terraform`
-> **só depois** de provada a paridade (`tofu plan` = *no changes*) — ver [`PARIDADE.md`](PARIDADE.md).
-> Enquanto o swap não acontece, o `infra/terraform` atual continua sendo a verdade.
+> **Estado vivo (pós-swap, 2026-07-11).** Este é o `infra/terraform` oficial — nasceu como
+> rewrite na pasta temporária `infra/terraform-next` e foi swapado in-place após a paridade de
+> endereço + config resolvida ser provada estaticamente. O gate de `tofu plan` = *no changes* e
+> o histórico do swap estão em [`PARIDADE.md`](PARIDADE.md); a validação corrente é a pipeline
+> (Gate 8 `terraform-validate`) + o primeiro `apply` real (AWS-account gated, RAD-134).
 
 Refaz os **contratos** (`variables.tf`/`outputs.tf`) dos módulos Terraform para que sejam
 genuinamente **provider-agnósticos** (A08 §4/§6), contendo a troca de provedor ao `main.tf`

@@ -1,6 +1,7 @@
 # Estado remoto — S3 + DynamoDB lock (P-65)
-# BLOQUEADO: requer conta AWS provisionada (owner: nash junior / operador).
+# BLOQUEADO: requer conta AWS provisionada (owner: DevOps/Artur).
 # Scaffold presente; plan/apply diferidos até a conta existir.
+# backend.tf = MESMO bucket/lock/key do stack atual — plan do -next enxerga o estado real.
 
 terraform {
   backend "s3" {

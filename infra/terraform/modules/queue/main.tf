@@ -1,7 +1,7 @@
 # Módulo: queue
-# Fila gerenciada SQS com DLQ (retry + dead letter queue).
-# Eventos de domínio entre módulos (EditalIngerido, AlertaGerado, etc.).
-# Refs: arquitetura/03 (fluxo de eventos), arquitetura/08 §4
+# Fila gerenciada com DLQ (retry + dead-letter). Eventos de domínio entre módulos.
+# Binding hoje = AWS SQS. Contrato usa `encryption_key_ref`/`queue_ref`/`dlq_ref`.
+# Refs: arquitetura/03 (fluxo de eventos); arquitetura/08 §4; RAD-181/RAD-182
 
 terraform {
   required_providers {
@@ -12,10 +12,19 @@ terraform {
   }
 }
 
+locals {
+  tags = {
+    project     = var.project
+    environment = var.env
+    queue       = var.queue_name
+    managed_by  = "terraform"
+  }
+}
+
 resource "aws_sqs_queue" "dlq" {
   name                      = "${var.project}-${var.env}-${var.queue_name}-dlq"
   message_retention_seconds = 1209600 # 14 dias
-  kms_master_key_id         = var.kms_key_arn
+  kms_master_key_id         = var.encryption_key_ref
 
   tags = local.tags
 }
@@ -25,7 +34,7 @@ resource "aws_sqs_queue" "this" {
   visibility_timeout_seconds = var.visibility_timeout
   message_retention_seconds  = 86400 # 1 dia
   max_message_size           = 262144
-  kms_master_key_id          = var.kms_key_arn
+  kms_master_key_id          = var.encryption_key_ref
 
   redrive_policy = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.dlq.arn
@@ -33,13 +42,4 @@ resource "aws_sqs_queue" "this" {
   })
 
   tags = local.tags
-}
-
-locals {
-  tags = {
-    project     = var.project
-    environment = var.env
-    queue       = var.queue_name
-    managed_by  = "terraform"
-  }
 }

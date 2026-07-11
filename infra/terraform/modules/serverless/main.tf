@@ -1,17 +1,10 @@
 # Módulo: serverless
-# Funções Lambda dos workers assíncronos (ingestão/matching/notificação) com
-# RESERVED CONCURRENCY como TETO de conexões ao banco (P-41/RAD-165).
-#
-# Cada invocação abre ~1 conexão pelo RDS Proxy → limitar a concorrência = limitar os
-# backends. `reserved_concurrent_executions` é o teto por função; para os workers
-# dirigidos por SQS, `scaling_config.maximum_concurrency` espelha esse teto na fila.
-# A soma dos tetos respeita `max_connections=200` com folga de admin.
-#
-# ESTE É O SEAM SERVERLESS DE P-27 — no MVP-Now os consumers coabitam `apps/api`
-# (Fargate, P-96 item 4, gated por WORKERS_ENABLED). Este módulo é o DESTINO quando A09
-# justificar o isolamento; fica gated nos stacks (`enable_serverless_workers=false`).
-# O valor entregue agora: o TETO (reserved concurrency) e o wiring (endpoint do proxy,
-# VPC, secrets) escritos e validados. Refs: arquitetura/08 §2, docs/98 P-41/P-27/P-96.
+# Funções serverless dos workers assíncronos (ingestão/matching/notificação).
+# Binding hoje = AWS Lambda. RESERVED_CONCURRENT_EXECUTIONS = teto de conexões ao banco (P-41).
+# Seam P-27: gated off no MVP-Now (workers coabitam apps/api Fargate, P-96).
+# Contrato usa `network_id`, `private_subnet_ids`, `proxy_firewall_group_ref`,
+# `encryption_key_ref`, `secret_refs`, `*_secret_ref` (neutros).
+# Refs: arquitetura/08 §2; docs/98 P-41/P-27/P-96; RAD-181/RAD-182
 
 terraform {
   required_providers {
@@ -29,11 +22,9 @@ locals {
     managed_by  = "terraform"
   }
 
-  # Funções dirigidas por fila (têm queue_arn) ganham event source mapping.
   sqs_functions = { for k, f in var.functions : k => f if f.queue_arn != null }
 }
 
-# IAM: role de execução compartilhada dos workers.
 data "aws_iam_policy_document" "assume" {
   statement {
     actions = ["sts:AssumeRole"]
@@ -50,7 +41,6 @@ resource "aws_iam_role" "worker" {
   tags               = local.tags
 }
 
-# ENI na VPC (para alcançar o proxy) + logs.
 resource "aws_iam_role_policy_attachment" "vpc" {
   role       = aws_iam_role.worker.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
@@ -60,16 +50,16 @@ data "aws_iam_policy_document" "worker" {
   statement {
     sid       = "ReadSecrets"
     actions   = ["secretsmanager:GetSecretValue"]
-    resources = var.secret_arns
+    resources = var.secret_refs
   }
   statement {
     sid       = "DecryptSecrets"
     actions   = ["kms:Decrypt"]
-    resources = [var.kms_key_arn]
+    resources = [var.encryption_key_ref]
     condition {
       test     = "StringEquals"
       variable = "kms:ViaService"
-      values   = ["secretsmanager.${var.aws_region}.amazonaws.com"]
+      values   = ["secretsmanager.${var.region}.amazonaws.com"]
     }
   }
   statement {
@@ -85,22 +75,22 @@ resource "aws_iam_role_policy" "worker" {
   policy = data.aws_iam_policy_document.worker.json
 }
 
-# SG dos workers — egress 5432 p/ o SG do proxy (nunca o banco direto).
+# SG dos workers — egress 5432 somente ao SG do proxy (nunca ao banco direto, P-41).
 resource "aws_security_group" "worker" {
   name        = "${var.project}-${var.env}-worker-sg"
-  description = "Workers serverless — egress somente ao RDS Proxy"
-  vpc_id      = var.vpc_id
+  description = "Workers serverless — egress somente ao pool gerenciado"
+  vpc_id      = var.network_id
 
   egress {
-    description     = "Postgres via RDS Proxy"
+    description     = "Postgres via pool gerenciado"
     from_port       = 5432
     to_port         = 5432
     protocol        = "tcp"
-    security_groups = [var.proxy_security_group_id]
+    security_groups = [var.proxy_firewall_group_ref]
   }
 
   egress {
-    description = "HTTPS (Secrets Manager, SQS, Bedrock via endpoints)"
+    description = "HTTPS (Secrets Manager, SQS via endpoints)"
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
@@ -128,24 +118,22 @@ resource "aws_lambda_function" "worker" {
   timeout       = each.value.timeout
   memory_size   = each.value.memory_size
 
-  # Seam ainda não empacotado — pacote placeholder até a extração (P-27). O apply real
-  # substitui por artefato de build; validate não lê o arquivo.
+  # Seam ainda não empacotado — placeholder até a extração (P-27).
   filename = var.lambda_package_path
 
-  # O TETO (P-41). Soma validada em var.functions contra max_connections.
+  # O TETO de conexões ao banco (P-41).
   reserved_concurrent_executions = each.value.reserved_concurrency
 
   vpc_config {
-    subnet_ids         = var.subnet_ids
+    subnet_ids         = var.private_subnet_ids
     security_group_ids = [aws_security_group.worker.id]
   }
 
   environment {
     variables = {
-      NODE_ENV = var.env
-      # DATABASE_URL aponta para o ENDPOINT DO PROXY do pool desta função, nunca o cluster.
+      NODE_ENV                = var.env
       DB_PROXY_ENDPOINT       = each.value.proxy_endpoint
-      DATABASE_URL_SECRET_ARN = var.database_url_secret_arn
+      DATABASE_URL_SECRET_ARN = var.database_url_secret_ref
       WORKLOAD_POOL           = each.value.pool
     }
   }
@@ -155,8 +143,7 @@ resource "aws_lambda_function" "worker" {
   tags = merge(local.tags, { pool = each.value.pool })
 }
 
-# Fila→função: maximum_concurrency espelha o teto de reserved concurrency (SQS não pode
-# escalar além do teto e estourar o pool de conexões).
+# Fila→função: maximum_concurrency espelha o teto (SQS não pode escalar além do teto).
 resource "aws_lambda_event_source_mapping" "sqs" {
   for_each = local.sqs_functions
 
@@ -171,7 +158,7 @@ resource "aws_lambda_event_source_mapping" "sqs" {
 }
 
 # Funções AGENDADAS (queue_arn=null) — ingestão/health (arq/08 §2: "serverless job
-# agendado"). EventBridge Scheduler invoca a Lambda na cadência do schedule_expression.
+# agendado"). EventBridge Scheduler invoca a função na cadência do schedule_expression.
 locals {
   scheduled_functions = { for k, f in var.functions : k => f if f.queue_arn == null }
 }

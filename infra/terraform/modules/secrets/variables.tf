@@ -1,3 +1,6 @@
+# Contrato do módulo `secrets` — provider-agnóstico (A08 §4/§6, RAD-181).
+# Ver README.md para o que aqui é irredutivelmente provider-bound.
+
 variable "project" {
   description = "Nome do projeto (prefixo de recursos)"
   type        = string
@@ -12,7 +15,7 @@ variable "env" {
   }
 }
 
-variable "kms_key_arn" {
-  description = "ARN da chave KMS para criptografia dos segredos (LGPD 13.709/2018)"
+variable "encryption_key_ref" {
+  description = "Handle da chave de cifra dos segredos em repouso (LGPD 13.709/2018). AWS: KMS key ARN"
   type        = string
 }

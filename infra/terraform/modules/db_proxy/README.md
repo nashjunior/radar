@@ -1,103 +1,79 @@
-# Módulo `db_proxy` — RDS Proxy em modo transação + bulkheads (P-41/RAD-165)
+# Módulo `db_proxy` — pool de conexão gerenciado (contrato neutro, RAD-181)
 
-Materializa o **piso e o teto** da solução de pool decidida em **P-41** (arq/05 §6): um
-**RDS Proxy em modo transação** por workload na frente do Aurora PostgreSQL. É o que segura
-a explosão de conexões dos *workers* + do *seam* serverless (P-27) e isola a rajada da
-ingestão do caminho crítico do alerta (DB3, "pool dedicado").
+Primitiva A08 §4 "Pool de conexão". **Contrato** neutro; **implementação** = RDS Proxy modo
+transação + bulkheads por workload (P-41/RAD-165). Este é o módulo **mais** provider-bound do
+repo — por isso a seção de exit-cost abaixo é a maior: expor o custo é honestidade de
+arquitetura, não neutralizá-lo (A08 §6). A decisão P-41 permanece intacta; a paridade prova.
 
-Refs: `arquitetura/05 §6` · `arquitetura/08 §§3,4` · `docs/98` P-41/P-27/P-64 · `arquitetura/09` (A09 tuning).
+## Contrato (não vaza AWS)
 
-> **Estado (2026-07-10):** IaC **escrita e validada** (`tofu validate` verde). O `apply` +
-> a coleta de evidência ficam **bloqueados junto do unblock de AWS** (mesma frente do
-> Cognito RAD-134): não há conta/credenciais AWS do Radar neste ambiente. Ver seção **Pendente**.
-
-## Por que "um proxy por pool"
-
-`max_connections_percent` do RDS Proxy é **por proxy** — um único proxy = um único pool
-compartilhado, e uma rajada de ingestão pode consumir todos os *backends* e **matar de
-fome** o caminho do alerta. O bulkhead de P-41 exige isolamento **físico**: logo, **um
-proxy por workload**. Cada `max_connections_percent` fatia o `max_connections=200` do
-banco de modo que a **soma** dos pools fique `< 200` com folga de admin/superuser.
-
-| Pool (P-41) | `default_pool_size` alvo | `max_connections_percent` | Papel |
-|---|---|---|---|
-| `ingestao` | 15 | 8 % | rajada de escrita/upsert (S1) |
-| `matching` | 10 | 5 % | leitura/fan-out do alerta |
-| `triagem` | 10 | 5 % | interativo/API — **protegido** |
-| `analitico` | 5 | 3 % | range scans / reconciliação |
-| `jobs` | 5 | 3 % | retenção/partição, fora de pico |
-
-Soma ≈ **24 %** (~48 *backends* de 200) — folga enorme. `var.pools` é o mapa; **stacks
-podem colapsar** (dev/staging → `ingestao` + `critical`) por **custo** (o RDS Proxy é
-cobrado *por proxy*). O gate de validação recusa soma de percentuais `> 80 %`.
-
-Os `statement_timeout`/`lock_timeout` **por pool** (30/10/5/60/300 s e 3 s) **não** cabem no
-proxy — em modo transação não se fixa estado de sessão. O `db_parameter_group` do módulo
-`database` guarda os **pisos globais** (`max_connections`, `work_mem=16MB`,
-`idle_in_transaction=30s`, backstop de `statement_timeout=300s`); o tightening por pool é
-**app-side** por `SET LOCAL` em transação (pin-safe — mecanismo recomendado) **ou** por role
-com secret por pool (ver abaixo). Detalhe em `scripts/apply-db-pool-runbook.md`.
-
-### Auth por pool (opcional) — habilita `ALTER ROLE` por pool
-
-Cada entrada de `var.pools` aceita um `secret_arn` próprio (`{username:"<role>",password:...}`).
-Quando presente, o proxy daquele pool autentica **como a role do pool** e herda seus
-`ALTER ROLE SET statement_timeout=...` no connect (sem pinar). Ausente → usa o secret master
-compartilhado (`var.db_credentials_secret_arn`) e o timeout por pool vem do `SET LOCAL`.
-
-### Enforcement "nunca pro RDS direto" (rede)
-
-O SG do banco (módulo `database`) **não tem mais ingress amplo por CIDR**: o único caminho
-5432 ao cluster é uma regra de ingress **do SG do proxy**, criada por este módulo
-(`aws_vpc_security_group_ingress_rule.db_from_proxy`). Um `DATABASE_URL` mal configurado
-apontando ao cluster **não conecta** — a invariante P-41 é fechada na camada de rede, não só
-por convenção. Bastion de migração/break-glass = regra temporária adicional.
-
-## A pegadinha do modo transação — o que **pina** a conexão
-
-Modo transação multiplexa transações OLTP curtas sobre poucos *backends*. Qualquer estado
-que **cruze** o limite da transação força o RDS Proxy a **fixar (pin)** a conexão àquele
-cliente — a multiplexação some e o pool satura. **Não use, na app/worker:**
-
-- ❌ `SET`/`SET SESSION` (estado de sessão) → use **`SET LOCAL`** (escopo de transação).
-- ❌ `pg_advisory_lock()` (lock de **sessão**) → use **`pg_advisory_xact_lock()`** (de transação).
-- ❌ *Prepared statement* **nomeado** que persista → ver guardrail do `node-pg` abaixo.
-- ❌ `LISTEN`/`NOTIFY`, `WITH HOLD` cursor, `SET ROLE` não resetado, tabelas `TEMP` de sessão.
-
-**Vigie `DatabaseConnectionsCurrentlySessionPinned`** — o módulo cria um alarme por proxy
-(`threshold > 0`, 3×5 min). Pin sustentado é **bug de driver a caçar**, não ruído.
-
-### Guardrails do driver `node-pg` (o único a cuidar — P-41)
-
-O **field crypto** é AES-256-GCM em **nível de app** (cifra/decifra em JS, RAD-164): não
-toca sessão do Postgres, **não pina**. O que pode pinar é o driver:
-
-- **`node-postgres` usa *prepared statements* não-nomeados por padrão** (protocolo estendido
-  sem `name`) → **não pina**. **Não** passe `name:` no objeto de query (isso cria um
-  *named prepared statement* que pina). Nenhum adapter em `modules/*/src/infra` usa `name:` hoje.
-- **Sem `client.query('SET ...')`** fora de transação. Timeout por statement vem da **role**
-  (`ALTER ROLE`) ou de `SET LOCAL` dentro do `BEGIN`.
-- **Pool do driver enxuto** (`pg.Pool` com `max` baixo) — o *fan-out* de conexões é papel do
-  `max_client_conn` do proxy (alto), não do pool local do processo.
-- `DATABASE_URL` **aponta para o endpoint do proxy** do pool correspondente, com `sslmode=require`
-  (o proxy exige TLS) — **nunca** o endpoint do cluster.
-
-## Config resolvida (valores para revisão)
-
-| Requisito P-41 | Setting Terraform | Valor |
+| Input | Conceito | AWS |
 |---|---|---|
-| Pooler em modo transação | `aws_db_proxy.engine_family` | `POSTGRESQL` (multiplexa por transação; sem toggle) |
-| TLS cliente→proxy | `require_tls` | `true` |
-| Auth proxy→banco | `auth.auth_scheme` | `SECRETS` (secret `{username,password}`) |
-| Bulkhead por workload | 1 `aws_db_proxy` por `var.pools` | ingestao/matching/triagem/analitico/jobs |
-| Fatia do pool | `connection_pool_config.max_connections_percent` | 8/5/5/3/3 % |
-| Devolve backend ocioso | `idle_client_timeout` | 1800 s |
-| Watch de pin | `aws_cloudwatch_metric_alarm` | `DatabaseConnectionsCurrentlySessionPinned > 0` |
+| `project`, `env`, `region` | prefixo/ambiente/região | tag, `kms:ViaService` |
+| `network_id`, `network_cidr`, `private_subnet_ids` | rede privada | VPC id/cidr, subnets |
+| `cluster_ref` | handle do cluster fronteado | Aurora `cluster_identifier` |
+| `db_firewall_group_ref` | grupo de firewall do banco (anexa ingress proxy-only) | Security Group id |
+| `db_credentials_secret_ref` | secret {user,pass} da auth proxy→banco | Secrets Manager ARN |
+| `encryption_key_ref` | chave que cifra o secret | KMS key ARN |
+| `db_max_connections` | teto de conexões (base do rateio P-41) | valor PG |
+| `pools` | bulkheads por workload | 1 RDS Proxy por entrada |
+| `session_pinned_threshold`, `alarm_topic_ref`, `debug_logging` | observabilidade | CloudWatch/SNS |
 
-## Pendente (unblock de AWS — mesma frente de RAD-134)
+| Output | Conceito | AWS |
+|---|---|---|
+| `proxy_endpoints` | mapa pool→endpoint (portável) | RDS Proxy endpoint |
+| `proxy_refs` | mapa pool→handle | RDS Proxy ARN |
+| `firewall_group_ref` | grupo de firewall do proxy | Security Group id |
+| `backends_reservados` | soma de backends reservados (gate P-41) | valor computado |
 
-`terraform apply` + evidência (endpoints reais, teste de pin sob carga A09/RAD-162) seguem
-bloqueados por falta de conta/credenciais AWS do Radar e do backend de estado remoto
-(`radar-tf-state-<env>` + `radar-tf-lock`). Owner do unblock: **DevOps/Segurança**. Após o
-apply: preencher o secret `db-credentials` com o par master real, construir o `DATABASE_URL`
-de cada pool a partir do endpoint do proxy, e rodar o *tuning* fino sob carga (A09).
+## PRESERVAR (P-41 / LGPD) — a paridade prova que nada disto muda
+
+- **Um proxy por pool** (`for_each var.pools`) — bulkhead físico; `max_connections_percent`
+  8/5/5/3/3 (soma ≤ 80%, gate). Isolamento da rajada de ingestão vs. caminho do alerta.
+- **Modo transação** (`engine_family=POSTGRESQL`, nativo) + `require_tls=true` (dado em
+  trânsito cifrado) + auth `SECRETS` (secret master ou role por pool).
+- **`idle_client_timeout=1800`**, `max_idle=max_connections_percent` (backends quentes),
+  `connection_borrow_timeout=120`.
+- **Enforce proxy-only** — `aws_vpc_security_group_ingress_rule.db_from_proxy`: o único
+  caminho 5432 ao cluster é do SG do proxy (P-41 fechada na rede, não por convenção).
+- **Alarme de pin** por proxy (`DatabaseConnectionsCurrentlySessionPinned > 0`, 3×5 min).
+
+## Custo real de um exit (o irredutivelmente provider-bound)
+
+Trocar RDS Proxy por Cloud SQL Auth Proxy / pgbouncer (GCP) ou pgbouncer no Flexible Server
+(Azure) — A08 §4 lista os equivalentes, mas o `main.tf` reescreve **muito**:
+
+- **Rateio por percentual → por número absoluto.** `max_connections_percent` é RDS-Proxy.
+  pgbouncer configura `default_pool_size`/`max_client_conn` em números. O *bulkhead* (um
+  pool por workload) é portável; a *unidade* (percent vs. count) não — daí `pools` manter a
+  intenção mas o percentual ser provider-bound.
+- **Anti-pin do modo transação** é próprio do multiplexador: em pgbouncer é `pool_mode =
+  transaction` + as mesmas disciplinas de driver; a **métrica** de pin
+  (`DatabaseConnectionsCurrentlySessionPinned`) e o **alarme** são CloudWatch — sem
+  equivalente 1:1.
+- **Wiring SG→SG** (`referenced_security_group_id`) que fecha o proxy-only é AWS. GCP =
+  firewall rules por *service account/tag*; Azure = NSG. A invariante "só o proxy alcança o
+  banco" é portável; a *mecânica* que a implementa, não.
+- **IAM role + `kms:ViaService` + auth `SECRETS`** — o modelo de identidade do proxy é AWS
+  (IAM/STS/Secrets Manager). GCP usa service account + Secret Manager; Azure usa Managed
+  Identity + Key Vault.
+- **`aws_db_proxy` / `aws_db_proxy_default_target_group` / `aws_db_proxy_target`** — trio de
+  recursos específico do RDS Proxy.
+
+## A pegadinha do modo transação (o que PINA) — resumo
+
+Estado que cruza o limite da transação força o pin e derrota a multiplexação. Na app/worker:
+`SET LOCAL` (não `SET`), `pg_advisory_xact_lock` (não de sessão), **sem** prepared statement
+nomeado (não passe `name:` no `node-pg`), sem `LISTEN`/`NOTIFY`/`WITH HOLD`. O field crypto
+AES-256-GCM é app-side (JS) e **não pina**. Detalhe e runbook: ver o README equivalente em
+`infra/terraform/modules/db_proxy/README.md` (migrar na conclusão do rewrite, RAD-182).
+
+## Diferenças vs. `infra/terraform/modules/db_proxy` (paridade preservada)
+
+Renome de contrato — mesmo valor, mesmo recurso, `plan` sem diff:
+- `aws_region`→`region`, `vpc_id`→`network_id`, `vpc_cidr`→`network_cidr`,
+  `subnet_ids`→`private_subnet_ids`, `db_cluster_id`→`cluster_ref`,
+  `db_security_group_id`→`db_firewall_group_ref`,
+  `db_credentials_secret_arn`→`db_credentials_secret_ref`, `kms_key_arn`→`encryption_key_ref`,
+  `alarm_sns_topic_arn`→`alarm_topic_ref`; no `pools`, `secret_arn`→`secret_ref`.
+- Outputs `proxy_arns`→`proxy_refs`, `security_group_id`→`firewall_group_ref`.
