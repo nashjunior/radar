@@ -45,12 +45,32 @@ module "storage" {
   encryption_key_ref = var.kms_key_arn
 }
 
+# Topologia de fan-out (RAD-179) — ver o stack prod para o racional completo de cada valor.
+# NOTA p/ RAD-162 (medição A09/EL1): staging herda o piso de 0,5 ACU do módulo `database`
+# (custo). Pra medir o cold-start de PROD, suba o piso de staging pro valor de prod ANTES
+# do teste — senão a medição não vale pro ambiente que importa.
+
 module "queue_ingestao" {
   source             = "../../modules/queue"
   project            = "radar"
   env                = "staging"
   queue_name         = "editais-ingeridos"
   encryption_key_ref = var.kms_key_arn
+
+  visibility_timeout = 180
+  max_receive_count  = 5
+}
+
+# Buffer do batch INSERT (`filaAlertaQueueUrl`) — não existia na IaC (RAD-192).
+module "queue_alertas_gravar" {
+  source             = "../../modules/queue"
+  project            = "radar"
+  env                = "staging"
+  queue_name         = "alertas-a-gravar"
+  encryption_key_ref = var.kms_key_arn
+
+  visibility_timeout = 60
+  max_receive_count  = 5
 }
 
 module "queue_alertas" {
@@ -59,6 +79,9 @@ module "queue_alertas" {
   env                = "staging"
   queue_name         = "alertas-gerados"
   encryption_key_ref = var.kms_key_arn
+
+  visibility_timeout = 60
+  max_receive_count  = 5
 }
 
 module "secrets" {

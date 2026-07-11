@@ -34,6 +34,23 @@ adicionado, removido, renomeado ou movido.
 | `aws_rds_cluster.this` | ✓ | ✓ | igual (`kms_key_id` ← `encryption_key_ref`; `min_capacity` `?0.5:0.5`→`0.5` resolve igual) |
 | `aws_rds_cluster_instance.writer` | ✓ | ✓ | igual |
 
+> **Delta pós-swap — RAD-192 (2026-07-11).** A matriz acima descreve a paridade do **swap**
+> (RAD-181), que era um no-op por construção. RAD-192 é uma mudança **intencional** e altera
+> duas linhas desta tabela — registrado aqui para o registro não mentir:
+> - `aws_rds_cluster.this`: `min_capacity` deixou de ser literal `0.5` e virou
+>   `var.min_capacity_acu` (**prod = 2 ACU**, P-67; dev/staging seguem 0.5 pelo default →
+>   resolvem idêntico). `max_capacity` virou `var.max_capacity_acu` (prod 16 / não-prod 4 —
+>   os mesmos números do ternário anterior). Em prod isto é `ModifyDBCluster` **in-place**.
+> - `aws_rds_cluster_instance.reader[0]`: endereço **NOVO** (prod, `instance_count = 2`).
+>   Em dev/staging `count = 0` → não existe. O `writer` foi deliberadamente mantido **sem
+>   `count`** para que seu endereço não vire `writer[0]` (isso forçaria um `moved`).
+> - `aws_rds_cluster_instance.writer`: ganhou `promotion_tier = 0`. É o default do provider,
+>   então deve sair no-op — mas é a **única linha do diff que toca recurso pré-existente**,
+>   logo é a linha a conferir no primeiro `plan -detailed-exitcode` (é `ModifyDBInstance`,
+>   nunca replace).
+> Nada mais foi movido ou renomeado. As filas ganharam atributos in-place
+> (`SetQueueAttributes`) e uma instância de módulo nova (`module.queue_alertas_gravar`).
+
 Input removido: `vpc_cidr` (não referenciado por nenhum recurso desde o proxy-only) → zero
 impacto de `plan`.
 

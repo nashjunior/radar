@@ -32,7 +32,8 @@ resource "aws_sqs_queue" "dlq" {
 resource "aws_sqs_queue" "this" {
   name                       = "${var.project}-${var.env}-${var.queue_name}"
   visibility_timeout_seconds = var.visibility_timeout
-  message_retention_seconds  = 86400 # 1 dia
+  message_retention_seconds  = var.message_retention_seconds
+  receive_wait_time_seconds  = var.receive_wait_time_seconds
   max_message_size           = 262144
   kms_master_key_id          = var.encryption_key_ref
 
@@ -42,4 +43,14 @@ resource "aws_sqs_queue" "this" {
   })
 
   tags = local.tags
+
+  # Gate de plano do invariante de frescor (ver variables.tf: redelivery_budget_seconds).
+  # `terraform validate` NÃO avalia precondition — só `plan`/`apply`. É de propósito: o
+  # acoplamento visibility x max_receive só é violável com valores concretos do stack.
+  lifecycle {
+    precondition {
+      condition     = var.visibility_timeout * var.max_receive_count <= var.redelivery_budget_seconds
+      error_message = "Fila '${var.queue_name}': visibility_timeout (${var.visibility_timeout}s) x max_receive_count (${var.max_receive_count}) = ${var.visibility_timeout * var.max_receive_count}s excede o orçamento de reentrega (${var.redelivery_budget_seconds}s). Uma mensagem re-tentada nasceria fora do frescor p95 <= 30 min (P-14). Baixe um dos dois, ou conserte o p99 do consumidor."
+    }
+  }
 }

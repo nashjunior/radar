@@ -29,7 +29,14 @@ Primitiva A08 §4 "Postgres gerenciado". **Contrato** (`variables.tf`/`outputs.t
 - **Parameter group P-41** — `max_connections=200` (pending-reboot), `work_mem=16384`,
   `maintenance_work_mem=524288`, `idle_in_transaction_session_timeout=30000`,
   `statement_timeout=300000` (backstop), `lock_timeout=0` (global; 3 s por role nos quentes).
-- **Serverless v2 scaling** — `min_capacity=0.5`; `max_capacity` 16 (prod) / 4 (não-prod).
+- **Serverless v2 scaling** — `min_capacity_acu` / `max_capacity_acu`, decididos pelo stack
+  (RAD-192): **prod 2→16 ACU** (piso de 2 é P-67 — 0,5 ACU não segura o working set do
+  fan-out e o cold cache fura o frescor); dev/staging 0,5→4. O piso é cobrado 24/7 **por
+  instância**. Guarda cruzada `max >= min` é `precondition` (o `validate` não pega isso).
+- **Topologia / HA** — `instance_count`: 1 = instância única (failover **reconstrói** o
+  writer, minutos); 2 = writer + reader em outra AZ (failover ~30–60 s). **Prod = 2.** Em
+  Aurora, "Multi-AZ" não é flag: é ter ≥2 instâncias. O motivo é failover, **não**
+  read-scaling (ninguém lê da réplica no MVP; o pool analítico só migra com P-42).
 - **`deletion_protection`/`backup_retention`** elevados em prod.
 
 ## Custo real de um exit (o irredutivelmente provider-bound)

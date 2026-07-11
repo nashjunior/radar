@@ -50,3 +50,13 @@ output "serverless_worker_functions" {
   description = "Nomes das Lambdas worker (vazio enquanto o seam P-27 está gated off)"
   value       = try(module.serverless[0].function_names, {})
 }
+
+# Ver stack prod: alertas_a_gravar -> filaAlertaQueueUrl; alertas_gerados -> alertaGeradoQueueUrl.
+output "queue_urls" {
+  description = "URLs das filas do fan-out (RAD-179) — env dos workers"
+  value = {
+    editais_ingeridos = module.queue_ingestao.queue_url
+    alertas_a_gravar  = module.queue_alertas_gravar.queue_url
+    alertas_gerados   = module.queue_alertas.queue_url
+  }
+}

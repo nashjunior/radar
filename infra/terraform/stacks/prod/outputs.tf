@@ -49,3 +49,15 @@ output "serverless_worker_functions" {
   description = "Nomes das Lambdas worker (vazio enquanto o seam P-27 está gated off)"
   value       = try(module.serverless[0].function_names, {})
 }
+
+# O fan-out de RAD-179 precisa das URLs em env; nenhum stack as exportava. Mapeamento p/ a
+# MatchingComposicaoConfig: alertas_a_gravar -> filaAlertaQueueUrl (FilaAlertaPort, buffer do
+# batch INSERT) e alertas_gerados -> alertaGeradoQueueUrl (publicado APÓS o INSERT).
+output "queue_urls" {
+  description = "URLs das filas do fan-out (RAD-179) — env dos workers"
+  value = {
+    editais_ingeridos = module.queue_ingestao.queue_url
+    alertas_a_gravar  = module.queue_alertas_gravar.queue_url
+    alertas_gerados   = module.queue_alertas.queue_url
+  }
+}

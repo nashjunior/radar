@@ -1,6 +1,12 @@
 # Módulo: database
 # Postgres gerenciado (A08 §3/§4 "Postgres gerenciado"). Binding hoje: RDS Aurora
-# Serverless v2 (PG16). Topologia: single-AZ dev/staging, Multi-AZ prod.
+# Serverless v2 (PG16).
+#
+# Topologia: dirigida por `instance_count` (NÃO por env). 1 = instância única (failover
+# reconstrói o writer: minutos); 2 = writer + reader em outra AZ (failover ~30–60 s) — é
+# o que "Multi-AZ" significa em Aurora. Até RAD-192 este cabeçalho ANUNCIAVA "Multi-AZ
+# prod" com uma instância só declarada; a reconciliação foi entregar o reader e passar a
+# decisão pro stack (prod = 2). Piso de capacidade (`min_capacity_acu`) idem: P-67.
 #
 # CONTRATO neutro (variables/outputs) · IMPLEMENTAÇÃO provider-bound (este main.tf).
 # O que um exit para GCP Cloud SQL / Azure DB custaria está no README.md.
@@ -109,8 +115,8 @@ resource "aws_rds_cluster" "this" {
   vpc_security_group_ids = [aws_security_group.db.id]
 
   serverlessv2_scaling_configuration {
-    min_capacity = 0.5
-    max_capacity = var.env == "prod" ? 16 : 4
+    min_capacity = var.min_capacity_acu
+    max_capacity = var.max_capacity_acu
   }
 
   backup_retention_period = var.env == "prod" ? 7 : 1
@@ -121,6 +127,16 @@ resource "aws_rds_cluster" "this" {
   kms_key_id        = var.encryption_key_ref
 
   tags = local.tags
+
+  # Guarda CRUZADA: `validation` de variável não enxerga outra variável, então o teto-abaixo-do-piso
+  # passa batido no `validate` e só a AWS reclama (InvalidParameterCombination) — é a mesma classe do
+  # bug que o guardião pegou no RAD-180 (max_idle > max_connections do pool). Aqui o `plan` pega.
+  lifecycle {
+    precondition {
+      condition     = var.max_capacity_acu >= var.min_capacity_acu
+      error_message = "max_capacity_acu (${var.max_capacity_acu}) < min_capacity_acu (${var.min_capacity_acu}) — a AWS rejeita teto abaixo do piso."
+    }
+  }
 }
 
 resource "aws_rds_cluster_instance" "writer" {
@@ -130,6 +146,30 @@ resource "aws_rds_cluster_instance" "writer" {
   engine_version          = aws_rds_cluster.this.engine_version
   publicly_accessible     = false
   db_parameter_group_name = aws_db_parameter_group.this.name
+
+  # Tier 0 = candidato preferencial a writer no failover.
+  promotion_tier = 0
+
+  tags = local.tags
+}
+
+# Reader de FAILOVER (HA de prod — ver `instance_count` em variables.tf). O Aurora aloca as
+# instâncias em AZs distintas do subnet group automaticamente; não se fixa AZ à mão (fixar
+# briga com o subnet group e não compra nada). Endereço `writer` preservado sem `count` de
+# propósito — o reader entra como recurso NOVO, então ligar HA não move/recria o writer.
+resource "aws_rds_cluster_instance" "reader" {
+  count = var.instance_count - 1
+
+  cluster_identifier      = aws_rds_cluster.this.id
+  identifier              = "${var.project}-${var.env}-reader-${count.index + 1}"
+  instance_class          = "db.serverless"
+  engine                  = aws_rds_cluster.this.engine
+  engine_version          = aws_rds_cluster.this.engine_version
+  publicly_accessible     = false
+  db_parameter_group_name = aws_db_parameter_group.this.name
+
+  # Tier 1 = promovido no failover, atrás do writer. Não serve leitura no MVP (P-42 em aberto).
+  promotion_tier = 1
 
   tags = local.tags
 }
