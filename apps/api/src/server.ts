@@ -30,6 +30,7 @@ import { criarTriagemRouter } from './routes/triagem.js';
 import { criarMatchingRouter } from './routes/matching.js';
 import { criarIdentidadeRouter } from './routes/identidade.js';
 import { criarNotificacaoRouter } from './routes/notificacao.js';
+import { criarDemoRouter } from './routes/demo.js';
 import { responderErro } from './errors.js';
 import { criarLoggerHttpSeguro, redigirParaLog } from './logging.js';
 import { corsMiddleware, csrfMiddleware, securityHeadersMiddleware } from './security.js';
@@ -97,6 +98,11 @@ export function criarApp(): Hono {
   app.route('/api/matching', criarMatchingRouter({ definirCriterio, registrarFeedback: registrarFeedbackAlerta, consultarMetricas, perfilAtivo }));
   app.route('/api/identidade', criarIdentidadeRouter({ gerenciarPerfil, consultarPerfil, perfilAtivo }));
   app.route('/api/notificacao', criarNotificacaoRouter({ definirPreferencias }));
+
+  // Demo local PNCP + chat — nunca em production
+  if (process.env['NODE_ENV'] !== 'production') {
+    app.route('/api/demo', criarDemoRouter());
+  }
 
   // Catch-all 404
   app.notFound((c) => c.json({ code: 'NAO_ENCONTRADO', mensagem: 'Rota não encontrada.' }, 404));

@@ -1,0 +1,23 @@
+{
+  "name": "@radar/local-demo",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx --env-file-if-exists=.env src/cli.ts",
+    "ask": "tsx --env-file-if-exists=.env src/cli.ts ask",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@radar/ingestao": "workspace:*",
+    "@radar/kernel": "workspace:*",
+    "@radar/triagem": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.7",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.0"
+  }
+}

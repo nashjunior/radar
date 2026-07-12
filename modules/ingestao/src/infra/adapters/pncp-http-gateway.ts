@@ -189,9 +189,15 @@ interface PncpPaginaRaw {
   paginasRestantes: number;
 }
 
+/**
+ * Shape real da API de consulta (confirmado 2026-07-11): modalidade vem FLAT
+ * (`modalidadeId` + `modalidadeNome`), não como objeto aninhado. UF útil para filtro
+ * é `ufSigla` (ex.: "PR"); `ufNome` é o nome por extenso.
+ */
 interface PncpContratacaoRaw {
   numeroControlePNCP: string;
-  modalidade: { codigo: number; nome: string };
+  modalidadeId: number;
+  modalidadeNome: string;
   situacaoCompraNome: string;
   objetoCompra: string;
   valorTotalEstimado?: number | null;
@@ -199,7 +205,11 @@ interface PncpContratacaoRaw {
   dataPublicacaoPncp: string;
   dataAtualizacao: string;
   orgaoEntidade: { cnpj: string; razaoSocial: string };
-  unidadeOrgao: { ufNome: string; municipioNome: string };
+  unidadeOrgao: {
+    ufNome: string;
+    ufSigla?: string;
+    municipioNome: string;
+  };
   itens?: Array<{
     numeroItem: number;
     descricao: string;
@@ -222,10 +232,16 @@ function validarPaginacao(json: unknown): PncpPaginaRaw {
 
 /** Tradução PNCP → canônico. Minimização: PII desnecessária não é mapeada. */
 function traduzirContratacao(raw: PncpContratacaoRaw): ContratacaoData {
+  if (typeof raw.modalidadeId !== 'number' || typeof raw.modalidadeNome !== 'string') {
+    throw new SchemaDriftError('modalidade', 'esperado modalidadeId (number) + modalidadeNome (string)');
+  }
+  if (!raw.orgaoEntidade || !raw.unidadeOrgao) {
+    throw new SchemaDriftError('orgao', 'esperado orgaoEntidade + unidadeOrgao');
+  }
   return {
     numeroControlePncp: raw.numeroControlePNCP,
-    modalidadeCodigo: raw.modalidade.codigo,
-    modalidadeNome: raw.modalidade.nome,
+    modalidadeCodigo: raw.modalidadeId,
+    modalidadeNome: raw.modalidadeNome,
     faseAtual: raw.situacaoCompraNome,
     objeto: raw.objetoCompra,
     valorEstimado: raw.valorTotalEstimado ?? null,
@@ -237,7 +253,7 @@ function traduzirContratacao(raw: PncpContratacaoRaw): ContratacaoData {
     orgao: {
       cnpj: raw.orgaoEntidade.cnpj,
       nome: raw.orgaoEntidade.razaoSocial,
-      uf: raw.unidadeOrgao.ufNome,
+      uf: raw.unidadeOrgao.ufSigla ?? raw.unidadeOrgao.ufNome,
       municipio: raw.unidadeOrgao.municipioNome,
     },
     itens: (raw.itens ?? []).map(i => ({

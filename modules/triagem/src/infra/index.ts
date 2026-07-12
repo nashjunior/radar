@@ -27,6 +27,8 @@ export type {
   MessagesClient,
   ThinkingConfig,
 } from './adapters/anthropic-sdk-client.js';
+export { GeminiLlmClient, schemaParaGemini } from './adapters/gemini-llm-client.js';
+export type { GeminiFetch, GeminiLlmClientOpts } from './adapters/gemini-llm-client.js';
 export {
   RecordReplayLlmClient,
   FixtureDeGoldSetAusenteError,

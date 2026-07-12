@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Sidebar } from './Sidebar';
 
-type Route = 'dashboard' | 'alertas' | 'triagem' | 'configurar' | 'perfil';
+type Route = 'dashboard' | 'alertas' | 'oportunidades' | 'triagem' | 'configurar' | 'perfil';
 
 interface AppLayoutProps {
   current: Route;

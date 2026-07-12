@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --watch --env-file=.env dist/index.js",
+    "dev": "node --watch-path=./dist --env-file=.env dist/index.js",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node --env-file=.env dist/index.js",
@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",
+    "@cursor/sdk": "^1.0.23",
     "@hono/node-server": "^1.13.7",
     "@radar/identidade": "workspace:*",
     "@radar/ingestao": "workspace:*",
