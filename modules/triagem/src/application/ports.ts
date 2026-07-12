@@ -89,6 +89,15 @@ export interface ObjectStorage {
 }
 
 /**
+ * Transporte REAL de uma chamada ao LLM (RAD-340) — `lote` é o job de batch inference (Message
+ * Batches da Anthropic ou `CreateModelInvocationJob` do Bedrock, −50% de custo); `on_demand` é a
+ * chamada síncrona (`LlmGateway.extrair`) OU o fallback do `BedrockBatchLlmGateway` quando um grupo
+ * fecha abaixo do mínimo de registros do job (preço CHEIO, sem desconto — ver
+ * `bedrock-batch-llm-gateway.ts`). `calcularCustoUsd` só aplica o −50% quando `transporte === 'lote'`.
+ */
+export type TransporteLlm = 'on_demand' | 'lote';
+
+/**
  * Consumo de tokens de UMA chamada ao LLM (RAD-230, P-20/P-38) — sempre devolvido junto do
  * resultado (nunca só no sucesso final da interpretação): sem isto não há como medir custo por
  * edital nem por tenant, e P-20 (teto)/P-38 (alarme) ficam inaplicáveis. `cache*` refletem prompt
@@ -106,6 +115,7 @@ export interface UsoLlm {
   readonly outputTokens: number;
   readonly cacheReadInputTokens: number;
   readonly cacheCreationInputTokens: number;
+  readonly transporte: TransporteLlm;
 }
 
 /**

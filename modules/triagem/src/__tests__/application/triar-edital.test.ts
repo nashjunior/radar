@@ -93,6 +93,7 @@ const USO_FAKE: UsoLlm = {
   outputTokens: 200,
   cacheReadInputTokens: 0,
   cacheCreationInputTokens: 0,
+  transporte: 'on_demand',
 };
 
 const PERFIL_HAB = PerfilHabilitacao.de({

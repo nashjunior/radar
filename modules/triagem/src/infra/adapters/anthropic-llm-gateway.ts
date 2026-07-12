@@ -96,6 +96,7 @@ export class AnthropicLlmGateway implements LlmGateway {
       outputTokens: MAX_TOKENS_EXTRACAO,
       cacheReadInputTokens: 0,
       cacheCreationInputTokens: 0,
+      transporte: 'on_demand', // admission control do caminho SÍNCRONO (P-45) — nunca vai a lote.
     });
     return { modelo: req.modelo, inputTokens, custoEstimadoUsd };
   }

@@ -95,6 +95,7 @@ describe('anthropic-extracao-schema — peças compartilhadas síncrono ↔ lote
     const uso = usoDeMensagem(
       { content: [], usage: { input_tokens: 1000, output_tokens: 200 } },
       'claude-sonnet-5',
+      'on_demand',
     );
     expect(uso).toEqual({
       modelo: 'claude-sonnet-5',
@@ -102,6 +103,7 @@ describe('anthropic-extracao-schema — peças compartilhadas síncrono ↔ lote
       outputTokens: 200,
       cacheReadInputTokens: 0,
       cacheCreationInputTokens: 0,
+      transporte: 'on_demand',
     });
   });
 
@@ -117,8 +119,18 @@ describe('anthropic-extracao-schema — peças compartilhadas síncrono ↔ lote
         },
       },
       'claude-opus-4-8',
+      'on_demand',
     );
     expect(uso.cacheReadInputTokens).toBe(300);
     expect(uso.cacheCreationInputTokens).toBe(50);
+  });
+
+  it('usoDeMensagem carrega o transporte informado pelo caller (RAD-340: lote = −50%)', () => {
+    const uso = usoDeMensagem(
+      { content: [], usage: { input_tokens: 1000, output_tokens: 200 } },
+      'claude-sonnet-4-6',
+      'lote',
+    );
+    expect(uso.transporte).toBe('lote');
   });
 });

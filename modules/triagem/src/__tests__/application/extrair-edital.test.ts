@@ -31,6 +31,7 @@ const USO_FAKE: UsoLlm = {
   outputTokens: 200,
   cacheReadInputTokens: 0,
   cacheCreationInputTokens: 0,
+  transporte: 'on_demand',
 };
 
 const ESTIMATIVA_BARATA: EstimativaDeCusto = {

@@ -51,6 +51,7 @@ const USO_FAKE = {
   outputTokens: 200,
   cacheReadInputTokens: 0,
   cacheCreationInputTokens: 0,
+  transporte: 'on_demand' as const,
 };
 
 function fakeClient(

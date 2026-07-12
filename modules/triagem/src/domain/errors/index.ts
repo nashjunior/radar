@@ -98,6 +98,9 @@ export interface UsoParcialLlm {
   readonly outputTokens: number;
   readonly cacheReadInputTokens: number;
   readonly cacheCreationInputTokens: number;
+  /** Sempre `'on_demand'` na prática: refusal/truncamento só lançam do `AnthropicSdkClient` (caminho
+   * síncrono) — mas o campo é obrigatório para casar estruturalmente com `UsoLlm` (RAD-340). */
+  readonly transporte: 'on_demand' | 'lote';
 }
 
 /**

@@ -72,6 +72,7 @@ describe('RecordReplayLlmClient — seam do gold set (A17 §7 / A16)', () => {
       outputTokens: 200,
       cacheReadInputTokens: 0,
       cacheCreationInputTokens: 0,
+      transporte: 'on_demand' as const,
     };
     const extrair = vi.fn().mockResolvedValue({ input: bruto, uso: usoDelegate });
     const delegate: LlmClient = { extrairViaFerramenta: extrair, contarTokensDeEntrada: vi.fn() };
@@ -121,6 +122,7 @@ describe('RecordReplayLlmClient — seam do gold set (A17 §7 / A16)', () => {
       outputTokens: 0,
       cacheReadInputTokens: 0,
       cacheCreationInputTokens: 0,
+      transporte: 'on_demand',
     });
   });
 

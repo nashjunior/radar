@@ -89,6 +89,19 @@ export const MODELO_BATCH_BEDROCK_PADRAO: Readonly<Record<string, string>> = {
   'claude-opus-4-8': 'anthropic.claude-opus-4-6-v1:0',
 };
 
+/**
+ * ID Bedrock completo (`MODELO_BATCH_BEDROCK_PADRAO`) → nome NU do tier — a MESMA chave usada em
+ * `PRECOS_USD_POR_MILHAO_TOKENS` (RAD-341). O ID Bedrock serve só para a chamada de API
+ * (`modelId`/fallback on-demand); o `UsoLlm.modelo` gravado no ledger precisa do nome nu, nunca do ID
+ * Bedrock — senão `calcularCustoUsd` nunca casa a tabela e cai sempre no fallback de Opus (achado
+ * RAD-341, adjacente ao RAD-337/RAD-340). Mantida como tabela explícita (não derivada por parsing do
+ * ID) porque o formato do ID é decisão do catálogo Bedrock, fora do nosso controle.
+ */
+const NOME_NU_POR_MODELO_BATCH_BEDROCK: Readonly<Record<string, string>> = {
+  'anthropic.claude-sonnet-4-6-v1:0': 'claude-sonnet-4-6',
+  'anthropic.claude-opus-4-6-v1:0': 'claude-opus-4-6',
+};
+
 /** Resolver padrão — lança em vez de "chutar" um modelo desconhecido (nunca submeter ao job errado). */
 export function resolverModeloBatchPadrao(modeloSincrono: string): string {
   const modelo = MODELO_BATCH_BEDROCK_PADRAO[modeloSincrono];
@@ -98,6 +111,22 @@ export function resolverModeloBatchPadrao(modeloSincrono: string): string {
     );
   }
   return modelo;
+}
+
+/**
+ * Nome nu (chave de `PRECOS_USD_POR_MILHAO_TOKENS`) do ID Bedrock resolvido — para `UsoLlm.modelo`.
+ * Lança em vez de "chutar" o ID Bedrock cheio: um `NOME_NU_POR_MODELO_BATCH_BEDROCK` desatualizado
+ * (nova entrada em `MODELO_BATCH_BEDROCK_PADRAO` sem par aqui) reproduziria em silêncio a MESMA classe
+ * de bug da RAD-341 — falhar o item é mais seguro que gravar um custo que nunca bate o catálogo.
+ */
+function nomeNuDoModeloBedrock(modeloBedrock: string): string {
+  const nomeNu = NOME_NU_POR_MODELO_BATCH_BEDROCK[modeloBedrock];
+  if (nomeNu === undefined) {
+    throw new LoteExtracaoIndisponivelError(
+      `modelo Bedrock "${modeloBedrock}" sem nome nu conhecido para precificação (RAD-341)`,
+    );
+  }
+  return nomeNu;
 }
 
 export interface BedrockBatchLlmGatewayOpts {
@@ -256,7 +285,9 @@ export class BedrockBatchLlmGateway implements LlmLoteGateway {
         const mensagem = await this.onDemand.invoke(req, { signal });
         const bruto = extrairToolInput(mensagem, FERRAMENTA_EXTRACAO);
         const extracao = interpretarSaidaExtracao(bruto, entrada);
-        const uso = usoDeMensagem(mensagem, req.modelo);
+        // Fallback ABAIXO do mínimo de registros do job: preço CHEIO, sem o −50% do lote (RAD-340).
+        // `UsoLlm.modelo` grava o nome NU (chave de preço), nunca o ID Bedrock da chamada (RAD-341).
+        const uso = usoDeMensagem(mensagem, nomeNuDoModeloBedrock(req.modelo), 'on_demand');
         resultados.push({ editalId, ok: true, extracao, uso });
       } catch (err) {
         // Saída fora do schema (camada 3) é falha ESPERADA (DomainError): o item cai, o lote segue.
@@ -284,7 +315,9 @@ export class BedrockBatchLlmGateway implements LlmLoteGateway {
     try {
       const bruto = extrairToolInput(linha.modelOutput, FERRAMENTA_EXTRACAO);
       const extracao = interpretarSaidaExtracao(bruto, entrada);
-      const uso = usoDeMensagem(linha.modelOutput, modelo);
+      // Saiu do `CreateModelInvocationJob` — transporte em lote, −50% de custo (RAD-340).
+      // `UsoLlm.modelo` grava o nome NU (chave de preço), nunca o ID Bedrock da chamada (RAD-341).
+      const uso = usoDeMensagem(linha.modelOutput, nomeNuDoModeloBedrock(modelo), 'lote');
       return { editalId, ok: true, extracao, uso };
     } catch (err) {
       if (err instanceof DomainError) return { editalId, ok: false, motivo: err.message };

@@ -9,6 +9,7 @@ function uso(over: Partial<UsoLlm> = {}): UsoLlm {
     outputTokens: 0,
     cacheReadInputTokens: 0,
     cacheCreationInputTokens: 0,
+    transporte: 'on_demand',
     ...over,
   };
 }
@@ -47,5 +48,29 @@ describe('calcularCustoUsd (RAD-230, P-20 — preços do veredicto RAD-227)', ()
 
   it('zero tokens → custo zero', () => {
     expect(calcularCustoUsd(uso())).toBe(0);
+  });
+});
+
+describe('calcularCustoUsd — desconto do transporte em LOTE (RAD-340, P-92/P-66)', () => {
+  it('transporte "lote" custa exatamente a METADE do "on_demand" equivalente', () => {
+    const base = { modelo: 'claude-sonnet-4-6', inputTokens: 8000, outputTokens: 3000 } as const;
+    const onDemand = calcularCustoUsd(uso({ ...base, transporte: 'on_demand' }));
+    const lote = calcularCustoUsd(uso({ ...base, transporte: 'lote' }));
+    expect(lote).toBeCloseTo(onDemand * 0.5, 9);
+  });
+
+  it('fallback on-demand do Bedrock (grupo abaixo do mínimo) NÃO recebe desconto — preço cheio', () => {
+    const custo = calcularCustoUsd(
+      uso({ modelo: 'claude-sonnet-4-6', inputTokens: 1_000_000, outputTokens: 1_000_000, transporte: 'on_demand' }),
+    );
+    // Mesmo preço cheio do Sonnet 4.6 (catálogo batch-capable, RAD-337): $3 + $15 = $18.
+    expect(custo).toBeCloseTo(18, 6);
+  });
+
+  it('job de lote aplica −50% sobre o preço cheio do modelo batch-capable (Sonnet 4.6)', () => {
+    const custo = calcularCustoUsd(
+      uso({ modelo: 'claude-sonnet-4-6', inputTokens: 1_000_000, outputTokens: 1_000_000, transporte: 'lote' }),
+    );
+    expect(custo).toBeCloseTo(9, 6); // ($3 + $15) × 0,5
   });
 });

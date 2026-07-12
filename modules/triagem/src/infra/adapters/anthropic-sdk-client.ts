@@ -120,17 +120,23 @@ export class AnthropicSdkClient implements LlmClient {
         categoria: mensagem.stop_details?.category ?? null, // categoria da política — SEM PII
         tipo: mensagem.stop_details?.type ?? null,
       });
-      throw new ExtracaoRecusadaError(usoDeMensagem(mensagem, req.modelo));
+      throw new ExtracaoRecusadaError(usoDeMensagem(mensagem, req.modelo, 'on_demand'));
     }
 
     // Truncamento por max_tokens → tool_use possivelmente incompleto: saída não-confiável, não fabrica.
     // GAP fechado (RAD-243): mesmo tratamento do refusal acima — `usoParcial` carrega o custo já gasto.
     if (mensagem.stop_reason === 'max_tokens') {
-      throw new SaidaLlmInvalidaError('resposta truncada (max_tokens)', usoDeMensagem(mensagem, req.modelo));
+      throw new SaidaLlmInvalidaError(
+        'resposta truncada (max_tokens)',
+        usoDeMensagem(mensagem, req.modelo, 'on_demand'),
+      );
     }
 
     // Ausência do tool_use forçado também é rejeitada (camada 3, dentro de extrairToolInput).
-    return { input: extrairToolInput(mensagem, req.ferramenta), uso: usoDeMensagem(mensagem, req.modelo) };
+    return {
+      input: extrairToolInput(mensagem, req.ferramenta),
+      uso: usoDeMensagem(mensagem, req.modelo, 'on_demand'),
+    };
   }
 
   /**

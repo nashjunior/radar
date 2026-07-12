@@ -255,6 +255,7 @@ function clienteFixo(resposta: unknown): LlmClient {
         outputTokens: 0,
         cacheReadInputTokens: 0,
         cacheCreationInputTokens: 0,
+        transporte: 'on_demand',
       },
     }),
     contarTokensDeEntrada: async () => 0,

@@ -1,5 +1,5 @@
 import { SaidaLlmInvalidaError } from '../../domain/errors/index.js';
-import type { UsoLlm } from '../../application/ports.js';
+import type { TransporteLlm, UsoLlm } from '../../application/ports.js';
 
 /**
  * Peças ESPECÍFICAS da API Anthropic compartilhadas pelos DOIS transportes — o `LlmClient` síncrono
@@ -198,17 +198,25 @@ export interface MensagemComConteudo {
 
 /**
  * Mapeia o `usage` cru (snake_case, formato SDK) para `UsoLlm` (application, RAD-230) — mesma
- * função para o caminho síncrono (`AnthropicSdkClient`) e o lote (`AnthropicBatchLlmGateway`), para
- * as duas medições nunca divergirem. `modelo` não vem no `usage` da resposta — o caller passa o
- * mesmo `modelo` que montou a requisição (`LlmExtracaoRequest.modelo`).
+ * função para o caminho síncrono (`AnthropicSdkClient`) e o lote (`AnthropicBatchLlmGateway`/
+ * `BedrockBatchLlmGateway`), para as duas medições nunca divergirem. `modelo` não vem no `usage` da
+ * resposta — o caller passa o mesmo `modelo` que montou a requisição (`LlmExtracaoRequest.modelo`).
+ * `transporte` (RAD-340) é o caller quem sabe: o adapter síncrono sempre chama on-demand, o lote
+ * é `'lote'` no job de batch e `'on_demand'` no fallback do Bedrock (grupo abaixo do mínimo) — só
+ * `calcularCustoUsd` decide o que fazer com essa informação, não esta função.
  */
-export function usoDeMensagem(mensagem: MensagemComConteudo, modelo: string): UsoLlm {
+export function usoDeMensagem(
+  mensagem: MensagemComConteudo,
+  modelo: string,
+  transporte: TransporteLlm,
+): UsoLlm {
   return {
     modelo,
     inputTokens: mensagem.usage.input_tokens,
     outputTokens: mensagem.usage.output_tokens,
     cacheReadInputTokens: mensagem.usage.cache_read_input_tokens ?? 0,
     cacheCreationInputTokens: mensagem.usage.cache_creation_input_tokens ?? 0,
+    transporte,
   };
 }
 

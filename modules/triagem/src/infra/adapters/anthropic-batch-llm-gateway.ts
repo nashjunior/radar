@@ -125,7 +125,9 @@ export class AnthropicBatchLlmGateway implements LlmLoteGateway {
       const extracao = interpretarSaidaExtracao(bruto, entrada);
       // Mesmo `model` que montou a requisição deste item (`montarRequisicaoExtracao` é pura e
       // determinística sobre `entrada` — reconstruir aqui evita carregar estado extra por custom_id).
-      const uso = usoDeMensagem(item.result.message, montarRequisicaoExtracao(entrada).modelo);
+      // `transporte: 'lote'` — este adapter só fala com a Message Batches API, sem fallback on-demand
+      // (RAD-340): o −50% sempre se aplica aqui.
+      const uso = usoDeMensagem(item.result.message, montarRequisicaoExtracao(entrada).modelo, 'lote');
       return { editalId, ok: true, extracao, uso };
     } catch (err) {
       // Saída fora do schema (camada 3) é falha ESPERADA (DomainError): o item cai, o lote segue.

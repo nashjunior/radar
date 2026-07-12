@@ -75,6 +75,7 @@ describe('AnthropicSdkClient — levers 6+5a (RAD-55)', () => {
       outputTokens: 200,
       cacheReadInputTokens: 0,
       cacheCreationInputTokens: 0,
+      transporte: 'on_demand',
     });
   });
 
@@ -144,6 +145,7 @@ describe('AnthropicSdkClient — levers 6+5a (RAD-55)', () => {
         outputTokens: 200,
         cacheReadInputTokens: 0,
         cacheCreationInputTokens: 0,
+        transporte: 'on_demand',
       });
     }
   });
@@ -168,6 +170,7 @@ describe('AnthropicSdkClient — levers 6+5a (RAD-55)', () => {
         outputTokens: 200,
         cacheReadInputTokens: 0,
         cacheCreationInputTokens: 0,
+        transporte: 'on_demand',
       });
     }
   });

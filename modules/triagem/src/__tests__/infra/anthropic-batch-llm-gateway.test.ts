@@ -96,6 +96,7 @@ describe('AnthropicBatchLlmGateway — transporte em lote (RAD-54)', () => {
       outputTokens: 200,
       cacheReadInputTokens: 0,
       cacheCreationInputTokens: 0,
+      transporte: 'lote',
     });
   });
 

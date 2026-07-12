@@ -23,6 +23,7 @@ const USO_FAKE: UsoLlm = {
   outputTokens: 200,
   cacheReadInputTokens: 0,
   cacheCreationInputTokens: 0,
+  transporte: 'lote',
 };
 
 function extracao(id: string, confObjeto: number): ExtracaoEdital {

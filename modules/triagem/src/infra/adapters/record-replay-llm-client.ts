@@ -41,6 +41,7 @@ const USO_REPLAY_ZERO = {
   outputTokens: 0,
   cacheReadInputTokens: 0,
   cacheCreationInputTokens: 0,
+  transporte: 'on_demand',
 } as const;
 
 /**

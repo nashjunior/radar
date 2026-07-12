@@ -13,6 +13,7 @@ import type {
   BedrockJobStatus,
 } from '../../infra/adapters/bedrock-batch-llm-gateway.js';
 import { FERRAMENTA_EXTRACAO } from '../../infra/adapters/anthropic-llm-gateway.js';
+import { calcularCustoUsd } from '../../application/precificacao-llm.js';
 import type { EntradaExtracaoDTO } from '../../application/dtos.js';
 import type { MensagemComConteudo } from '../../infra/adapters/anthropic-extracao-schema.js';
 
@@ -103,6 +104,8 @@ describe('BedrockBatchLlmGateway — transporte em lote via CreateModelInvocatio
     expect(ra?.ok && ra.extracao.objeto.valor).toBe('Aquisição de notebooks');
     expect(rb?.ok && rb.extracao.objeto.valor).toBe('Contratação de limpeza');
     expect(ra?.ok && ra.uso.inputTokens).toBe(100);
+    // RAD-340: saiu do CreateModelInvocationJob — transporte em lote, −50% se aplica no ledger.
+    expect(ra?.ok && ra.uso.transporte).toBe('lote');
   });
 
   it('agrupa por modelo e dispara UM JOB POR TIER (Sonnet vs Opus) — a API não mistura modelos num job', async () => {
@@ -291,6 +294,75 @@ describe('BedrockBatchLlmGateway — transporte em lote via CreateModelInvocatio
     expect(jobCriado).toBe(false);
     expect(onDemandChamado).toBe(1);
     expect(res!.ok && res!.extracao.objeto.valor).toBe('Aquisição de notebooks (on-demand)');
+    // RAD-340: fallback é o `BedrockInvokeClient` direto, sem desconto de lote — preço CHEIO.
+    expect(res!.ok && res!.uso.transporte).toBe('on_demand');
+  });
+
+  it('RAD-340: mesmo consumo de tokens, custo do job de lote é a METADE do fallback on-demand', async () => {
+    const a = entrada('A', 'Objeto: aquisição de notebooks.');
+    const { jobs, storage } = fakeJob([linhaSucesso(recordIdOf(a), 'Aquisição de notebooks')]);
+    const gwLote = new BedrockBatchLlmGateway(jobs, storage, semOnDemand, REFS, {
+      minimoRegistrosPorJob: 1,
+      sleep: nosleep,
+    });
+    const [resLote] = await gwLote.extrairLote([a], noop);
+
+    const onDemand: BedrockInvokeClient = {
+      invoke: async () => mensagem('Aquisição de notebooks'),
+    };
+    const gwFallback = new BedrockBatchLlmGateway(jobs, storage, onDemand, REFS, {
+      minimoRegistrosPorJob: 5, // 1 entrada < 5 → fallback on-demand
+      sleep: nosleep,
+    });
+    const [resFallback] = await gwFallback.extrairLote([a], noop);
+
+    expect(resLote!.ok && resLote!.uso.transporte).toBe('lote');
+    expect(resFallback!.ok && resFallback!.uso.transporte).toBe('on_demand');
+    // Mesmo USO_FAKE (100 in / 50 out) nos dois transportes — só o transporte muda o custo.
+    const custoLote = resLote!.ok ? calcularCustoUsd(resLote!.uso) : NaN;
+    const custoFallback = resFallback!.ok ? calcularCustoUsd(resFallback!.uso) : NaN;
+    expect(custoLote).toBeCloseTo(custoFallback * 0.5, 9);
+  });
+
+  it('RAD-341: uso.modelo grava o nome NU do tier (chave de preço), não o ID Bedrock cheio — job de lote e fallback on-demand', async () => {
+    // "fácil" → tier síncrono claude-sonnet-5 → par batch resolvido anthropic.claude-sonnet-4-6-v1:0.
+    const a = entrada('A', 'Objeto: aquisição de notebooks.');
+    const { jobs, storage } = fakeJob([linhaSucesso(recordIdOf(a), 'Aquisição de notebooks')]);
+    const gwLote = new BedrockBatchLlmGateway(jobs, storage, semOnDemand, REFS, {
+      minimoRegistrosPorJob: 1,
+      sleep: nosleep,
+    });
+    const [resLote] = await gwLote.extrairLote([a], noop);
+    expect(resLote!.ok && resLote!.uso.modelo).toBe('claude-sonnet-4-6');
+
+    const onDemand: BedrockInvokeClient = { invoke: async () => mensagem('Aquisição de notebooks') };
+    const gwFallback = new BedrockBatchLlmGateway(jobs, storage, onDemand, REFS, {
+      minimoRegistrosPorJob: 5, // 1 entrada < 5 → fallback on-demand
+      sleep: nosleep,
+    });
+    const [resFallback] = await gwFallback.extrairLote([a], noop);
+    expect(resFallback!.ok && resFallback!.uso.modelo).toBe('claude-sonnet-4-6');
+
+    // Preço do tier REAL (Sonnet 4.6: $3/$15 por milhão) — NUNCA o fallback de Opus ($5/$25) que
+    // `PRECO_DESCONHECIDO` aplicaria se `uso.modelo` chegasse como o ID Bedrock cheio (bug RAD-341).
+    const custoEsperadoCheio = (100 / 1_000_000) * 3 + (50 / 1_000_000) * 15;
+    const custoLote = resLote!.ok ? calcularCustoUsd(resLote!.uso) : NaN;
+    const custoFallback = resFallback!.ok ? calcularCustoUsd(resFallback!.uso) : NaN;
+    expect(custoFallback).toBeCloseTo(custoEsperadoCheio, 9);
+    expect(custoLote).toBeCloseTo(custoEsperadoCheio * 0.5, 9);
+  });
+
+  it('RAD-341: ID Bedrock sem par de nome nu conhecido falha o item — nunca grava o ID cheio como uso.modelo', async () => {
+    const a = entrada('A', 'Objeto: aquisição de notebooks.');
+    const { jobs, storage } = fakeJob([linhaSucesso(recordIdOf(a), 'Aquisição de notebooks')]);
+    const gw = new BedrockBatchLlmGateway(jobs, storage, semOnDemand, REFS, {
+      minimoRegistrosPorJob: 1,
+      sleep: nosleep,
+      resolverModeloBatch: () => 'anthropic.claude-desconhecido-v9:0',
+    });
+    const [res] = await gw.extrairLote([a], noop);
+    expect(res!.ok).toBe(false);
+    expect(res!.ok === false && res!.motivo).toMatch(/sem nome nu conhecido/);
   });
 
   it('fallback on-demand: saída fora do schema vira falha do item, sem derrubar o lote', async () => {
