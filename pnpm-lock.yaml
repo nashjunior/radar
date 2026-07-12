@@ -29,6 +29,9 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.110.0
         version: 0.110.0(zod@3.25.76)
+      '@aws-sdk/client-sqs':
+        specifier: ^3.600.0
+        version: 3.1085.0
       '@hono/node-server':
         specifier: ^1.13.7
         version: 1.19.14(hono@4.12.27)
@@ -66,9 +69,15 @@ importers:
         specifier: ^3.24.1
         version: 3.25.76
     devDependencies:
+      '@testcontainers/localstack':
+        specifier: ^10.0.0
+        version: 10.28.0
       '@types/node':
         specifier: ^22.10.7
         version: 22.20.0
+      testcontainers:
+        specifier: ^10.0.0
+        version: 10.28.0
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
@@ -203,6 +212,9 @@ importers:
       '@radar/kernel':
         specifier: workspace:*
         version: link:../../shared/kernel/ts
+      '@radar/observabilidade':
+        specifier: workspace:*
+        version: link:../../shared/observabilidade
     devDependencies:
       '@types/node':
         specifier: ^22.10.7

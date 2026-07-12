@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",
+    "@aws-sdk/client-sqs": "^3.600.0",
     "@hono/node-server": "^1.13.7",
     "@radar/cobranca": "workspace:*",
     "@radar/identidade": "workspace:*",
@@ -27,7 +28,9 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@testcontainers/localstack": "^10.0.0",
     "@types/node": "^22.10.7",
+    "testcontainers": "^10.0.0",
     "typescript": "^5.7.2",
     "vitest": "^3.0.0"
   }
