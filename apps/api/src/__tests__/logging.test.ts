@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import { criarLoggerHttpSeguro, redigirParaLog, redigirUrlParaLog } from '../logging.js';
 
 describe('logging seguro da API', () => {
-  it('redige query string antes de logar requisições HTTP', async () => {
+  it('redige query string antes de logar requisições HTTP (JSON Lines, A18 §4)', async () => {
     const linhas: string[] = [];
     const app = new Hono();
     app.use('*', criarLoggerHttpSeguro((mensagem) => linhas.push(mensagem)));
@@ -12,7 +12,9 @@ describe('logging seguro da API', () => {
     await app.request('http://localhost/health?cpf=123.456.789-00&token=abc123&busca=email%40teste.com');
 
     expect(linhas).toHaveLength(1);
-    expect(linhas[0]).toContain('/health?cpf=[REDACTED]&token=[REDACTED]&busca=[REDACTED]');
+    const registro = JSON.parse(linhas[0]!);
+    expect(registro).toMatchObject({ nivel: 'info', contexto: 'api', evento: 'http.request', status: 200 });
+    expect(registro.url).toBe('/health?cpf=[REDACTED]&token=[REDACTED]&busca=[REDACTED]');
     expect(linhas[0]).not.toContain('123.456.789-00');
     expect(linhas[0]).not.toContain('abc123');
     expect(linhas[0]).not.toContain('email@teste.com');
@@ -31,8 +33,38 @@ describe('logging seguro da API', () => {
 
     expect(res.status).toBe(500);
     expect(linhas).toHaveLength(1);
-    expect(linhas[0]).toContain('/erro?senha=[REDACTED] 500');
+    const registro = JSON.parse(linhas[0]!);
+    expect(registro).toMatchObject({ nivel: 'error', url: '/erro?senha=[REDACTED]', status: 500 });
     expect(linhas[0]).not.toContain('segredo');
+  });
+
+  it('correlaciona: mesmo correlationId no traceparent do cliente e no log da requisição', async () => {
+    const linhas: string[] = [];
+    const app = new Hono();
+    app.use('*', criarLoggerHttpSeguro((mensagem) => linhas.push(mensagem)));
+    app.get('/health', (c) => c.json({ ok: true }));
+
+    await app.request('http://localhost/health', {
+      headers: { traceparent: '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01' },
+    });
+
+    const registro = JSON.parse(linhas[0]!);
+    expect(registro.correlationId).toBe('4bf92f3577b34da6a3ce929d0e0e4736');
+  });
+
+  it('traceparent malformado do cliente nunca aparece em log algum (log forging, A18 §3.1)', async () => {
+    const linhas: string[] = [];
+    const app = new Hono();
+    app.use('*', criarLoggerHttpSeguro((mensagem) => linhas.push(mensagem)));
+    app.get('/health', (c) => c.json({ ok: true }));
+
+    const forjado = 'nao-e-um-traceparent-valido-[FORJADO]-controlado-pelo-cliente';
+    await app.request('http://localhost/health', { headers: { traceparent: forjado } });
+
+    expect(linhas[0]).not.toContain(forjado);
+    expect(linhas[0]).not.toContain('FORJADO');
+    const registro = JSON.parse(linhas[0]!);
+    expect(registro.correlationId).toMatch(/^[0-9a-f]{32}$/);
   });
 
   it('resume Error sem message nem stack', () => {

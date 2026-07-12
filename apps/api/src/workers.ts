@@ -26,6 +26,7 @@ import {
 } from '@radar/triagem/infra';
 import {
   ConfirmarUsoUseCase,
+  IniciarTrialUseCase,
   LiberarReservaUseCase,
   type AssinaturaRepository,
   type EventPublisher,
@@ -36,9 +37,14 @@ import { CobrancaWorker } from '@radar/cobranca/infra';
 import type { DocumentosDoEditalPort } from '@radar/ingestao';
 import { RegistroDeUsoId, type EditalId } from '@radar/kernel';
 import type { AnexosDTO } from '@radar/ingestao';
+import { criarLogger } from '@radar/observabilidade';
 import { DocumentosEditalAclAdapter } from './infra/documentos-edital-acl-adapter.js';
 import { triagemStub } from './infra/triagem-stub.js';
-import { redigirParaLog } from './logging.js';
+import { systemClock } from './infra/system-clock.js';
+
+const loggerCobranca = criarLogger('worker:cobranca');
+const loggerTriagemBatch = criarLogger('worker:triagem-batch');
+const loggerTriagemSolicitada = criarLogger('worker:triagem-solicitada');
 
 export interface WorkersHandle {
   /** `null` quando `ANTHROPIC_API_KEY` está ausente — só este worker depende dela. */
@@ -86,10 +92,7 @@ const documentosPortStub: DocumentosDoEditalPort = {
 /** Stub no-op de DlqClient — substituir por SqsDlqClient quando SQS provisionado. */
 const dlqStub = {
   async encaminhar(msg: { editalId: string }, err: unknown): Promise<void> {
-    console.error('[Workers][DLQ] edital descartado:', {
-      editalId: msg.editalId,
-      erro: redigirParaLog(err),
-    });
+    loggerTriagemBatch.error('dlq.edital-descartado', 'edital descartado', { editalId: msg.editalId, erro: err });
   },
 };
 
@@ -115,9 +118,9 @@ const eventosTriagemStub: TriagemEventPublisher = {
 /** Stub no-op de DlqClient de `triagem.solicitada` — substituir por SqsDlqClient quando SQS provisionado. */
 const dlqTriagemSolicitadaStub = {
   async encaminhar(msg: { editalId: string }, err: unknown): Promise<void> {
-    console.error('[Workers][DLQ] triagem.solicitada descartada:', {
+    loggerTriagemSolicitada.error('dlq.triagem-solicitada-descartada', 'triagem.solicitada descartada', {
       editalId: msg.editalId,
-      erro: redigirParaLog(err),
+      erro: err,
     });
   },
 };
@@ -176,9 +179,9 @@ const eventosStub: EventPublisher = {
 /** Stub no-op de DlqClient da Cobrança — substituir por SqsDlqClient quando SQS provisionado. */
 const dlqCobrancaStub = {
   async encaminhar(msg: { tenantId: string }, err: unknown): Promise<void> {
-    console.error('[Workers][DLQ] triagem.concluida descartada (Cobrança):', {
+    loggerCobranca.error('dlq.triagem-concluida-descartada', 'triagem.concluida descartada', {
       tenantId: msg.tenantId,
-      erro: redigirParaLog(err),
+      erro: err,
     });
   },
 };
@@ -194,18 +197,20 @@ export function iniciarWorkers(): WorkersHandle | null {
 
   const confirmarUsoUC = new ConfirmarUsoUseCase(assinaturasStub, registrosDeUsoStub, idsStub, eventosStub);
   const liberarReservaUC = new LiberarReservaUseCase(assinaturasStub);
-  const cobrancaWorker = new CobrancaWorker(confirmarUsoUC, liberarReservaUC, dlqCobrancaStub);
-  console.log('[Workers] CobrancaWorker iniciado (consumidor de triagem.concluida/triagem.falhou)');
+  // RAD-285: consumidor de organizacao.provisionada — inicia o trial (P-109 L0/RAD-269).
+  const iniciarTrialUC = new IniciarTrialUseCase(assinaturasStub, systemClock);
+  const cobrancaWorker = new CobrancaWorker(confirmarUsoUC, liberarReservaUC, dlqCobrancaStub, iniciarTrialUC);
+  loggerCobranca.info('worker.iniciado', 'CobrancaWorker iniciado (consumidor de triagem.concluida/triagem.falhou/organizacao.provisionada)');
 
   const apiKey = process.env['ANTHROPIC_API_KEY'];
   if (!apiKey) {
-    console.warn('[Workers] ANTHROPIC_API_KEY ausente — TriagemBatchWorker/TriagemSolicitadaWorker não iniciados');
+    loggerTriagemBatch.warn('worker.nao-iniciado', 'ANTHROPIC_API_KEY ausente — TriagemBatchWorker/TriagemSolicitadaWorker não iniciados');
     return {
       worker: null,
       triagemSolicitadaWorker: null,
       cobrancaWorker,
       teardown() {
-        console.log('[Workers] CobrancaWorker encerrado');
+        loggerCobranca.info('worker.encerrado', 'CobrancaWorker encerrado');
       },
     };
   }
@@ -229,7 +234,7 @@ export function iniciarWorkers(): WorkersHandle | null {
 
   const worker = new TriagemBatchWorker(extrairLoteUC, documentosGateway, objectStorageStub, dlqStub);
 
-  console.log('[Workers] TriagemBatchWorker iniciado (ANTHROPIC_API_KEY presente)');
+  loggerTriagemBatch.info('worker.iniciado', 'TriagemBatchWorker iniciado (ANTHROPIC_API_KEY presente)');
 
   // RAD-259: fecha o pré-requisito de RAD-257 — antes, `triagem.solicitada` não tinha consumidor.
   const llmGateway = new AnthropicLlmGateway(sdkClient);
@@ -248,7 +253,7 @@ export function iniciarWorkers(): WorkersHandle | null {
     eventosTriagemStub,
     dlqTriagemSolicitadaStub,
   );
-  console.log('[Workers] TriagemSolicitadaWorker iniciado (consumidor de triagem.solicitada → TriarEditalUseCase)');
+  loggerTriagemSolicitada.info('worker.iniciado', 'TriagemSolicitadaWorker iniciado (consumidor de triagem.solicitada → TriarEditalUseCase)');
 
   return {
     worker,
@@ -256,8 +261,8 @@ export function iniciarWorkers(): WorkersHandle | null {
     cobrancaWorker,
     teardown() {
       worker.teardown();
-      console.log('[Workers] TriagemBatchWorker encerrado');
-      console.log('[Workers] CobrancaWorker encerrado');
+      loggerTriagemBatch.info('worker.encerrado', 'TriagemBatchWorker encerrado');
+      loggerCobranca.info('worker.encerrado', 'CobrancaWorker encerrado');
     },
   };
 }

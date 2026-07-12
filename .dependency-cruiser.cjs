@@ -31,12 +31,20 @@ module.exports = {
     {
       name: 'nucleo-sem-tecnologia',
       comment:
-        'domain/application nunca importam pacote de tecnologia (db, cloud SDK, LLM, fila, e-mail) — isso vive SÓ no infra (A10 §8, P-74).',
+        'domain/application nunca importam pacote de tecnologia (db, cloud SDK, LLM, fila, e-mail, observabilidade — ALS/I-O de runtime Node) — isso vive SÓ no infra (A10 §8, P-74; A18 §3.3 p/ @radar/observabilidade).',
       severity: 'error',
       from: { path: '(^|/)(modules/[^/]+/src|apps/[^/]+)/(domain|application)/' },
       to: {
-        path: 'node_modules/(pg|postgres|@aws-sdk|aws-sdk|@anthropic-ai|@smithy|ioredis|amqplib|kafkajs|nodemailer)(/|$)',
+        path: 'node_modules/(pg|postgres|@aws-sdk|aws-sdk|@anthropic-ai|@smithy|ioredis|amqplib|kafkajs|nodemailer|@radar/observabilidade)(/|$)',
       },
+    },
+    {
+      name: 'kernel-sem-observabilidade',
+      comment:
+        'o kernel é importado pelo domain: não pode ganhar dependência de @radar/observabilidade (A18 §3.3 — decisão explícita de não colocar ALS no kernel).',
+      severity: 'error',
+      from: { path: '(^|/)shared/kernel/ts/src/' },
+      to: { path: 'node_modules/@radar/observabilidade(/|$)' },
     },
     {
       name: 'contexto-nao-invade-contexto',

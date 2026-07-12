@@ -20,6 +20,7 @@
     "@radar/kernel": "workspace:*",
     "@radar/matching": "workspace:*",
     "@radar/notificacao": "workspace:*",
+    "@radar/observabilidade": "workspace:*",
     "@radar/triagem": "workspace:*",
     "hono": "^4.6.17",
     "jose": "^6.2.3",
