@@ -8,7 +8,7 @@ import type {
 
 export interface EscanearAnexoInput {
   editalId: EditalId;
-  nomeAnexo: string;
+  sequencialDocumento: number;
   storageKey: string;
 }
 
@@ -32,7 +32,7 @@ export class EscanearAnexoUseCase {
 
   async executar(input: EscanearAnexoInput, signal: AbortSignal): Promise<void> {
     const todos = await this.anexoRepo.listarPorEdital(input.editalId, signal);
-    const anexo = todos.find((a) => a.nome === input.nomeAnexo);
+    const anexo = todos.find((a) => a.sequencialDocumento === input.sequencialDocumento);
 
     if (!anexo) return;
     if (anexo.estadoConfianca !== 'pendente') return;
@@ -41,19 +41,27 @@ export class EscanearAnexoUseCase {
 
     await this.anexoRepo.atualizarEstado(
       input.editalId,
-      input.nomeAnexo,
+      input.sequencialDocumento,
       resultado,
       signal,
     );
 
     if (resultado === 'limpo') {
       await this.eventPublisher.publicar(
-        new AnexoAprovado({ editalId: input.editalId, nomeAnexo: input.nomeAnexo }),
+        new AnexoAprovado({
+          editalId: input.editalId,
+          sequencialDocumento: anexo.sequencialDocumento,
+          nomeAnexo: anexo.nome,
+        }),
         signal,
       );
     } else {
       await this.eventPublisher.publicar(
-        new AnexoRejeitado({ editalId: input.editalId, nomeAnexo: input.nomeAnexo }),
+        new AnexoRejeitado({
+          editalId: input.editalId,
+          sequencialDocumento: anexo.sequencialDocumento,
+          nomeAnexo: anexo.nome,
+        }),
         signal,
       );
     }

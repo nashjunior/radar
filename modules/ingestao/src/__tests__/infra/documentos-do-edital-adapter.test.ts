@@ -10,8 +10,16 @@ const noop = new AbortController().signal;
 function makeAnexo(
   nome: string,
   estado: AnexoMetadados['estadoConfianca'],
+  sequencialDocumento = 1,
 ): AnexoMetadados {
-  return { nome, storageKey: `editais/001/${nome}`, tamanhoBytes: 1024, tipoMime: 'application/pdf', estadoConfianca: estado };
+  return {
+    sequencialDocumento,
+    nome,
+    storageKey: `editais/001/${nome}`,
+    tamanhoBytes: 1024,
+    tipoMime: 'application/pdf',
+    estadoConfianca: estado,
+  };
 }
 
 function makeRepo(anexos: AnexoMetadados[]): AnexoEditalRepository {

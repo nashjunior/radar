@@ -172,7 +172,8 @@ export interface AnexoScanner {
 /**
  * Persistência de metadados de anexos materializados (docs/13, §5).
  * Inclui estado de confiança para o trust-gating (P-104, AB14).
- * Upsert idempotente por (edital_id, nome).
+ * Upsert idempotente por (edital_id, sequencial_documento) — nunca por `nome`,
+ * texto livre do órgão que pode se repetir entre documentos distintos (RAD-291).
  */
 export interface AnexoEditalRepository {
   /** Retorna todos os anexos com seu estado de confiança (uso interno). */
@@ -182,7 +183,7 @@ export interface AnexoEditalRepository {
   /** Transiciona o estado de confiança de um anexo (pendente → limpo | rejeitado). */
   atualizarEstado(
     editalId: EditalId,
-    nome: string,
+    sequencialDocumento: number,
     estado: EstadoConfiancaAnexo,
     signal: AbortSignal,
   ): Promise<void>;

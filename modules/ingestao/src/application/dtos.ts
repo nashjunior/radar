@@ -37,6 +37,8 @@ export interface EditalDTO {
 }
 
 export interface ArquivoDTO {
+  /** Identidade real do documento na compra (RAD-291) — `nome` é só metadado de exibição. */
+  sequencialDocumento: number;
   nome: string;
   storageKey: string;
   tamanhoBytes: number;

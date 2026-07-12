@@ -21,8 +21,8 @@ function makePort(dto: AnexosDTO): DocumentosDoEditalPort {
 const DTO_BASE: AnexosDTO = {
   editalId: EDITAL_ID,
   arquivos: [
-    { nome: 'edital.pdf', storageKey: 'editais/001/edital.pdf', tipoMime: 'application/pdf', tamanhoBytes: 102400 },
-    { nome: 'anexo-i.docx', storageKey: 'editais/001/anexo-i.docx', tipoMime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', tamanhoBytes: 20480 },
+    { sequencialDocumento: 1, nome: 'edital.pdf', storageKey: 'editais/001/edital.pdf', tipoMime: 'application/pdf', tamanhoBytes: 102400 },
+    { sequencialDocumento: 2, nome: 'anexo-i.docx', storageKey: 'editais/001/anexo-i.docx', tipoMime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', tamanhoBytes: 20480 },
   ],
 };
 

@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { EditalId } from '@radar/kernel';
 import { BaixarAnexosEditalUseCase } from '../../application/use-cases/baixar-anexos-edital.js';
-import { AnexoIndisponivelError, EditalNaoEncontradoError } from '../../domain/errors/index.js';
+import {
+  AnexoIndisponivelError,
+  EditalNaoEncontradoError,
+} from '../../domain/errors/index.js';
+import { AnexoFormatoNaoSuportadoError } from '../../domain/value-objects/extensao-anexo.js';
 import { AnexoQuarentenado } from '../../application/events.js';
 import { Edital } from '../../domain/entities/edital.js';
 import type {
@@ -39,10 +43,19 @@ function criarEdital(): Edital {
 }
 
 const arquivoBase: ArquivoPncpData = {
-  nome: 'edital.pdf',
+  titulo: 'edital.pdf',
   urlOrigem: 'https://pncp.gov.br/editais/001.pdf',
+  sequencialDocumento: 1,
+  tipoDocumentoId: 2,
+  tipoDocumentoNome: 'Edital',
+  statusAtivo: true,
+};
+
+const baixadoBase = {
+  conteudo: new Uint8Array([1, 2, 3]),
   tamanhoBytes: 204800,
   tipoMime: 'application/pdf',
+  nomeArquivo: 'edital.pdf',
 };
 
 function criarAnexoRepo(): AnexoEditalRepository {
@@ -114,7 +127,7 @@ describe('BaixarAnexosEditalUseCase', () => {
       };
       const gateway: PncpGateway = {
         buscarArquivos: vi.fn().mockResolvedValue([arquivoBase]),
-        downloadArquivo: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
+        downloadArquivo: vi.fn().mockResolvedValue(baixadoBase),
         buscarContratacoesPorPublicacao: vi.fn(),
         buscarContratacoesPorAtualizacao: vi.fn(),
         buscarContratacaoPorNumero: vi.fn(),
@@ -131,16 +144,124 @@ describe('BaixarAnexosEditalUseCase', () => {
       await uc.executar({ editalId: EDITAL_ID }, noop);
 
       const salvarCall = (anexoRepo.salvar as ReturnType<typeof vi.fn>).mock.calls[0] as unknown[];
-      const [savedId, savedArquivos] = salvarCall as [string, Array<{ estadoConfianca: string; nome: string }>];
+      const [savedId, savedArquivos] = salvarCall as [
+        string,
+        Array<{ estadoConfianca: string; nome: string; sequencialDocumento: number }>,
+      ];
       expect(savedId).toBe(EDITAL_ID);
       expect(savedArquivos[0]!.estadoConfianca).toBe('pendente');
       expect(savedArquivos[0]!.nome).toBe('edital.pdf');
+      expect(savedArquivos[0]!.sequencialDocumento).toBe(1);
 
       const publicarCall = (publisher.publicar as ReturnType<typeof vi.fn>).mock.calls[0] as unknown[];
       const [evento] = publicarCall as [AnexoQuarentenado];
       expect(evento).toBeInstanceOf(AnexoQuarentenado);
       expect(evento.payload.editalId).toBe(EDITAL_ID);
       expect(evento.payload.nomeAnexo).toBe('edital.pdf');
+      expect(evento.payload.sequencialDocumento).toBe(1);
+    });
+  });
+
+  describe('chave de storage (RAD-278)', () => {
+    it('não deriva a chave do título — título com path traversal não escapa do prefixo do edital', async () => {
+      const arquivoMalicioso = {
+        ...arquivoBase,
+        titulo: '../../outro-edital/anexos/x',
+        sequencialDocumento: 7,
+      };
+      const editais: EditalRepository = {
+        porId: vi.fn().mockResolvedValue(criarEdital()),
+        porNumeroControle: vi.fn(),
+        upsertPorNumeroControle: vi.fn(),
+        listarPorJanelaPublicacao: vi.fn(),
+      };
+      const gateway: PncpGateway = {
+        buscarArquivos: vi.fn().mockResolvedValue([arquivoMalicioso]),
+        downloadArquivo: vi.fn().mockResolvedValue(baixadoBase),
+        buscarContratacoesPorPublicacao: vi.fn(),
+        buscarContratacoesPorAtualizacao: vi.fn(),
+        buscarContratacaoPorNumero: vi.fn(),
+      };
+      const storage: ObjectStorage = {
+        armazenar: vi.fn().mockResolvedValue('storage-key-opaca'),
+        obter: vi.fn(),
+        deletar: vi.fn(),
+      };
+      const uc = new BaixarAnexosEditalUseCase(gateway, editais, storage, criarAnexoRepo(), criarPublisher());
+
+      await uc.executar({ editalId: EDITAL_ID }, noop);
+
+      const [chave] = (storage.armazenar as ReturnType<typeof vi.fn>).mock.calls[0] as [string];
+      expect(chave).toBe(`editais/${EDITAL_ID}/anexos/7.pdf`);
+      expect(chave.startsWith(`editais/${EDITAL_ID}/anexos/`)).toBe(true);
+      expect(chave).not.toContain('..');
+      expect(chave).not.toContain('outro-edital');
+    });
+
+    it('dois anexos com título duplicado geram chaves distintas (sequencialDocumento)', async () => {
+      const arquivo1 = { ...arquivoBase, titulo: 'Edital', sequencialDocumento: 1 };
+      const arquivo2 = { ...arquivoBase, titulo: 'Edital', sequencialDocumento: 2 };
+      const editais: EditalRepository = {
+        porId: vi.fn().mockResolvedValue(criarEdital()),
+        porNumeroControle: vi.fn(),
+        upsertPorNumeroControle: vi.fn(),
+        listarPorJanelaPublicacao: vi.fn(),
+      };
+      const gateway: PncpGateway = {
+        buscarArquivos: vi.fn().mockResolvedValue([arquivo1, arquivo2]),
+        downloadArquivo: vi.fn().mockResolvedValue(baixadoBase),
+        buscarContratacoesPorPublicacao: vi.fn(),
+        buscarContratacoesPorAtualizacao: vi.fn(),
+        buscarContratacaoPorNumero: vi.fn(),
+      };
+      const storage: ObjectStorage = {
+        armazenar: vi.fn().mockResolvedValue('storage-key-opaca'),
+        obter: vi.fn(),
+        deletar: vi.fn(),
+      };
+      const anexoRepo = criarAnexoRepo();
+      const uc = new BaixarAnexosEditalUseCase(gateway, editais, storage, anexoRepo, criarPublisher());
+
+      await uc.executar({ editalId: EDITAL_ID }, noop);
+
+      const chamadas = (storage.armazenar as ReturnType<typeof vi.fn>).mock.calls as [string][];
+      const [chave1] = chamadas[0]!;
+      const [chave2] = chamadas[1]!;
+      expect(chave1).not.toBe(chave2);
+
+      // RAD-291: identidade do registro de metadados também é sequencialDocumento —
+      // dois `salvar()` distintos, um por sequencial, nenhum sobrescreve o outro.
+      const salvarChamadas = (anexoRepo.salvar as ReturnType<typeof vi.fn>).mock.calls as Array<
+        [string, Array<{ sequencialDocumento: number; nome: string }>]
+      >;
+      expect(salvarChamadas).toHaveLength(2);
+      const sequenciaisSalvos = salvarChamadas.map(([, arquivos]) => arquivos[0]!.sequencialDocumento);
+      expect(sequenciaisSalvos).toEqual([1, 2]);
+    });
+
+    it('rejeita mime fora da allowlist (não deriva extensão do título)', async () => {
+      const editais: EditalRepository = {
+        porId: vi.fn().mockResolvedValue(criarEdital()),
+        porNumeroControle: vi.fn(),
+        upsertPorNumeroControle: vi.fn(),
+        listarPorJanelaPublicacao: vi.fn(),
+      };
+      const gateway: PncpGateway = {
+        buscarArquivos: vi.fn().mockResolvedValue([arquivoBase]),
+        downloadArquivo: vi.fn().mockResolvedValue({ ...baixadoBase, tipoMime: 'application/octet-stream' }),
+        buscarContratacoesPorPublicacao: vi.fn(),
+        buscarContratacoesPorAtualizacao: vi.fn(),
+        buscarContratacaoPorNumero: vi.fn(),
+      };
+      const uc = new BaixarAnexosEditalUseCase(
+        gateway,
+        editais,
+        {} as ObjectStorage,
+        criarAnexoRepo(),
+        criarPublisher(),
+      );
+
+      await expect(uc.executar({ editalId: EDITAL_ID }, noop)).rejects.toThrow(AnexoFormatoNaoSuportadoError);
     });
   });
 

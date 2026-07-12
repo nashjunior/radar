@@ -109,6 +109,8 @@ export class AnexoQuarentenado implements DomainEvent {
   constructor(
     readonly payload: {
       readonly editalId: EditalId;
+      /** Identidade real do anexo (RAD-291) — `nomeAnexo` é só display/auditoria. */
+      readonly sequencialDocumento: number;
       readonly nomeAnexo: string;
       readonly storageKey: string;
     },
@@ -125,6 +127,8 @@ export class AnexoAprovado implements DomainEvent {
   constructor(
     readonly payload: {
       readonly editalId: EditalId;
+      /** Identidade real do anexo (RAD-291) — `nomeAnexo` é só display/auditoria. */
+      readonly sequencialDocumento: number;
       readonly nomeAnexo: string;
     },
   ) {
@@ -140,6 +144,8 @@ export class AnexoRejeitado implements DomainEvent {
   constructor(
     readonly payload: {
       readonly editalId: EditalId;
+      /** Identidade real do anexo (RAD-291) — `nomeAnexo` é só display/auditoria. */
+      readonly sequencialDocumento: number;
       readonly nomeAnexo: string;
     },
   ) {

@@ -1,8 +1,10 @@
 import type { EditalId } from '@radar/kernel';
 import {
+  AnexoFormatoNaoSuportadoError,
   AnexoIndisponivelError,
   EditalNaoEncontradoError,
   ESTADO_INICIAL_ANEXO,
+  ExtensaoAnexo,
 } from '../../domain/index.js';
 import { AnexoQuarentenado } from '../events.js';
 import type {
@@ -54,17 +56,22 @@ export class BaixarAnexosEditalUseCase {
 
     for (const arquivo of arquivos) {
       try {
-        const conteudo = await this.pncpGateway.downloadArquivo(
+        const baixado = await this.pncpGateway.downloadArquivo(
           arquivo.urlOrigem,
           signal,
         );
 
-        const chave = `editais/${edital.id}/anexos/${arquivo.nome}`;
+        // Chave só de dado estrutural nosso — `titulo` é texto livre do órgão
+        // (path traversal + sobrescrita silenciosa, RAD-278). `sequencialDocumento`
+        // é a chave natural do documento na compra; extensão sai do sniff de
+        // magic bytes (nunca do nome que o órgão mandou).
+        const extensao = ExtensaoAnexo.criar(baixado.tipoMime);
+        const chave = `editais/${edital.id}/anexos/${arquivo.sequencialDocumento}.${extensao}`;
 
         const storageKey = await this.objectStorage.armazenar(
           chave,
-          conteudo,
-          { contentType: arquivo.tipoMime },
+          baixado.conteudo,
+          { contentType: baixado.tipoMime },
           signal,
         );
 
@@ -72,10 +79,11 @@ export class BaixarAnexosEditalUseCase {
           input.editalId,
           [
             {
-              nome: arquivo.nome,
+              sequencialDocumento: arquivo.sequencialDocumento,
+              nome: arquivo.titulo,
               storageKey,
-              tamanhoBytes: arquivo.tamanhoBytes,
-              tipoMime: arquivo.tipoMime,
+              tamanhoBytes: baixado.tamanhoBytes,
+              tipoMime: baixado.tipoMime,
               estadoConfianca: ESTADO_INICIAL_ANEXO,
             },
           ],
@@ -85,14 +93,17 @@ export class BaixarAnexosEditalUseCase {
         await this.eventPublisher.publicar(
           new AnexoQuarentenado({
             editalId: input.editalId,
-            nomeAnexo: arquivo.nome,
+            sequencialDocumento: arquivo.sequencialDocumento,
+            nomeAnexo: arquivo.titulo,
             storageKey,
           }),
           signal,
         );
       } catch (err) {
-        if (err instanceof AnexoIndisponivelError) throw err;
-        throw new AnexoIndisponivelError(arquivo.nome);
+        if (err instanceof AnexoIndisponivelError || err instanceof AnexoFormatoNaoSuportadoError) {
+          throw err;
+        }
+        throw new AnexoIndisponivelError(arquivo.titulo);
       }
     }
   }

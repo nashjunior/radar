@@ -469,8 +469,20 @@ describe('Gate A07 · AB14 — trust-gating de anexos', () => {
     const eventos = { publicar: vi.fn() };
     const uc = new BaixarAnexosEditalUseCase(
       {
-        buscarArquivos: vi.fn().mockResolvedValue([{ nome: 'edital.pdf', urlOrigem: 'https://pncp.gov.br/a.pdf', tamanhoBytes: 10, tipoMime: 'application/pdf' }]),
-        downloadArquivo: vi.fn().mockResolvedValue(new Uint8Array([1])),
+        buscarArquivos: vi.fn().mockResolvedValue([{
+          titulo: 'edital.pdf',
+          urlOrigem: 'https://pncp.gov.br/a.pdf',
+          sequencialDocumento: 1,
+          tipoDocumentoId: 2,
+          tipoDocumentoNome: 'Edital',
+          statusAtivo: true,
+        }]),
+        downloadArquivo: vi.fn().mockResolvedValue({
+          conteudo: new Uint8Array([1]),
+          tamanhoBytes: 10,
+          tipoMime: 'application/pdf',
+          nomeArquivo: 'edital.pdf',
+        }),
         buscarContratacoesPorPublicacao: vi.fn(),
         buscarContratacoesPorAtualizacao: vi.fn(),
         buscarContratacaoPorNumero: vi.fn(),
@@ -497,6 +509,7 @@ describe('Gate A07 · AB14 — trust-gating de anexos', () => {
     const scanner = { escanear: vi.fn().mockResolvedValue('limpo' as const) };
     const repo = {
       listarPorEdital: vi.fn().mockResolvedValue([{
+        sequencialDocumento: 1,
         nome: 'edital.pdf',
         storageKey: 'landing/tenant-a/edital.pdf',
         tamanhoBytes: 10,
@@ -511,7 +524,7 @@ describe('Gate A07 · AB14 — trust-gating de anexos', () => {
 
     await uc.executar({
       editalId: EDITAL,
-      nomeAnexo: 'edital.pdf',
+      sequencialDocumento: 1,
       storageKey: 'landing/tenant-b/segredo.pdf',
     }, signal);
 

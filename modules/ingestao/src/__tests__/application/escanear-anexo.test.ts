@@ -11,11 +11,16 @@ import type {
 
 const EDITAL_ID = EditalId('edital-001');
 const NOME_ANEXO = 'edital.pdf';
+const SEQUENCIAL_DOCUMENTO = 1;
 const STORAGE_KEY = 'editais/edital-001/anexos/edital.pdf';
 const noop = new AbortController().signal;
 
-function criarAnexo(estado: AnexoMetadados['estadoConfianca']): AnexoMetadados {
+function criarAnexo(
+  estado: AnexoMetadados['estadoConfianca'],
+  sequencialDocumento = SEQUENCIAL_DOCUMENTO,
+): AnexoMetadados {
   return {
+    sequencialDocumento,
     nome: NOME_ANEXO,
     storageKey: STORAGE_KEY,
     tamanhoBytes: 1024,
@@ -44,9 +49,9 @@ describe('EscanearAnexoUseCase', () => {
     const publisher = criarPublisher();
     const uc = new EscanearAnexoUseCase(scanner, repo, publisher);
 
-    await uc.executar({ editalId: EDITAL_ID, nomeAnexo: NOME_ANEXO, storageKey: STORAGE_KEY }, noop);
+    await uc.executar({ editalId: EDITAL_ID, sequencialDocumento: SEQUENCIAL_DOCUMENTO, storageKey: STORAGE_KEY }, noop);
 
-    expect(repo.atualizarEstado).toHaveBeenCalledWith(EDITAL_ID, NOME_ANEXO, 'limpo', noop);
+    expect(repo.atualizarEstado).toHaveBeenCalledWith(EDITAL_ID, SEQUENCIAL_DOCUMENTO, 'limpo', noop);
     const publicarCall0 = (publisher.publicar as ReturnType<typeof vi.fn>).mock.calls[0] as unknown[];
     const [evento] = publicarCall0 as [AnexoAprovado];
     expect(evento).toBeInstanceOf(AnexoAprovado);
@@ -60,9 +65,9 @@ describe('EscanearAnexoUseCase', () => {
     const publisher = criarPublisher();
     const uc = new EscanearAnexoUseCase(scanner, repo, publisher);
 
-    await uc.executar({ editalId: EDITAL_ID, nomeAnexo: NOME_ANEXO, storageKey: STORAGE_KEY }, noop);
+    await uc.executar({ editalId: EDITAL_ID, sequencialDocumento: SEQUENCIAL_DOCUMENTO, storageKey: STORAGE_KEY }, noop);
 
-    expect(repo.atualizarEstado).toHaveBeenCalledWith(EDITAL_ID, NOME_ANEXO, 'rejeitado', noop);
+    expect(repo.atualizarEstado).toHaveBeenCalledWith(EDITAL_ID, SEQUENCIAL_DOCUMENTO, 'rejeitado', noop);
     const publicarCallR = (publisher.publicar as ReturnType<typeof vi.fn>).mock.calls[0] as unknown[];
     const [eventoR] = publicarCallR as [AnexoRejeitado];
     expect(eventoR).toBeInstanceOf(AnexoRejeitado);
@@ -78,7 +83,7 @@ describe('EscanearAnexoUseCase', () => {
     const uc = new EscanearAnexoUseCase(scanner, repo, publisher);
 
     await expect(
-      uc.executar({ editalId: EDITAL_ID, nomeAnexo: NOME_ANEXO, storageKey: STORAGE_KEY }, noop),
+      uc.executar({ editalId: EDITAL_ID, sequencialDocumento: SEQUENCIAL_DOCUMENTO, storageKey: STORAGE_KEY }, noop),
     ).rejects.toThrow('scanner timeout');
 
     expect(repo.atualizarEstado).not.toHaveBeenCalled();
@@ -92,7 +97,7 @@ describe('EscanearAnexoUseCase', () => {
     const publisher = criarPublisher();
     const uc = new EscanearAnexoUseCase(scanner, repo, publisher);
 
-    await uc.executar({ editalId: EDITAL_ID, nomeAnexo: NOME_ANEXO, storageKey: STORAGE_KEY }, noop);
+    await uc.executar({ editalId: EDITAL_ID, sequencialDocumento: SEQUENCIAL_DOCUMENTO, storageKey: STORAGE_KEY }, noop);
 
     expect(scanner.escanear).not.toHaveBeenCalled();
     expect(repo.atualizarEstado).not.toHaveBeenCalled();
@@ -106,7 +111,7 @@ describe('EscanearAnexoUseCase', () => {
     const publisher = criarPublisher();
     const uc = new EscanearAnexoUseCase(scanner, repo, publisher);
 
-    await uc.executar({ editalId: EDITAL_ID, nomeAnexo: NOME_ANEXO, storageKey: STORAGE_KEY }, noop);
+    await uc.executar({ editalId: EDITAL_ID, sequencialDocumento: SEQUENCIAL_DOCUMENTO, storageKey: STORAGE_KEY }, noop);
 
     const publicarCallA = (publisher.publicar as ReturnType<typeof vi.fn>).mock.calls[0] as unknown[];
     const [eventoA] = publicarCallA as [AnexoAprovado];
@@ -122,6 +127,7 @@ describe('EscanearAnexoUseCase', () => {
     const CRAFTED_KEY = 'editais/outro-tenant/segredo.pdf';
 
     const anexoNoBD: AnexoMetadados = {
+      sequencialDocumento: SEQUENCIAL_DOCUMENTO,
       nome: NOME_ANEXO,
       storageKey: DB_STORAGE_KEY,
       tamanhoBytes: 1024,
@@ -134,11 +140,28 @@ describe('EscanearAnexoUseCase', () => {
     const uc = new EscanearAnexoUseCase(scanner, repo, publisher);
 
     await uc.executar(
-      { editalId: EDITAL_ID, nomeAnexo: NOME_ANEXO, storageKey: CRAFTED_KEY },
+      { editalId: EDITAL_ID, sequencialDocumento: SEQUENCIAL_DOCUMENTO, storageKey: CRAFTED_KEY },
       noop,
     );
 
     expect(scanner.escanear).toHaveBeenCalledWith(DB_STORAGE_KEY, noop);
     expect(scanner.escanear).not.toHaveBeenCalledWith(CRAFTED_KEY, expect.anything());
+  });
+
+  // RAD-291 · dois anexos com título duplicado (sequencialDocumento distinto):
+  // escanear um não deve tocar nem promover o estado do outro.
+  it('distingue anexos de título duplicado por sequencialDocumento — não promove o outro', async () => {
+    const anexo1 = criarAnexo('pendente', 1);
+    const anexo2 = criarAnexo('pendente', 2);
+    const repo = criarRepo([anexo1, anexo2]);
+    const scanner: AnexoScanner = { escanear: vi.fn().mockResolvedValue('limpo') };
+    const publisher = criarPublisher();
+    const uc = new EscanearAnexoUseCase(scanner, repo, publisher);
+
+    await uc.executar({ editalId: EDITAL_ID, sequencialDocumento: 1, storageKey: STORAGE_KEY }, noop);
+
+    expect(repo.atualizarEstado).toHaveBeenCalledTimes(1);
+    expect(repo.atualizarEstado).toHaveBeenCalledWith(EDITAL_ID, 1, 'limpo', noop);
+    expect(repo.atualizarEstado).not.toHaveBeenCalledWith(EDITAL_ID, 2, expect.anything(), expect.anything());
   });
 });
