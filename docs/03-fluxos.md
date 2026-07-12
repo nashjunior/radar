@@ -105,7 +105,7 @@ flowchart LR
     REC -.prazo.-> ALERTA
 ```
 
-Os estados espelham as fases legais da Lei 14.133 (ver documento 04 para o mapeamento formal). O motor de prazos é a funcionalidade que mais reduz risco operacional do usuário.
+Os estados espelham as fases legais da Lei 14.133 (ver documento 04 para o mapeamento formal). O diagrama mostra o fluxo padrão; a fase real do caso deve ser dirigida pelos dados do edital/fonte, não por uma ordem fixa, para acomodar inversão motivada de fases (P-10). O motor de prazos é a funcionalidade que mais reduz risco operacional do usuário.
 
 ## 6. Fluxo de dados — Inteligência de mercado (Módulo 4)
 

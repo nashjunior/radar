@@ -45,7 +45,7 @@ flowchart TD
 
 **Prazos são definidos pelo edital, dentro dos mínimos legais.** O Radar não deve assumir prazos fixos; deve extrair o prazo de cada edital e validá-lo contra os mínimos da lei/modalidade. A modalidade (pregão, concorrência, etc.) altera prazos e ritos — o modelo de dados precisa carregar a modalidade como atributo de primeira classe.
 
-**A inversão julgamento→habilitação.** O produto nunca deve sinalizar "habilitação" antes do "julgamento" no fluxo padrão. Há exceções (a Administração pode, motivadamente, inverter as fases), então o estado deve ser **dirigido pelos dados do edital**, não por uma ordem fixa codificada. `[A VALIDAR]`
+**A inversão julgamento→habilitação.** **Decisão de Produto (P-10, 2026-07-12):** o produto nunca deve sinalizar "habilitação" antes do "julgamento" no fluxo padrão da Lei 14.133/2021. Como há exceções motivadas no edital, o estado da licitação no Radar deve ser **dirigido pelos dados do edital/fonte**, não por uma ordem fixa codificada. No futuro Módulo 3, a sequência padrão é julgamento → habilitação, mas o modelo precisa aceitar a inversão expressamente informada pela fonte.
 
 **Publicação no PNCP como marco.** Como a publicação no PNCP é condição de eficácia, o timestamp de publicação no PNCP é a referência temporal mais confiável para iniciar contagens — preferível a datas raspadas de portais secundários.
 

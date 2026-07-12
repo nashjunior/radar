@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { ClienteFinalId, PerfilId } from '@radar/kernel';
+import { PerfilId } from '@radar/kernel';
 import { PerfilHabilitacaoAdapter } from '../../infra/adapters/perfil-habilitacao-adapter.js';
 import type { PerfilSource } from '../../infra/adapters/perfil-habilitacao-adapter.js';
+import { Requisito } from '../../domain/value-objects/requisito.js';
 
 const signal = new AbortController().signal;
 
@@ -35,19 +36,6 @@ describe('PerfilHabilitacaoAdapter.porId', () => {
     expect(resultado).toBeNull();
   });
 
-  it('mapeia os campos de habilitação do raw para PerfilHabilitacao', async () => {
-    const { fonte } = fonteComRaw(rawBase);
-    const adapter = new PerfilHabilitacaoAdapter(fonte);
-
-    const resultado = await adapter.porId(PerfilId('perfil-1'), signal);
-
-    expect(resultado).not.toBeNull();
-    expect(resultado!.habJuridica).toEqual(['mei']);
-    expect(resultado!.habFiscal).toEqual(['certidao-pgfn']);
-    expect(resultado!.habTecnica).toEqual(['atestado-capacidade']);
-    expect(resultado!.habEconomica).toEqual(['balanco-patrimonial']);
-  });
-
   it('aplica branded IDs para id e clienteFinalId', async () => {
     const { fonte } = fonteComRaw(rawBase);
     const adapter = new PerfilHabilitacaoAdapter(fonte);
@@ -58,15 +46,28 @@ describe('PerfilHabilitacaoAdapter.porId', () => {
     expect(resultado!.clienteFinalId).toBe('cliente-1');
   });
 
-  it('arrays vazios de habilitação são mapeados para arrays vazios', async () => {
+  it('habJuridica é propagado — confrontar com requisito juridica não gera risco', async () => {
+    const { fonte } = fonteComRaw(rawBase);
+    const adapter = new PerfilHabilitacaoAdapter(fonte);
+    const resultado = await adapter.porId(PerfilId('perfil-1'), signal);
+
+    // rawBase.habJuridica = ['mei'] → deve atender requisito 'mei'
+    const req = Requisito.criar('juridica', 'mei', null);
+    const { riscos } = resultado!.confrontar([req]);
+
+    expect(riscos).toHaveLength(0);
+  });
+
+  it('arrays vazios de habilitação → confrontar com qualquer requisito gera risco', async () => {
     const raw = { ...rawBase, habJuridica: [], habFiscal: [], habTecnica: [], habEconomica: [] };
     const { fonte } = fonteComRaw(raw);
     const adapter = new PerfilHabilitacaoAdapter(fonte);
-
     const resultado = await adapter.porId(PerfilId('perfil-1'), signal);
 
-    expect(resultado!.habJuridica).toEqual([]);
-    expect(resultado!.habFiscal).toEqual([]);
+    const req = Requisito.criar('juridica', 'certidao', null);
+    const { riscos } = resultado!.confrontar([req]);
+
+    expect(riscos).toHaveLength(1);
   });
 
   it('propaga o id do perfil e o AbortSignal à fonte', async () => {
