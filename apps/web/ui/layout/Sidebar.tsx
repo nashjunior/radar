@@ -1,11 +1,14 @@
-import { NavItem } from '@/ui/components';
+import { NavItem, MedidorCota } from '@/ui/components';
 import { useTheme } from '@/ui/providers/theme-provider';
+import type { AssinaturaViewModel } from '@/domain/assinatura';
 
-type Route = 'dashboard' | 'alertas' | 'triagem' | 'configurar' | 'perfil';
+type Route = 'dashboard' | 'alertas' | 'triagem' | 'configurar' | 'perfil' | 'planos' | 'pagamento-processando';
 
 interface SidebarProps {
   current: Route;
   onNavigate: (route: Route) => void;
+  assinatura?: AssinaturaViewModel | null;
+  onVerPlanos?: () => void;
 }
 
 const NAV_ITEMS: { route: Route; icon: string; label: string }[] = [
@@ -15,7 +18,7 @@ const NAV_ITEMS: { route: Route; icon: string; label: string }[] = [
   { route: 'configurar', icon: '⚙️', label: 'Configurar Radar' },
 ];
 
-export function Sidebar({ current, onNavigate }: SidebarProps) {
+export function Sidebar({ current, onNavigate, assinatura, onVerPlanos }: SidebarProps) {
   const { theme, setTheme, resolvedTheme } = useTheme();
 
   return (
@@ -50,6 +53,14 @@ export function Sidebar({ current, onNavigate }: SidebarProps) {
           />
         ))}
       </nav>
+
+      {assinatura && (
+        <MedidorCota
+          usado={assinatura.usado}
+          cota={assinatura.cota}
+          {...(onVerPlanos ? { onUpgrade: onVerPlanos } : {})}
+        />
+      )}
 
       <button
         onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}

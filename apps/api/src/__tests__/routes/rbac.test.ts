@@ -114,6 +114,8 @@ function buildApp(): Hono {
     registrarFeedback: { executar: vi.fn().mockResolvedValue(undefined) } as never,
     perfilAtivo: perfilAtivoOk,
     autorizar,
+    // Gate de cota (P-107 (3)) real é coberto em entitlement-middleware.test.ts — aqui sempre-permite
+    entitlement: (async (_c: Context, next: () => Promise<void>) => next()) as MiddlewareHandler,
   }));
 
   app.route('/api/identidade', criarIdentidadeRouter({

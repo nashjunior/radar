@@ -44,6 +44,9 @@ const HTTP_STATUS_BY_CODE = new Map<string, ContentfulStatusCode>([
   ['ANEXO_INDISPONIVEL', 503],
   ['LOTE_EXTRACAO_INDISPONIVEL', 503],
   ['CANAL_INDISPONIVEL', 503],
+  ['AUDITORIA_INDISPONIVEL', 503],
+
+  ['PAGAMENTO_GATEWAY_INDISPONIVEL', 503],
 ]);
 
 const MENSAGEM_POR_STATUS = new Map<ContentfulStatusCode, string>([

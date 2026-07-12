@@ -6,19 +6,29 @@ import { SessaoProvider, useSessaoEstado } from '@/ui/providers/sessao-provider'
 import { UseCasesContext } from '@/ui/providers/use-cases-provider';
 import { authGateway, useCases } from '@/infra/container';
 import { AppLayout } from '@/ui/layout/AppLayout';
+import { ModalUpgrade } from '@/ui/components';
 import { DashboardPage } from '@/ui/pages/dashboard-page';
 import { AlertasPage } from '@/ui/pages/alertas-page';
 import { TriagemPage } from '@/ui/pages/triagem-page';
 import { ConfigurarPage } from '@/ui/pages/configurar-page';
 import { PerfilHabilitacaoPage } from '@/ui/pages/perfil-habilitacao-page';
+import { PlanosPage } from '@/ui/pages/planos-page';
+import { PagamentoProcessandoPage } from '@/ui/pages/pagamento-processando-page';
 import { LoginPage } from '@/ui/pages/login-page';
 import './globals.css';
 
-type Route = 'dashboard' | 'alertas' | 'triagem' | 'configurar' | 'perfil';
+type Route = 'dashboard' | 'alertas' | 'triagem' | 'configurar' | 'perfil' | 'planos' | 'pagamento-processando';
+
+interface ModalUpgradeState {
+  cota: number;
+  usado: number;
+  upgradeDisponivel: boolean;
+}
 
 function App() {
   const [route, setRoute] = useState<Route>('dashboard');
   const [triagemId, setTriagemId] = useState<string | undefined>();
+  const [modalUpgrade, setModalUpgrade] = useState<ModalUpgradeState | null>(null);
 
   function navigateTo(r: Route) {
     setRoute(r);
@@ -29,13 +39,29 @@ function App() {
     setRoute('triagem');
   }
 
+  function abrirModalUpgrade(state: ModalUpgradeState) {
+    setModalUpgrade(state);
+  }
+
   return (
     <AppLayout current={route} onNavigate={navigateTo}>
-      {route === 'dashboard'  && <DashboardPage onTriagem={openTriagem} onVerAlertas={() => navigateTo('alertas')} />}
-      {route === 'alertas'    && <AlertasPage onTriagem={openTriagem} />}
-      {route === 'triagem'    && <TriagemPage editalId={triagemId} onBack={() => setRoute('alertas')} />}
-      {route === 'configurar' && <ConfigurarPage />}
-      {route === 'perfil'     && <PerfilHabilitacaoPage />}
+      {route === 'dashboard'               && <DashboardPage onTriagem={openTriagem} onVerAlertas={() => navigateTo('alertas')} />}
+      {route === 'alertas'                 && <AlertasPage onTriagem={openTriagem} />}
+      {route === 'triagem'                 && <TriagemPage editalId={triagemId} onBack={() => setRoute('alertas')} onCotaExcedida={abrirModalUpgrade} />}
+      {route === 'configurar'              && <ConfigurarPage />}
+      {route === 'perfil'                  && <PerfilHabilitacaoPage />}
+      {route === 'planos'                  && <PlanosPage onBack={() => navigateTo('dashboard')} />}
+      {route === 'pagamento-processando'   && <PagamentoProcessandoPage onConfirmado={() => navigateTo('dashboard')} onVoltar={() => navigateTo('dashboard')} />}
+
+      {modalUpgrade && (
+        <ModalUpgrade
+          cota={modalUpgrade.cota}
+          usado={modalUpgrade.usado}
+          upgradeDisponivel={modalUpgrade.upgradeDisponivel}
+          onVerPlanos={() => { setModalUpgrade(null); navigateTo('planos'); }}
+          onFechar={() => setModalUpgrade(null)}
+        />
+      )}
     </AppLayout>
   );
 }

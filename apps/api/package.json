@@ -14,6 +14,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",
     "@hono/node-server": "^1.13.7",
+    "@radar/cobranca": "workspace:*",
     "@radar/identidade": "workspace:*",
     "@radar/ingestao": "workspace:*",
     "@radar/kernel": "workspace:*",

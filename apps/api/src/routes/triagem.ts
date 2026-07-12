@@ -29,6 +29,7 @@ import { autenticarMiddleware } from '../middleware/tenant.js';
 import { rateLimitPorTenantMiddleware } from '../security.js';
 import type { PerfilAtivoGateway } from '../ports/perfil-ativo-gateway.js';
 import type { AutorizarMiddleware } from '../middleware/autorizacao.js';
+import type { EntitlementMiddleware } from '../middleware/entitlement.js';
 
 export interface TriagemContainer {
   consultarTriagem: ConsultarTriagemUseCase;
@@ -36,6 +37,8 @@ export interface TriagemContainer {
   registrarFeedback: RegistrarFeedbackTriagemUseCase;
   perfilAtivo: PerfilAtivoGateway;
   autorizar: AutorizarMiddleware;
+  /** Gate de cota (P-107 (3), RAD-246) — só na rota que consome cota (solicitar). */
+  entitlement: EntitlementMiddleware;
 }
 
 /**
@@ -132,7 +135,8 @@ export function criarTriagemRouter(container: TriagemContainer): Hono {
   });
 
   // POST /:editalId/solicitar — US-07 pull trigger (RAD-80) — RBAC: TRIAGEM criar
-  router.post('/:editalId/solicitar', container.autorizar('TRIAGEM', 'criar'), async (c) => {
+  // entitlement roda DEPOIS do RBAC e ANTES de publicar triagem.solicitada (P-107 (3), RAD-246).
+  router.post('/:editalId/solicitar', container.autorizar('TRIAGEM', 'criar'), container.entitlement, async (c) => {
     const editalIdRaw = c.req.param('editalId');
     const tenantId = c.get('tenantId');
     const signal = c.req.raw.signal;

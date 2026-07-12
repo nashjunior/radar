@@ -7,3 +7,6 @@ export { Input } from './Input';
 export { Textarea } from './Textarea';
 export { NavItem } from './NavItem';
 export { StatCard } from './StatCard';
+export { MedidorCota } from './MedidorCota';
+export { BannerAssinatura } from './BannerAssinatura';
+export { ModalUpgrade } from './ModalUpgrade';

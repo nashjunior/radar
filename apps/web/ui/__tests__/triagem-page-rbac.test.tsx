@@ -4,7 +4,7 @@
  * — 403 de /api/me resulta em estado "sem permissão" no SessaoProvider
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 // Mocks de hooks externos para isolar o componente
@@ -33,6 +33,14 @@ vi.mock('@/ui/hooks/use-feedback-triagem', () => ({
     contestarEstado: { status: 'idle' },
     registrarDecisao: vi.fn(),
     contestar: vi.fn(),
+  }),
+}));
+
+vi.mock('@/ui/hooks/use-solicitar-triagem', () => ({
+  useSolicitarTriagem: () => ({
+    estado: { status: 'idle' },
+    solicitar: vi.fn(),
+    limpar: vi.fn(),
   }),
 }));
 
@@ -109,9 +117,8 @@ describe('SessaoProvider — tratamento de 403', () => {
       </SessaoProvider>,
     );
 
-    // O filho ainda renderiza enquanto carrega; após rejeição o estado muda
-    // mas o provider não explode — sem tela branca nem throw não tratado.
-    // Verificamos que não há crash (render não lançou).
-    expect(document.body).toBeTruthy();
+    // Aguarda a promise rejeitada propagar e o estado do provider se resolver.
+    // findByTestId é async e deixa o event loop ciclar — evita o warning de act().
+    await waitFor(() => expect(screen.getByTestId('filho')).toBeTruthy());
   });
 });

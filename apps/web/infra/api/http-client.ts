@@ -1,4 +1,4 @@
-import { SessaoExpiradaError, AcessoNegadoError } from '@/application/errors';
+import { SessaoExpiradaError, AcessoNegadoError, CotaExcedidaError } from '@/application/errors';
 
 export interface FetchApiOptions extends Omit<RequestInit, 'headers'> {
   /** Add Content-Type: application/json. Use for POST/PUT/PATCH with a JSON body. */
@@ -11,8 +11,9 @@ export interface FetchApiOptions extends Omit<RequestInit, 'headers'> {
 
 /**
  * Shared fetch helper for apps/web HTTP gateways.
- * Injects Authorization header and maps 401/403/404/!ok to typed errors.
+ * Injects Authorization header and maps 401/402/403/404/!ok to typed errors.
  * Returns the raw Response on success, or null when on403/on404 is 'null'.
+ * HTTP 402 always throws CotaExcedidaError (parseia o corpo JSON { cota, usado, upgradeDisponivel }).
  */
 export async function fetchApi(
   url: string,
@@ -29,6 +30,10 @@ export async function fetchApi(
   const res = await fetch(url, { ...rest, headers });
 
   if (res.status === 401) throw new SessaoExpiradaError();
+  if (res.status === 402) {
+    const body = (await res.json()) as { cota?: number; usado?: number; upgradeDisponivel?: boolean };
+    throw new CotaExcedidaError(body.cota ?? 0, body.usado ?? 0, body.upgradeDisponivel ?? false);
+  }
   if (res.status === 403) {
     if (on403 === 'null') return null;
     throw new AcessoNegadoError();

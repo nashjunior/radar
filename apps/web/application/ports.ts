@@ -3,6 +3,7 @@ import type { TriagemViewModel } from '@/domain/triagem-view-model';
 import type { EditalDetalhe } from '@/domain/edital-detalhe';
 import type { AlertaCardItem } from '@/domain/alerta-card';
 import type { SessaoUsuario } from '@/domain/sessao';
+import type { AssinaturaViewModel } from '@/domain/assinatura';
 
 // ---------------------------------------------------------------------------
 // Sessão (P-52 · RAD-213 — GET /api/me)
@@ -136,4 +137,18 @@ export interface PerfilHabilitacaoGateway {
  */
 export interface AlertasApiGateway {
   listar(signal: AbortSignal): Promise<AlertaCardItem[]>;
+}
+
+// ---------------------------------------------------------------------------
+// Assinatura (P-107 · RAD-251 — GET /api/me/assinatura, POST /api/assinatura/checkout)
+// ---------------------------------------------------------------------------
+
+/**
+ * Port de assinatura — lê o estado do plano/cota e inicia o checkout hospedado.
+ * POST /api/assinatura/checkout retorna { urlCheckout } — o front redireciona e nada mais.
+ * Implementado por AssinaturaHttpGateway (prod) ou AssinaturaStubGateway (dev/test).
+ */
+export interface AssinaturaGateway {
+  obter(signal: AbortSignal): Promise<AssinaturaViewModel>;
+  iniciarCheckout(signal: AbortSignal): Promise<{ urlCheckout: string }>;
 }

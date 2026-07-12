@@ -1,24 +1,42 @@
 /** @figma nodeId=9:2 fileKey=SAbjXOQO4gFAH4syq7VdQf (Light) / 15:215 (Dark) */
+import { useEffect } from 'react';
 import { Badge, Button } from '@/ui/components';
 import { useTriagem } from '@/ui/hooks/use-triagem';
 import { useEdital } from '@/ui/hooks/use-edital';
 import { useFeedbackTriagem } from '@/ui/hooks/use-feedback-triagem';
+import { useSolicitarTriagem } from '@/ui/hooks/use-solicitar-triagem';
 import { useSessao } from '@/ui/hooks/use-sessao';
 import { aderenciaLabel } from '@/domain/triagem-view-model';
 import { formatarDataColeta } from '@/domain/edital-detalhe';
 import type { CampoAnaliseIA, ChecklistItem } from '@/domain/triagem-view-model';
 
+interface CotaExcedidaInfo {
+  cota: number;
+  usado: number;
+  upgradeDisponivel: boolean;
+}
+
 interface TriagemPageProps {
   editalId?: string | undefined;
   onBack: () => void;
+  onCotaExcedida?: (info: CotaExcedidaInfo) => void;
 }
 
-export function TriagemPage({ editalId, onBack }: TriagemPageProps) {
+export function TriagemPage({ editalId, onBack, onCotaExcedida }: TriagemPageProps) {
   const triagem = useTriagem({ editalId: editalId ?? '' });
   const edital = useEdital(editalId ?? '');
   const feedback = useFeedbackTriagem({ editalId: editalId ?? '' });
+  const { estado: solicitarEstado, solicitar: solicitarFn, limpar: limparSolicitar } = useSolicitarTriagem({ editalId: editalId ?? '' });
   const { pode } = useSessao();
   const podeDecidirTriagem = pode('TRIAGEM', 'escrever');
+
+  // Propaga 402 para o pai renderizar ModalUpgrade — não pode ser feito na render-phase
+  useEffect(() => {
+    if (solicitarEstado.status === 'cota_excedida' && onCotaExcedida) {
+      onCotaExcedida({ cota: solicitarEstado.cota, usado: solicitarEstado.usado, upgradeDisponivel: solicitarEstado.upgradeDisponivel });
+      limparSolicitar();
+    }
+  }, [solicitarEstado, onCotaExcedida, limparSolicitar]);
 
   if (!editalId) {
     return (
@@ -38,11 +56,27 @@ export function TriagemPage({ editalId, onBack }: TriagemPageProps) {
 
   if (triagem.status === 'acesso_negado') {
     return (
-      <div style={{ padding: 'var(--radar-space-6)', color: 'var(--radar-color-status-reprovado)' }}>
-        Acesso negado a este edital.{' '}
-        <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--radar-color-action-primary)', fontFamily: 'var(--radar-font-sans)' }}>
-          ← Voltar
-        </button>
+      <div style={{ padding: 'var(--radar-space-6)' }}>
+        <p style={{ color: 'var(--radar-color-text-muted)', marginBottom: 'var(--radar-space-4)' }}>
+          Triagem não encontrada para este edital.
+        </p>
+        <div style={{ display: 'flex', gap: 'var(--radar-space-3)', alignItems: 'center' }}>
+          <Button
+            variant="primary"
+            disabled={solicitarEstado.status === 'loading'}
+            onClick={solicitarFn}
+          >
+            {solicitarEstado.status === 'loading' ? 'Solicitando...' : 'Solicitar análise por IA'}
+          </Button>
+          <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--radar-color-action-primary)', fontFamily: 'var(--radar-font-sans)', fontSize: 'var(--radar-font-size-sm)' }}>
+            ← Voltar
+          </button>
+        </div>
+        {solicitarEstado.status === 'erro' && (
+          <p style={{ marginTop: 'var(--radar-space-3)', color: 'var(--radar-color-feedback-erro-fg)', fontSize: 'var(--radar-font-size-sm)' }}>
+            {solicitarEstado.mensagem}
+          </p>
+        )}
       </div>
     );
   }

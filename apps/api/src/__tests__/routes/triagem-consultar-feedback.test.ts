@@ -58,6 +58,10 @@ const RESULTADO_CONCLUIDA = {
 const autorizarPermissivo: TriagemContainer['autorizar'] =
   () => (async (_c: Context, next: () => Promise<void>) => next()) as MiddlewareHandler;
 
+// Gate de cota (P-107 (3)) real é coberto em entitlement-middleware.test.ts — aqui sempre-permite
+const entitlementPermissivo: TriagemContainer['entitlement'] =
+  (async (_c: Context, next: () => Promise<void>) => next()) as MiddlewareHandler;
+
 function buildApp(overrides?: Partial<TriagemContainer>): Hono {
   const container: TriagemContainer = {
     consultarTriagem: {
@@ -73,6 +77,7 @@ function buildApp(overrides?: Partial<TriagemContainer>): Hono {
       resolverParaTenant: vi.fn().mockResolvedValue(PERFIL),
     },
     autorizar: autorizarPermissivo,
+    entitlement: entitlementPermissivo,
     ...overrides,
   };
 
