@@ -48,6 +48,7 @@ module "storage" {
   source             = "../../modules/storage"
   project            = "radar"
   env                = "staging"
+  region             = var.aws_region
   encryption_key_ref = var.kms_key_arn
 }
 
@@ -223,6 +224,9 @@ module "compute" {
     module.queue_alertas_gravar.queue_ref,
     module.queue_alertas.queue_ref,
   ]
+
+  bedrock_batch_service_role_ref = module.storage.batch_service_role_ref
+  batch_bucket_ref               = module.storage.batch_bucket_ref
 
   target_group_ref           = module.edge.target_group_ref
   edge_firewall_group_ref    = module.edge.firewall_group_ref

@@ -70,6 +70,8 @@ Nuvem e sub-operador do LLM (Amazon Bedrock — P-54/P-66):
 
 - AWS — Data Privacy Center e Data Processing Addendum (DPA): https://aws.amazon.com/compliance/data-privacy/
 - AWS — Lei Geral de Proteção de Dados do Brasil (LGPD): https://aws.amazon.com/compliance/brazil-data-privacy/
+- Amazon Bedrock — Pricing (batch inference a 50% abaixo do on-demand para modelos selecionados): https://aws.amazon.com/bedrock/pricing/
+- Amazon Bedrock — Batch inference (S3/JSONL, `CreateModelInvocationJob`): https://docs.aws.amazon.com/bedrock/latest/userguide/batch-inference.html
 - Amazon Bedrock — Data protection (retenção configurável, zero-retention por policy): https://docs.aws.amazon.com/bedrock/latest/userguide/data-protection.html
 - Amazon Bedrock — Cross-region inference (roteamento geográfico da inferência / residência): https://docs.aws.amazon.com/bedrock/latest/userguide/cross-region-inference.html
 

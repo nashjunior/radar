@@ -48,7 +48,7 @@ Empurrar a North Star sem estes limites cria dano — logo, cada um é um teto/p
 |-----------|----------------|--------|
 | **Fadiga de alerta** | Recall alto pode afogar o usuário em falsos positivos | ≤ 10 alertas marcados como não relevantes / conta ativa / semana, fora da janela inicial de calibração de 14 dias (documento 11, §2) |
 | **Alucinação em campos numéricos** | Um prazo ou valor errado na triagem gera decisão errada | **zero** — regra dura (documento 10, §5) |
-| **Custo de IA por edital** | Triagem por IA não pode inviabilizar a unidade econômica | teto por edital processado `[A VALIDAR]` (documentos 09, 10) |
+| **Custo de IA** | Triagem por IA não pode inviabilizar a unidade econômica | orçamento acumulado por janela — global e por tenant/plano — com admission control por item `[A VALIDAR]` (documentos 09, 10; P-20/P-38) |
 | **Vazamento cross-tenant** | Exposição de estratégia competitiva é risco de sobrevivência | **zero** — regra dura (documento 05, §2) |
 | **Incidentes LGPD** | Falha de conformidade é risco legal e reputacional | zero incidentes reportáveis (documento 02) |
 

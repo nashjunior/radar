@@ -110,6 +110,22 @@ variable "queue_refs" {
   default     = []
 }
 
+# Bedrock batch inference (P-92/RAD-231/RAD-236) — o worker submete/monitora o job e faz
+# `iam:PassRole` SÓ para esta role (nunca `Resource: "*"`, que abriria escalonamento de
+# privilégio via Bedrock). Par com `batch_bucket_ref` (módulo `storage`). Nulo = sem
+# batch inference habilitado neste stack — nenhuma policy é criada (nada a permitir).
+variable "bedrock_batch_service_role_ref" {
+  description = "Handle da role de serviço do Bedrock batch (módulo storage). Nulo = batch inference desabilitado. AWS: IAM role ARN"
+  type        = string
+  default     = null
+}
+
+variable "batch_bucket_ref" {
+  description = "Handle do bucket de I/O do batch inference (módulo storage). Nulo = batch inference desabilitado. AWS: S3 bucket ARN"
+  type        = string
+  default     = null
+}
+
 # --- Autoscaling (A09 EL3: "lag de autoscale") ----------------------------------------
 #
 # O tier sempre-ligado (API/BFF + triagem-pool — MESMA task no MVP-Now, P-96/RAD-59) tinha

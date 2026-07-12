@@ -13,6 +13,8 @@ terraform {
   }
 }
 
+data "aws_caller_identity" "current" {}
+
 locals {
   tags = {
     project     = var.project
@@ -213,6 +215,77 @@ resource "aws_iam_role_policy" "ecs_task_queues" {
         Resource = [var.encryption_key_ref]
         Condition = {
           StringEquals = { "kms:ViaService" = "sqs.${var.region}.amazonaws.com" }
+        }
+      },
+    ]
+  })
+}
+
+# TASK role: submeter/monitorar o job de batch inference do Bedrock (P-92/RAD-236) — o
+# worker grava o JSONL de entrada, dispara `CreateModelInvocationJob` passando a role de
+# serviço do Bedrock (módulo `storage`), e lê o JSONL de saída. O corpo da policy interpola
+# os dois vars (role E bucket); qualquer um nulo => nenhuma policy (nada a permitir), mesmo
+# padrão de `queue_refs` acima — nunca só um dos dois, senão o outro fica sem efeito.
+resource "aws_iam_role_policy" "ecs_task_bedrock_batch" {
+  count = (var.bedrock_batch_service_role_ref != null && var.batch_bucket_ref != null) ? 1 : 0
+
+  name = "${var.project}-${var.env}-ecs-task-bedrock-batch"
+  role = aws_iam_role.ecs_task.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "BatchJobs"
+        Effect = "Allow"
+        Action = [
+          "bedrock:CreateModelInvocationJob",
+          "bedrock:GetModelInvocationJob",
+          "bedrock:StopModelInvocationJob",
+        ]
+        Resource = [
+          "arn:aws:bedrock:${var.region}:${data.aws_caller_identity.current.account_id}:model-invocation-job/*",
+          "arn:aws:bedrock:${var.region}:${data.aws_caller_identity.current.account_id}:inference-profile/*",
+          "arn:aws:bedrock:*::foundation-model/anthropic.*",
+        ]
+      },
+      {
+        Sid      = "PassBatchServiceRole"
+        Effect   = "Allow"
+        Action   = ["iam:PassRole"]
+        Resource = [var.bedrock_batch_service_role_ref]
+        Condition = {
+          StringEquals = { "iam:PassedToService" = "bedrock.amazonaws.com" }
+        }
+      },
+      {
+        Sid      = "WriteInput"
+        Effect   = "Allow"
+        Action   = ["s3:PutObject"]
+        Resource = ["${var.batch_bucket_ref}/batch/input/*"]
+      },
+      {
+        Sid      = "ReadOutput"
+        Effect   = "Allow"
+        Action   = ["s3:GetObject"]
+        Resource = ["${var.batch_bucket_ref}/batch/output/*"]
+      },
+      {
+        Sid      = "ListPrefixes"
+        Effect   = "Allow"
+        Action   = ["s3:ListBucket"]
+        Resource = [var.batch_bucket_ref]
+        Condition = {
+          StringLike = { "s3:prefix" = ["batch/input/*", "batch/output/*"] }
+        }
+      },
+      {
+        Sid      = "Decrypt"
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt", "kms:GenerateDataKey"]
+        Resource = [var.encryption_key_ref]
+        Condition = {
+          StringEquals = { "kms:ViaService" = "s3.${var.region}.amazonaws.com" }
         }
       },
     ]

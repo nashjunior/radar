@@ -61,6 +61,7 @@ module "storage" {
   source             = "../../modules/storage"
   project            = "radar"
   env                = "prod"
+  region             = var.aws_region
   encryption_key_ref = var.kms_key_arn
 }
 
@@ -250,6 +251,9 @@ module "compute" {
     module.queue_alertas_gravar.queue_ref,
     module.queue_alertas.queue_ref,
   ]
+
+  bedrock_batch_service_role_ref = module.storage.batch_service_role_ref
+  batch_bucket_ref               = module.storage.batch_bucket_ref
 
   # Borda: ingresso SG→SG, alvo das tasks e o resource label que destrava a política de escala
   # por requisição (o seam que RAD-192 deixou nulo esperando P-55).

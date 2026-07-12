@@ -104,9 +104,9 @@ resource "aws_db_parameter_group" "this" {
 }
 
 resource "aws_rds_cluster" "this" {
-  cluster_identifier     = "${var.project}-${var.env}"
-  engine                 = "aurora-postgresql"
-  engine_mode            = "provisioned"
+  cluster_identifier = "${var.project}-${var.env}"
+  engine             = "aurora-postgresql"
+  engine_mode        = "provisioned"
   # PG 16.6+ é o piso pro scale-to-zero (auto-pause) do Serverless v2 — habilita min 0 ACU
   # (P-67, custo dev). Versão NÃO muda preço (cobra por ACU-hora); bumpar pra a última 16.x
   # disponível no apply é grátis. Nada aplicado ainda → sem migração.

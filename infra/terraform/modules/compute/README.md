@@ -18,6 +18,8 @@ ECS/Fargate-bound.
 | Firewall do pooler | `pooler_firewall_group_ref` | security group id do RDS Proxy |
 | Handles das filas | `queue_refs` | SQS queue ARNs |
 | Chave de cifra | `encryption_key_ref` | KMS key ARN |
+| Role de serviço do Bedrock batch | `bedrock_batch_service_role_ref` | IAM role ARN |
+| Bucket de I/O do batch | `batch_bucket_ref` | S3 bucket ARN |
 
 ## O que é provider-bound (custo real de exit → GCP Cloud Run / Azure Container Apps)
 
@@ -73,3 +75,16 @@ task morre no boot — o serviço só fica com 0 task sã). O que faltava, e ond
   metade **triagem-pool** do tier fica inerte (o BFF sobe; o worker, não).
 - `NODE_ENV` é derivado aqui (`dev` → `development`, resto → `production`) — é contrato do
   runtime e do guarda de P-91, **não** o nome do ambiente.
+
+## Bedrock batch inference (P-92/RAD-231/RAD-236)
+
+`bedrock_batch_service_role_ref`/`batch_bucket_ref` nulos (default) = sem policy nenhuma —
+mesmo padrão de `queue_refs` vazio. Quando o stack passa os dois (saída do módulo
+`storage`), a TASK role ganha exatamente: submeter/monitorar o job
+(`CreateModelInvocationJob`/`Get`/`Stop`, escopado a `model-invocation-job/*` +
+`inference-profile/*` desta conta + `foundation-model/anthropic.*` — nunca `Resource: "*"`),
+`iam:PassRole` restrito à **única** role de serviço do Bedrock (`iam:PassedToService`
+trava o destino — sem isto, `PassRole` amplo é escalonamento de privilégio), e
+`s3:PutObject`/`GetObject` nos prefixos `batch/input/`/`batch/output/` do bucket dedicado
+(não o de anexos). Detalhe da service role (trust policy, S3/KMS/InvokeModel) fica no
+README do módulo `storage`, que é quem a possui.
