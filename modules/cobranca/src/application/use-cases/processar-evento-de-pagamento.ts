@@ -1,6 +1,7 @@
 import { DomainError, type TenantId } from '@radar/kernel';
 import type { Assinatura } from '../../domain/entities/assinatura.js';
 import { AuditoriaIndisponivelError } from '../../domain/errors/index.js';
+import { CicloDeFaturamento } from '../../domain/value-objects/ciclo-de-faturamento.js';
 import type { ComandoPagamento } from '../dtos.js';
 import type {
   AssinaturaRepository,
@@ -77,6 +78,29 @@ export class ProcessarEventoDePagamentoUseCase {
           await this.auditar(comando, assinatura.tenantId, 'NAO_ATIVADO_CONFIRMACAO_OUTBOUND_FALHOU', signal);
           return; // payload sem autoridade: sem confirmação do gateway, não ativa
         }
+
+        // Já `ativa` ⇒ este `invoice.paid` é o ROLLOVER do ciclo seguinte, não a
+        // primeira ativação (RAD-277): sem isto, `renovarCiclo` nunca é chamado e
+        // `uso_reservado`/`uso_confirmado` do ciclo anterior nunca zeram. O novo
+        // ciclo sai das datas do PRÓPRIO gateway (`proximoVencimento`, confirmado
+        // por esta MESMA chamada outbound acima) — nunca de `Date.now()` daqui, e
+        // nunca do payload do webhook (sem autoridade).
+        if (assinatura.estado === 'ativa') {
+          if (!status.proximoVencimento) {
+            await this.auditar(comando, assinatura.tenantId, 'IGNORADO_RENOVACAO_SEM_PROXIMO_VENCIMENTO', signal);
+            return;
+          }
+          const novoCiclo = status.proximoVencimento;
+          await this.aplicarTransicao(
+            comando,
+            assinatura.tenantId,
+            () => assinatura.renovarCiclo(CicloDeFaturamento.criar(assinatura.cicloVigente.fim, novoCiclo)),
+            'CICLO_RENOVADO',
+            signal,
+          );
+          return;
+        }
+
         await this.aplicarTransicao(
           comando,
           assinatura.tenantId,

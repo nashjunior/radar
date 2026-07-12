@@ -90,4 +90,17 @@ describe('ConsultarAssinaturaUseCase', () => {
 
     expect(dto.diasRestantes).toBe(0);
   });
+
+  it('trial vencido (cicloVigente.fim no passado) projeta estado "suspensa" e diasRestantes 0 (RAD-277)', async () => {
+    const cicloVencido = new Date('2026-07-05T00:00:00Z'); // antes de AGORA (2026-07-11)
+    const uc = new ConsultarAssinaturaUseCase(
+      makeAssinaturas(assinaturaCom('trial', cicloVencido)),
+      makeClock(AGORA),
+    );
+
+    const dto = await uc.executar({ tenantId: TENANT }, noop);
+
+    expect(dto.estado).toBe('suspensa');
+    expect(dto.diasRestantes).toBe(0);
+  });
 });

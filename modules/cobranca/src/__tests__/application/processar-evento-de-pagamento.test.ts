@@ -33,7 +33,7 @@ function assinaturaAtiva(): Assinatura {
 function makeDeps(opts?: {
   assinatura?: Assinatura | null;
   primeiraEntrega?: boolean;
-  statusExterno?: { statusExterno: string; proximoVencimento: null } | null;
+  statusExterno?: { statusExterno: string; proximoVencimento: Date | null } | null;
   auditoriaFalha?: boolean;
 }) {
   const assinaturas = {
@@ -177,6 +177,82 @@ describe('ProcessarEventoDePagamentoUseCase — demais transições', () => {
       expect.objectContaining({ decisao: 'IGNORADO_TRANSICAO_INVALIDA' }),
       SIGNAL,
     );
+  });
+});
+
+describe('ProcessarEventoDePagamentoUseCase — renovação de ciclo (RAD-277)', () => {
+  it('PagamentoConfirmado para assinatura já ativa ⇒ renova o ciclo (rollover), não re-ativa', async () => {
+    const proximoVencimento = new Date('2026-09-01T00:00:00Z');
+    const deps = makeDeps({
+      assinatura: assinaturaAtiva(),
+      statusExterno: { statusExterno: 'active', proximoVencimento },
+    });
+    const uc = new ProcessarEventoDePagamentoUseCase(deps.assinaturas, deps.webhookEventos, deps.gateway, deps.auditoria);
+
+    await uc.executar(comandoConfirmado(), SIGNAL);
+
+    expect(deps.assinaturas.salvar).toHaveBeenCalledOnce();
+    const [salva] = deps.assinaturas.salvar.mock.calls[0]!;
+    expect(salva.estado).toBe('ativa');
+    expect(salva.cicloVigente.inicio).toEqual(ciclo.fim); // contíguo ao ciclo anterior
+    expect(salva.cicloVigente.fim).toEqual(proximoVencimento);
+    expect(deps.auditoria.registrar).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ tenantId: TENANT, decisao: 'CICLO_RENOVADO' }),
+      SIGNAL,
+    );
+  });
+
+  it('cota esgotada no ciclo N → invoice.paid do ciclo N+1 ⇒ contadores zerados (nova solicitação passaria)', async () => {
+    const esgotada = Assinatura.criar({
+      tenantId: TENANT,
+      estado: 'ativa',
+      plano,
+      cicloVigente: ciclo,
+      usoReservado: 30,
+      usoConfirmado: 30,
+      assinaturaExternaId: EXT_ID,
+    });
+    const deps = makeDeps({
+      assinatura: esgotada,
+      statusExterno: { statusExterno: 'active', proximoVencimento: new Date('2026-09-01T00:00:00Z') },
+    });
+    const uc = new ProcessarEventoDePagamentoUseCase(deps.assinaturas, deps.webhookEventos, deps.gateway, deps.auditoria);
+
+    await uc.executar(comandoConfirmado(), SIGNAL);
+
+    const [salva] = deps.assinaturas.salvar.mock.calls[0]!;
+    expect(salva.usoReservado).toBe(0);
+    expect(salva.usoConfirmado).toBe(0);
+  });
+
+  it('renovação sem proximoVencimento confirmado pelo gateway ⇒ NÃO renova, audita e não lança', async () => {
+    const deps = makeDeps({
+      assinatura: assinaturaAtiva(),
+      statusExterno: { statusExterno: 'active', proximoVencimento: null },
+    });
+    const uc = new ProcessarEventoDePagamentoUseCase(deps.assinaturas, deps.webhookEventos, deps.gateway, deps.auditoria);
+
+    await expect(uc.executar(comandoConfirmado(), SIGNAL)).resolves.toBeUndefined();
+
+    expect(deps.assinaturas.salvar).not.toHaveBeenCalled();
+    expect(deps.auditoria.registrar).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ decisao: 'IGNORADO_RENOVACAO_SEM_PROXIMO_VENCIMENTO' }),
+      SIGNAL,
+    );
+  });
+
+  it('idempotência: reentrega do mesmo eventoExternoId depois do rollover é no-op (não zera duas vezes)', async () => {
+    const deps = makeDeps({
+      assinatura: assinaturaAtiva(),
+      primeiraEntrega: false,
+      statusExterno: { statusExterno: 'active', proximoVencimento: new Date('2026-09-01T00:00:00Z') },
+    });
+    const uc = new ProcessarEventoDePagamentoUseCase(deps.assinaturas, deps.webhookEventos, deps.gateway, deps.auditoria);
+
+    await uc.executar(comandoConfirmado('evt-replay'), SIGNAL);
+
+    expect(deps.gateway.consultarAssinatura).not.toHaveBeenCalled();
+    expect(deps.assinaturas.salvar).not.toHaveBeenCalled();
   });
 });
 

@@ -125,6 +125,24 @@ describe('Assinatura', () => {
     });
   });
 
+  describe('trialVencido — trial de 14 dias sem cartão (P-107 (9), RAD-277)', () => {
+    it('false quando estado não é trial, mesmo com cicloVigente.fim no passado', () => {
+      const ativa = Assinatura.iniciarTrial(TENANT, plano, ciclo).ativar('ext-1');
+      expect(ativa.trialVencido(new Date('2027-01-01T00:00:00Z'))).toBe(false);
+    });
+
+    it('false enquanto cicloVigente.fim ainda não chegou', () => {
+      const trial = Assinatura.iniciarTrial(TENANT, plano, ciclo);
+      expect(trial.trialVencido(new Date('2026-07-15T00:00:00Z'))).toBe(false); // ciclo vai até 2026-08-01
+    });
+
+    it('true a partir de cicloVigente.fim (inclusive)', () => {
+      const trial = Assinatura.iniciarTrial(TENANT, plano, ciclo);
+      expect(trial.trialVencido(ciclo.fim)).toBe(true);
+      expect(trial.trialVencido(new Date('2026-08-02T00:00:00Z'))).toBe(true);
+    });
+  });
+
   it('mutações retornam nova instância — a original não muda', () => {
     const trial = Assinatura.iniciarTrial(TENANT, plano, ciclo);
     const ativa = trial.ativar('ext-1');

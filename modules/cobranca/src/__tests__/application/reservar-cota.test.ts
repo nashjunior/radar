@@ -13,6 +13,8 @@ import type { AssinaturaRepository } from '../../application/ports.js';
 
 const SIGNAL = new AbortController().signal;
 const CICLO = CicloDeFaturamento.criar(new Date('2026-01-01'), new Date('2026-02-01'));
+const AGORA = new Date('2026-01-15');
+const CLOCK = { agora: () => AGORA };
 
 function planoCom(cota: number, codigo = 'starter'): PlanoComercial {
   return PlanoComercial.criar({ codigo, cotaTriagensMes: cota, precoCentavos: 12900 });
@@ -55,6 +57,7 @@ class FakeAssinaturaRepository implements AssinaturaRepository {
     if (!atual) return false;
     if (atual.estado !== 'ativa' && atual.estado !== 'trial') return false;
     if (atual.usoReservado >= atual.plano.cota.valor) return false;
+    if (atual.trialVencido(AGORA)) return false; // RAD-277 — mesmo gate do adapter Postgres
     // Mutação síncrona, sem await antes daqui — replica a semântica do UPDATE atômico.
     this.porTenant.set(
       tenantId,
@@ -113,7 +116,7 @@ describe('ReservarCotaUseCase — gate de entitlement (P-107 (3))', () => {
     const repo = new FakeAssinaturaRepository();
     repo.definir(tenantId, Assinatura.iniciarTrial(tenantId, planoCom(5), CICLO));
 
-    const uc = new ReservarCotaUseCase(repo);
+    const uc = new ReservarCotaUseCase(repo, CLOCK);
     await expect(uc.executar({ tenantId }, SIGNAL)).resolves.toBeUndefined();
 
     const assinatura = await repo.porTenantId(tenantId, SIGNAL);
@@ -126,7 +129,7 @@ describe('ReservarCotaUseCase — gate de entitlement (P-107 (3))', () => {
     const assinatura = Assinatura.iniciarTrial(tenantId, planoCom(1, 'starter'), CICLO).ativar('ext-1');
     repo.definir(tenantId, Assinatura.criar({ ...assinatura, usoReservado: 1 }));
 
-    const uc = new ReservarCotaUseCase(repo);
+    const uc = new ReservarCotaUseCase(repo, CLOCK);
     const erro = await uc.executar({ tenantId }, SIGNAL).catch((e: unknown) => e);
 
     expect(erro).toBeInstanceOf(CotaExcedidaError);
@@ -142,7 +145,7 @@ describe('ReservarCotaUseCase — gate de entitlement (P-107 (3))', () => {
     const assinatura = Assinatura.iniciarTrial(tenantId, planoCom(1, 'pro'), CICLO).ativar('ext-2');
     repo.definir(tenantId, Assinatura.criar({ ...assinatura, usoReservado: 1 }));
 
-    const uc = new ReservarCotaUseCase(repo);
+    const uc = new ReservarCotaUseCase(repo, CLOCK);
     const erro = await uc.executar({ tenantId }, SIGNAL).catch((e: unknown) => e);
 
     expect(erro).toBeInstanceOf(CotaExcedidaError);
@@ -155,7 +158,7 @@ describe('ReservarCotaUseCase — gate de entitlement (P-107 (3))', () => {
     const suspensa = Assinatura.iniciarTrial(tenantId, planoCom(5), CICLO).ativar('ext-3').marcarInadimplente().suspender();
     repo.definir(tenantId, suspensa);
 
-    const uc = new ReservarCotaUseCase(repo);
+    const uc = new ReservarCotaUseCase(repo, CLOCK);
     await expect(uc.executar({ tenantId }, SIGNAL)).rejects.toBeInstanceOf(AssinaturaInativaError);
   });
 
@@ -163,8 +166,21 @@ describe('ReservarCotaUseCase — gate de entitlement (P-107 (3))', () => {
     const tenantId = TenantId('tenant-inexistente');
     const repo = new FakeAssinaturaRepository();
 
-    const uc = new ReservarCotaUseCase(repo);
+    const uc = new ReservarCotaUseCase(repo, CLOCK);
     await expect(uc.executar({ tenantId }, SIGNAL)).rejects.toBeInstanceOf(AssinaturaNaoEncontradaError);
+  });
+
+  it('lança AssinaturaInativaError (não CotaExcedidaError) quando o trial venceu, mesmo com cota sobrando (RAD-277)', async () => {
+    const tenantId = TenantId('tenant-trial-vencido');
+    const repo = new FakeAssinaturaRepository();
+    const cicloVencido = CicloDeFaturamento.criar(new Date('2025-12-01'), new Date('2025-12-15')); // fim antes de AGORA
+    repo.definir(tenantId, Assinatura.iniciarTrial(tenantId, planoCom(5), cicloVencido));
+
+    const uc = new ReservarCotaUseCase(repo, CLOCK);
+    await expect(uc.executar({ tenantId }, SIGNAL)).rejects.toBeInstanceOf(AssinaturaInativaError);
+
+    const assinatura = await repo.porTenantId(tenantId, SIGNAL);
+    expect(assinatura?.usoReservado).toBe(0); // nada foi reservado
   });
 
   it('concorrência: N requisições paralelas com cota=1 ⇒ exatamente 1 concedida, N-1 recebem CotaExcedidaError', async () => {
@@ -172,7 +188,7 @@ describe('ReservarCotaUseCase — gate de entitlement (P-107 (3))', () => {
     const repo = new FakeAssinaturaRepository();
     repo.definir(tenantId, Assinatura.iniciarTrial(tenantId, planoCom(1), CICLO).ativar('ext-4'));
 
-    const uc = new ReservarCotaUseCase(repo);
+    const uc = new ReservarCotaUseCase(repo, CLOCK);
     const N = 20;
     const resultados = await Promise.all(
       Array.from({ length: N }, () =>

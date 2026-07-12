@@ -98,6 +98,16 @@ export class Assinatura {
     );
   }
 
+  /**
+   * Trial de 14 dias sem cartão (P-107 (9)) vencido sem conversão — avaliação
+   * LAZY no gate/leitura, nunca por scheduler: o estado persistido continua
+   * `trial` até o próximo `ativar`/`cancelar`, mas a política de acesso já trata
+   * como inativa a partir de `cicloVigente.fim`.
+   */
+  trialVencido(agora: Date): boolean {
+    return this.estado === 'trial' && agora >= this.cicloVigente.fim;
+  }
+
   private comEstado(estado: EstadoAssinatura, assinaturaExternaId = this.assinaturaExternaId): Assinatura {
     return new Assinatura(
       this.tenantId,

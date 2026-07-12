@@ -130,7 +130,7 @@ export function criarApp(): Hono {
   const autorizarAcesso = new AutorizarAcessoUseCase();
   const autorizar = criarAutorizarMiddlewareFactory({ resolverContexto, autorizarAcesso });
 
-  const reservarCota = new ReservarCotaUseCase(assinaturaStub);
+  const reservarCota = new ReservarCotaUseCase(assinaturaStub, systemClock);
   const liberarReserva = new LiberarReservaUseCase(assinaturaStub);
   const entitlement = criarEntitlementMiddleware({ reservarCota, liberarReserva });
 

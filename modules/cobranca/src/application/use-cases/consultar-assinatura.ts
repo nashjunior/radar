@@ -15,6 +15,12 @@ const MS_POR_DIA = 24 * 60 * 60 * 1000;
  * §3). `diasRestantes` é `null` em `cancelada` (não há ciclo futuro a contar);
  * nos demais estados deriva de `cicloVigente.fim` — no trial é o que a tela
  * mostra ("8 dias restantes").
+ *
+ * Trial vencido (RAD-277, P-107 (9)) projeta `estado: 'suspensa'` — transição
+ * LAZY, só nesta leitura (nunca persistida/escrita aqui, nunca por scheduler):
+ * o Figma já tem a superfície `Shell · Suspensa` e o front já trata esse
+ * estado (banner de conta suspensa), então reaproveita o contrato existente em
+ * vez de introduzir um estado novo.
  */
 export class ConsultarAssinaturaUseCase {
   constructor(
@@ -26,18 +32,18 @@ export class ConsultarAssinaturaUseCase {
     const assinatura = await this.assinaturas.porTenantId(input.tenantId, signal);
     if (!assinatura) throw new AssinaturaNaoEncontradaError(input.tenantId);
 
+    const agora = this.clock.agora();
+    const estado = assinatura.trialVencido(agora) ? 'suspensa' : assinatura.estado;
+
     return {
-      estado: assinatura.estado,
+      estado,
       plano: {
         codigo: assinatura.plano.codigo,
         cota: assinatura.plano.cota.valor,
       },
       usoReservado: assinatura.usoReservado,
       usoConfirmado: assinatura.usoConfirmado,
-      diasRestantes:
-        assinatura.estado === 'cancelada'
-          ? null
-          : diasAte(assinatura.cicloVigente.fim, this.clock.agora()),
+      diasRestantes: estado === 'cancelada' ? null : diasAte(assinatura.cicloVigente.fim, agora),
     };
   }
 }
