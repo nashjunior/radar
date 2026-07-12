@@ -11,6 +11,7 @@ import type { Severidade } from '../../domain/value-objects/risco.js';
 import type { EntradaExtracaoDTO } from '../../application/dtos.js';
 import type { EstimativaDeCusto, LlmGateway, UsoLlm } from '../../application/ports.js';
 import { calcularCustoUsd } from '../../application/precificacao-llm.js';
+import type { LlmExtracaoRequest } from './anthropic-extracao-schema.js';
 import {
   CATEGORIAS,
   FERRAMENTA_EXTRACAO,
@@ -18,19 +19,12 @@ import {
   SEVERIDADES,
 } from './anthropic-extracao-schema.js';
 
-/** Re-exportadas para os callers que já importam daqui — fonte única é anthropic-extracao-schema.ts (RAD-254). */
-export { CATEGORIAS, FERRAMENTA_EXTRACAO, SEVERIDADES };
-
 /**
- * Requisição crua ao modelo. `system` é a instrução FIXA; `userContent` já traz o edital como DADO
- * delimitado (nunca concatenado à instrução). O adapter força tool use (structured output).
+ * Re-exportadas para os callers que já importam daqui — fonte única é anthropic-extracao-schema.ts
+ * (RAD-254), inclusive `LlmExtracaoRequest` (RAD-263: definida lá para não fechar um ciclo de import).
  */
-export interface LlmExtracaoRequest {
-  modelo: string;
-  system: string;
-  userContent: string;
-  ferramenta: string;
-}
+export { CATEGORIAS, FERRAMENTA_EXTRACAO, SEVERIDADES };
+export type { LlmExtracaoRequest };
 
 /**
  * Saída crua do `LlmClient` (RAD-230): `input` é o output NÃO-confiável da ferramenta (vai para

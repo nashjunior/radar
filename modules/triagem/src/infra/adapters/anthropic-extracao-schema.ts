@@ -1,6 +1,5 @@
 import { SaidaLlmInvalidaError } from '../../domain/errors/index.js';
 import type { UsoLlm } from '../../application/ports.js';
-import type { LlmExtracaoRequest } from './anthropic-llm-gateway.js';
 
 /**
  * Peças ESPECÍFICAS da API Anthropic compartilhadas pelos DOIS transportes — o `LlmClient` síncrono
@@ -12,6 +11,20 @@ import type { LlmExtracaoRequest } from './anthropic-llm-gateway.js';
  * que passa os `params` construídos aqui para `messages.create` (síncrono) ou `messages.batches.create`
  * (lote). Os `ExtracaoMessageParams` casam estruturalmente com `MessageCreateParams` do SDK.
  */
+
+/**
+ * Requisição crua ao modelo. `system` é a instrução FIXA; `userContent` já traz o edital como DADO
+ * delimitado (nunca concatenado à instrução). O adapter força tool use (structured output).
+ *
+ * Definida aqui (não em anthropic-llm-gateway.ts, que re-exporta) porque `paramsExtracao` abaixo a
+ * usa como parâmetro — mantê-la no gateway fechava um ciclo de import com este arquivo (RAD-263).
+ */
+export interface LlmExtracaoRequest {
+  modelo: string;
+  system: string;
+  userContent: string;
+  ferramenta: string;
+}
 
 /** Nome da ferramenta de saída estruturada (structured output) — camada 3. */
 export const FERRAMENTA_EXTRACAO = 'registrar_extracao';
