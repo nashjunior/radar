@@ -24,6 +24,7 @@
     "fixtures:gold-set:cli": "tsx scripts/gravar-fixtures-gold-set-via-cli.ts",
     "avaliar:gold-set:vivo": "tsx scripts/avaliar-gold-set-vivo.ts",
     "avaliar:gold-set:vivo:comparativo": "tsx scripts/avaliar-gold-set-vivo-comparativo.ts",
+    "avaliar:gold-set:vivo:modelo": "tsx scripts/avaliar-gold-set-vivo-modelo.ts",
     "lint": "eslint src"
   },
   "dependencies": {
