@@ -21,8 +21,28 @@ function makePort(dto: AnexosDTO): DocumentosDoEditalPort {
 const DTO_BASE: AnexosDTO = {
   editalId: EDITAL_ID,
   arquivos: [
-    { sequencialDocumento: 1, nome: 'edital.pdf', storageKey: 'editais/001/edital.pdf', tipoMime: 'application/pdf', tamanhoBytes: 102400 },
-    { sequencialDocumento: 2, nome: 'anexo-i.docx', storageKey: 'editais/001/anexo-i.docx', tipoMime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', tamanhoBytes: 20480 },
+    {
+      sequencialDocumento: 1,
+      nome: 'edital.pdf',
+      storageKey: 'editais/001/edital.pdf',
+      tipoMime: 'application/pdf',
+      tamanhoBytes: 102400,
+      tipoDocumentoId: 2,
+      tipoDocumentoNome: 'Edital',
+      textoKey: 'editais/001/1.txt',
+      paginas: 12,
+    },
+    {
+      sequencialDocumento: 2,
+      nome: 'anexo-i.docx',
+      storageKey: 'editais/001/anexo-i.docx',
+      tipoMime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      tamanhoBytes: 20480,
+      tipoDocumentoId: 16,
+      tipoDocumentoNome: 'Outros Documentos',
+      textoKey: 'editais/001/2.txt',
+      paginas: 3,
+    },
   ],
 };
 
@@ -37,7 +57,7 @@ describe('DocumentosEditalAclAdapter', () => {
     expect(result.editalId).toBe(EDITAL_ID);
   });
 
-  it('mapeia todos os arquivos (nome, storageKey, tipoMime)', async () => {
+  it('mapeia todos os arquivos (nome, storageKey, tipoMime, tipoDocumentoId, tipoDocumentoNome, textoKey, paginas)', async () => {
     const port = makePort(DTO_BASE);
     const adapter = new DocumentosEditalAclAdapter(port);
     const noop = new AbortController().signal;
@@ -49,6 +69,11 @@ describe('DocumentosEditalAclAdapter', () => {
       nome: 'edital.pdf',
       storageKey: 'editais/001/edital.pdf',
       tipoMime: 'application/pdf',
+      sequencialDocumento: 1,
+      tipoDocumentoId: 2,
+      tipoDocumentoNome: 'Edital',
+      textoKey: 'editais/001/1.txt',
+      paginas: 12,
     });
   });
 

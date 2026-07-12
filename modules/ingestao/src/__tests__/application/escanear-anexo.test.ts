@@ -7,6 +7,8 @@ import type {
   AnexoMetadados,
   AnexoScanner,
   EventPublisher,
+  ExtratorDeTexto,
+  ObjectStorage,
 } from '../../application/ports.js';
 
 const EDITAL_ID = EditalId('edital-001');
@@ -25,6 +27,10 @@ function criarAnexo(
     storageKey: STORAGE_KEY,
     tamanhoBytes: 1024,
     tipoMime: 'application/pdf',
+    tipoDocumentoId: 2,
+    tipoDocumentoNome: 'Edital',
+    textoKey: '',
+    paginas: 0,
     estadoConfianca: estado,
   };
 }
@@ -34,11 +40,26 @@ function criarRepo(anexos: AnexoMetadados[]): AnexoEditalRepository {
     listarPorEdital: vi.fn().mockResolvedValue(anexos),
     salvar: vi.fn(),
     atualizarEstado: vi.fn(),
+    atualizarTexto: vi.fn(),
   };
 }
 
 function criarPublisher(): EventPublisher {
   return { publicar: vi.fn() };
+}
+
+function criarObjectStorage(): ObjectStorage {
+  return {
+    armazenar: vi.fn().mockResolvedValue(`${STORAGE_KEY}.txt`),
+    obter: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
+    deletar: vi.fn(),
+  };
+}
+
+function criarExtrator(): ExtratorDeTexto {
+  return {
+    extrair: vi.fn().mockResolvedValue({ texto: 'texto extraído', paginas: 7, temTextoSelecionavel: true }),
+  };
 }
 
 // AB14 · Teste 1: anexo pendente (não escaneado) — recusado pelo consumer
@@ -47,7 +68,9 @@ describe('EscanearAnexoUseCase', () => {
     const repo = criarRepo([criarAnexo('pendente')]);
     const scanner: AnexoScanner = { escanear: vi.fn().mockResolvedValue('limpo') };
     const publisher = criarPublisher();
-    const uc = new EscanearAnexoUseCase(scanner, repo, publisher);
+    const objectStorage = criarObjectStorage();
+    const extrator = criarExtrator();
+    const uc = new EscanearAnexoUseCase(scanner, repo, publisher, objectStorage, extrator);
 
     await uc.executar({ editalId: EDITAL_ID, sequencialDocumento: SEQUENCIAL_DOCUMENTO, storageKey: STORAGE_KEY }, noop);
 
@@ -63,7 +86,9 @@ describe('EscanearAnexoUseCase', () => {
     const repo = criarRepo([criarAnexo('pendente')]);
     const scanner: AnexoScanner = { escanear: vi.fn().mockResolvedValue('rejeitado') };
     const publisher = criarPublisher();
-    const uc = new EscanearAnexoUseCase(scanner, repo, publisher);
+    const objectStorage = criarObjectStorage();
+    const extrator = criarExtrator();
+    const uc = new EscanearAnexoUseCase(scanner, repo, publisher, objectStorage, extrator);
 
     await uc.executar({ editalId: EDITAL_ID, sequencialDocumento: SEQUENCIAL_DOCUMENTO, storageKey: STORAGE_KEY }, noop);
 
@@ -73,6 +98,44 @@ describe('EscanearAnexoUseCase', () => {
     expect(eventoR).toBeInstanceOf(AnexoRejeitado);
   });
 
+  // P-104/AB14 · trust-gating estrito: rejeitado NUNCA é aberto pelo parser (RAD-280)
+  it('anexo rejeitado nunca é lido/extraído — o parser não abre bytes reprovados no scan', async () => {
+    const repo = criarRepo([criarAnexo('pendente')]);
+    const scanner: AnexoScanner = { escanear: vi.fn().mockResolvedValue('rejeitado') };
+    const publisher = criarPublisher();
+    const objectStorage = criarObjectStorage();
+    const extrator = criarExtrator();
+    const uc = new EscanearAnexoUseCase(scanner, repo, publisher, objectStorage, extrator);
+
+    await uc.executar({ editalId: EDITAL_ID, sequencialDocumento: SEQUENCIAL_DOCUMENTO, storageKey: STORAGE_KEY }, noop);
+
+    expect(objectStorage.obter).not.toHaveBeenCalled();
+    expect(extrator.extrair).not.toHaveBeenCalled();
+    expect(repo.atualizarTexto).not.toHaveBeenCalled();
+  });
+
+  // P-110/RAD-280: extração só roda DEPOIS do scan aprovar, nunca antes
+  it('scan limpo: extrai o texto do binário já aprovado e grava textoKey/paginas antes de promover o estado', async () => {
+    const repo = criarRepo([criarAnexo('pendente')]);
+    const scanner: AnexoScanner = { escanear: vi.fn().mockResolvedValue('limpo') };
+    const publisher = criarPublisher();
+    const objectStorage = criarObjectStorage();
+    const extrator = criarExtrator();
+    const uc = new EscanearAnexoUseCase(scanner, repo, publisher, objectStorage, extrator);
+
+    await uc.executar({ editalId: EDITAL_ID, sequencialDocumento: SEQUENCIAL_DOCUMENTO, storageKey: STORAGE_KEY }, noop);
+
+    expect(objectStorage.obter).toHaveBeenCalledWith(STORAGE_KEY, noop);
+    expect(extrator.extrair).toHaveBeenCalledWith(expect.any(Uint8Array), 'application/pdf', noop);
+    expect(objectStorage.armazenar).toHaveBeenCalledWith(
+      `editais/${EDITAL_ID}/anexos/${SEQUENCIAL_DOCUMENTO}.txt`,
+      expect.any(Uint8Array),
+      { contentType: 'text/plain; charset=utf-8' },
+      noop,
+    );
+    expect(repo.atualizarTexto).toHaveBeenCalledWith(EDITAL_ID, SEQUENCIAL_DOCUMENTO, `${STORAGE_KEY}.txt`, 7, noop);
+  });
+
   // AB14 · Teste 3: falha do scanner — não promove (permanece pendente)
   it('não atualiza estado quando scanner lança erro (isola sem promover)', async () => {
     const repo = criarRepo([criarAnexo('pendente')]);
@@ -80,7 +143,9 @@ describe('EscanearAnexoUseCase', () => {
       escanear: vi.fn().mockRejectedValue(new Error('scanner timeout')),
     };
     const publisher = criarPublisher();
-    const uc = new EscanearAnexoUseCase(scanner, repo, publisher);
+    const objectStorage = criarObjectStorage();
+    const extrator = criarExtrator();
+    const uc = new EscanearAnexoUseCase(scanner, repo, publisher, objectStorage, extrator);
 
     await expect(
       uc.executar({ editalId: EDITAL_ID, sequencialDocumento: SEQUENCIAL_DOCUMENTO, storageKey: STORAGE_KEY }, noop),
@@ -88,6 +153,7 @@ describe('EscanearAnexoUseCase', () => {
 
     expect(repo.atualizarEstado).not.toHaveBeenCalled();
     expect(publisher.publicar).not.toHaveBeenCalled();
+    expect(extrator.extrair).not.toHaveBeenCalled();
   });
 
   // AB14 · Teste 4: idempotência — já limpo, reprocesso é no-op
@@ -95,13 +161,16 @@ describe('EscanearAnexoUseCase', () => {
     const repo = criarRepo([criarAnexo('limpo')]);
     const scanner: AnexoScanner = { escanear: vi.fn() };
     const publisher = criarPublisher();
-    const uc = new EscanearAnexoUseCase(scanner, repo, publisher);
+    const objectStorage = criarObjectStorage();
+    const extrator = criarExtrator();
+    const uc = new EscanearAnexoUseCase(scanner, repo, publisher, objectStorage, extrator);
 
     await uc.executar({ editalId: EDITAL_ID, sequencialDocumento: SEQUENCIAL_DOCUMENTO, storageKey: STORAGE_KEY }, noop);
 
     expect(scanner.escanear).not.toHaveBeenCalled();
     expect(repo.atualizarEstado).not.toHaveBeenCalled();
     expect(publisher.publicar).not.toHaveBeenCalled();
+    expect(extrator.extrair).not.toHaveBeenCalled();
   });
 
   // AB14 · Teste 5: transições auditáveis — eventos têm editalId e nome
@@ -109,7 +178,9 @@ describe('EscanearAnexoUseCase', () => {
     const repo = criarRepo([criarAnexo('pendente')]);
     const scanner: AnexoScanner = { escanear: vi.fn().mockResolvedValue('limpo') };
     const publisher = criarPublisher();
-    const uc = new EscanearAnexoUseCase(scanner, repo, publisher);
+    const objectStorage = criarObjectStorage();
+    const extrator = criarExtrator();
+    const uc = new EscanearAnexoUseCase(scanner, repo, publisher, objectStorage, extrator);
 
     await uc.executar({ editalId: EDITAL_ID, sequencialDocumento: SEQUENCIAL_DOCUMENTO, storageKey: STORAGE_KEY }, noop);
 
@@ -132,12 +203,18 @@ describe('EscanearAnexoUseCase', () => {
       storageKey: DB_STORAGE_KEY,
       tamanhoBytes: 1024,
       tipoMime: 'application/pdf',
+      tipoDocumentoId: 2,
+      tipoDocumentoNome: 'Edital',
+      textoKey: '',
+      paginas: 0,
       estadoConfianca: 'pendente',
     };
     const repo = criarRepo([anexoNoBD]);
     const scanner: AnexoScanner = { escanear: vi.fn().mockResolvedValue('limpo') };
     const publisher = criarPublisher();
-    const uc = new EscanearAnexoUseCase(scanner, repo, publisher);
+    const objectStorage = criarObjectStorage();
+    const extrator = criarExtrator();
+    const uc = new EscanearAnexoUseCase(scanner, repo, publisher, objectStorage, extrator);
 
     await uc.executar(
       { editalId: EDITAL_ID, sequencialDocumento: SEQUENCIAL_DOCUMENTO, storageKey: CRAFTED_KEY },
@@ -146,6 +223,7 @@ describe('EscanearAnexoUseCase', () => {
 
     expect(scanner.escanear).toHaveBeenCalledWith(DB_STORAGE_KEY, noop);
     expect(scanner.escanear).not.toHaveBeenCalledWith(CRAFTED_KEY, expect.anything());
+    expect(objectStorage.obter).toHaveBeenCalledWith(DB_STORAGE_KEY, noop);
   });
 
   // RAD-291 · dois anexos com título duplicado (sequencialDocumento distinto):
@@ -156,7 +234,9 @@ describe('EscanearAnexoUseCase', () => {
     const repo = criarRepo([anexo1, anexo2]);
     const scanner: AnexoScanner = { escanear: vi.fn().mockResolvedValue('limpo') };
     const publisher = criarPublisher();
-    const uc = new EscanearAnexoUseCase(scanner, repo, publisher);
+    const objectStorage = criarObjectStorage();
+    const extrator = criarExtrator();
+    const uc = new EscanearAnexoUseCase(scanner, repo, publisher, objectStorage, extrator);
 
     await uc.executar({ editalId: EDITAL_ID, sequencialDocumento: 1, storageKey: STORAGE_KEY }, noop);
 

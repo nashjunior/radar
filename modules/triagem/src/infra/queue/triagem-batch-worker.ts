@@ -5,6 +5,7 @@ import type {
 } from '../../application/ports.js';
 import type { ExtrairEditaisEmLoteUseCase } from '../../application/use-cases/extrair-editais-lote.js';
 import type { ExtrairEditalLoteItem } from '../../application/use-cases/extrair-editais-lote.js';
+import { selecionarDocumentoPrincipal } from '../../application/selecionar-documento-principal.js';
 import { erroSeguroParaLog } from '../logging.js';
 
 /**
@@ -115,21 +116,19 @@ export class TriagemBatchWorker {
       return null;
     }
 
-    const storageKeys = docs.arquivos.map((a) => a.storageKey);
+    // "o edital" nunca é arquivos[0] — ordem arbitrária (P-110/RAD-280); seleção por tipoDocumentoId.
+    const { principal, demais } = selecionarDocumentoPrincipal(docs.arquivos);
 
-    // Lê texto do primeiro documento (edital principal) + demais como anexos
-    const textoPrincipal = await this.storage
-      .obterTextoAnexo(storageKeys[0]!, signal)
-      .catch(() => '');
+    const textoPrincipal = principal
+      ? await this.storage.obterTextoAnexo(principal.textoKey, signal).catch(() => '')
+      : '';
 
     return {
       editalId,
       texto: textoPrincipal,
       temTextoSelecionavel: textoPrincipal.trim().length > 0,
-      // Todos os storageKeys = refs de anexos para ExtrairEditaisEmLoteUseCase
-      anexosRefs: storageKeys,
-      // Número de páginas desconhecido no MVP; piso de 1 (docs/10 §6 — estimativa segura)
-      paginas: 1,
+      anexosRefs: demais.map((a) => a.textoKey),
+      paginas: principal?.paginas ?? 0,
     };
   }
 

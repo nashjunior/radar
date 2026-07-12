@@ -13,12 +13,27 @@ const MSG: TriagemSolicitadaMsg = {
   usuarioId: 'cliente-1',
   editalId: 'edital-1',
   perfilId: 'perfil-1',
+  coorteTrial: false,
 };
 
-function docsRef(editalId: ReturnType<typeof EditalId>, storageKeys: string[]): DocumentosRef {
+/**
+ * Fixture padrão: o PRIMEIRO da lista é o Edital (tipoDocumentoId 2) — preserva o shape dos testes
+ * legados que assumiam `arquivos[0]` como principal. `seleciona por tipo, não por posição` é coberto
+ * à parte (`array fora de ordem, como o real`, P-110).
+ */
+function docsRef(editalId: ReturnType<typeof EditalId>, keys: string[]): DocumentosRef {
   return {
     editalId,
-    arquivos: storageKeys.map((k) => ({ nome: `${k}.pdf`, storageKey: k, tipoMime: 'application/pdf' })),
+    arquivos: keys.map((k, i) => ({
+      nome: `${k}.pdf`,
+      storageKey: k,
+      tipoMime: 'application/pdf',
+      sequencialDocumento: i + 1,
+      tipoDocumentoId: i === 0 ? 2 : 16,
+      tipoDocumentoNome: i === 0 ? 'Edital' : 'Outros Documentos',
+      textoKey: k,
+      paginas: i === 0 ? 7 : 1,
+    })),
   };
 }
 
@@ -26,6 +41,7 @@ function buildWorker(opts?: {
   storageKeys?: string[];
   docsError?: Error;
   triarExecutar?: ReturnType<typeof vi.fn>;
+  docs?: DocumentosRef;
 }) {
   const triarEditalUC = {
     executar: opts?.triarExecutar ?? vi.fn().mockResolvedValue({}),
@@ -34,7 +50,7 @@ function buildWorker(opts?: {
   const documentosGateway: DocumentosEditalGateway = {
     obterRefs: vi.fn(async (editalId) => {
       if (opts?.docsError) throw opts.docsError;
-      return docsRef(editalId, opts?.storageKeys ?? ['key-1']);
+      return opts?.docs ?? docsRef(editalId, opts?.storageKeys ?? ['key-1']);
     }),
   };
 
@@ -68,11 +84,21 @@ describe('TriagemSolicitadaWorker', () => {
             texto: 'texto-k1',
             temTextoSelecionavel: true,
             anexos: ['texto-k2', 'texto-k3'],
-            paginas: 1,
+            paginas: 7, // paginas real do documento principal (RAD-280) — não mais hardcoded
           },
+          coorteTrial: false,
         },
         signal,
       );
+    });
+
+    it('repassa coorteTrial: true da mensagem ao input do use case (RAD-271, bulkhead do coorte trial)', async () => {
+      const { worker, triarEditalUC } = buildWorker({ storageKeys: [] });
+
+      await worker.processar({ ...MSG, coorteTrial: true }, signal);
+
+      const [input] = (triarEditalUC.executar as ReturnType<typeof vi.fn>).mock.calls[0]!;
+      expect(input.coorteTrial).toBe(true);
     });
 
     it('edital sem documentos: hidrata com texto vazio (a política de conteúdo insuficiente é do use case)', async () => {
@@ -86,7 +112,47 @@ describe('TriagemSolicitadaWorker', () => {
         texto: '',
         temTextoSelecionavel: false,
         anexos: [],
-        paginas: 1,
+        paginas: 0, // sem documento principal, nº de páginas é desconhecido (não é mais piso de 1)
+      });
+    });
+
+    it('seleciona o principal por tipoDocumentoId mesmo com o Edital fora da posição 0 (array como o real, P-110)', async () => {
+      const docs: DocumentosRef = {
+        editalId: EditalId('edital-1'),
+        arquivos: [
+          {
+            nome: 'parecer-contabil.pdf',
+            storageKey: 'sk-parecer',
+            tipoMime: 'application/pdf',
+            sequencialDocumento: 1,
+            tipoDocumentoId: 16,
+            tipoDocumentoNome: 'Outros Documentos',
+            textoKey: 'texto-key-parecer',
+            paginas: 2,
+          },
+          {
+            nome: 'edital.pdf',
+            storageKey: 'sk-edital',
+            tipoMime: 'application/pdf',
+            sequencialDocumento: 2,
+            tipoDocumentoId: 2,
+            tipoDocumentoNome: 'Edital',
+            textoKey: 'texto-key-edital',
+            paginas: 9,
+          },
+        ],
+      };
+      const { worker, triarEditalUC } = buildWorker({ docs });
+
+      await worker.processar(MSG, signal);
+
+      const [input] = (triarEditalUC.executar as ReturnType<typeof vi.fn>).mock.calls[0]!;
+      expect(input.conteudo).toEqual({
+        editalId: 'edital-1',
+        texto: 'texto-texto-key-edital',
+        temTextoSelecionavel: true,
+        anexos: ['texto-texto-key-parecer'],
+        paginas: 9,
       });
     });
 

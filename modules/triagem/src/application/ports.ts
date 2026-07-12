@@ -39,6 +39,14 @@ export interface TriagemRepository {
 }
 
 /**
+ * Escopo de `UsoLlmLedger.gastoUsdNaJanela` (RAD-243; `coorte` desde RAD-271, P-109 L1). `tenantId:
+ * null` = GLOBAL (soma todas as linhas); `tenantId` presente = só aquele tenant; `coorte: 'trial'` =
+ * soma de TODOS os tenants com `coorteTrial: true` na linha — dimensão independente do tenant
+ * individual, checa o bulkhead do coorte (P-41) sem cruzar para a tabela `assinatura` da Cobrança.
+ */
+export type EscopoOrcamento = { readonly tenantId: TenantId | null } | { readonly coorte: 'trial' };
+
+/**
  * Ledger de uso de LLM (RAD-230, P-20/P-38) — APPEND-ONLY, propósito de USO/FATURAMENTO
  * (docs/09 §6.1), distinto da Trilha de Auditoria da Governança (P-100/AB13, acesso a dado
  * pessoal). Nunca faz UPSERT (ao contrário de `TriagemRepository.salvar`): 1 chamada ao LLM = 1
@@ -47,15 +55,10 @@ export interface TriagemRepository {
 export interface UsoLlmLedger {
   registrar(registro: RegistroUsoLlm, signal: AbortSignal): Promise<void>;
   /**
-   * Soma de `custoUsd` desde `desde` (RAD-243, P-20/P-38 orçamento acumulado por janela).
-   * `tenantId: null` = escopo GLOBAL (soma todas as linhas, inclusive a pré-extração sem tenant);
-   * `tenantId` presente = só as linhas daquele tenant (índice parcial já existe, RAD-230).
+   * Soma de `custoUsd` desde `desde` (RAD-243, P-20/P-38 orçamento acumulado por janela) no
+   * `EscopoOrcamento` pedido — ver ali o significado de cada variante.
    */
-  gastoUsdNaJanela(
-    escopo: { readonly tenantId: TenantId | null },
-    desde: Date,
-    signal: AbortSignal,
-  ): Promise<number>;
+  gastoUsdNaJanela(escopo: EscopoOrcamento, desde: Date, signal: AbortSignal): Promise<number>;
 }
 
 /**
@@ -168,6 +171,20 @@ export interface ArquivoRef {
   readonly nome: string;
   readonly storageKey: string;
   readonly tipoMime: string;
+  /** Chave natural do documento na compra (RAD-291) — tie-break determinístico da seleção do principal. */
+  readonly sequencialDocumento: number;
+  /**
+   * Valor do CONTRATO publicado pelo Open-Host da Ingestão (2 Edital · 4 Termo de Referência ·
+   * 7 Estudo Técnico Preliminar · 16 Outros Documentos) — mesmo enum do PNCP, mas consumido como
+   * dado do contrato, não como acesso ao modelo interno da Ingestão (docs/13 §5, P-110/RAD-280).
+   * Único jeito confiável de saber qual anexo é o edital; nunca inferir pelo `nome`.
+   */
+  readonly tipoDocumentoId: number;
+  readonly tipoDocumentoNome: string;
+  /** Chave do texto já extraído (a Ingestão é dona do parser) — é o que se lê; `storageKey` é o binário. */
+  readonly textoKey: string;
+  /** nº de páginas real, medido na extração — alimenta a citação (`p. N`) exibida como prova (P-110). */
+  readonly paginas: number;
 }
 
 /** Conjunto de refs de documentos de um edital, já disponíveis para leitura. */

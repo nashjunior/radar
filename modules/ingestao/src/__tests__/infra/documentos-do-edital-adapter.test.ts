@@ -18,12 +18,21 @@ function makeAnexo(
     storageKey: `editais/001/${nome}`,
     tamanhoBytes: 1024,
     tipoMime: 'application/pdf',
+    tipoDocumentoId: 2,
+    tipoDocumentoNome: 'Edital',
+    textoKey: `editais/001/${nome}.txt`,
+    paginas: 3,
     estadoConfianca: estado,
   };
 }
 
 function makeRepo(anexos: AnexoMetadados[]): AnexoEditalRepository {
-  return { listarPorEdital: vi.fn().mockResolvedValue(anexos), salvar: vi.fn(), atualizarEstado: vi.fn() };
+  return {
+    listarPorEdital: vi.fn().mockResolvedValue(anexos),
+    salvar: vi.fn(),
+    atualizarEstado: vi.fn(),
+    atualizarTexto: vi.fn(),
+  };
 }
 
 function makeBaixar(): BaixarAnexosEditalUseCase {

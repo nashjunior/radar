@@ -63,6 +63,7 @@ function criarAnexoRepo(): AnexoEditalRepository {
     listarPorEdital: vi.fn().mockResolvedValue([] as AnexoMetadados[]),
     salvar: vi.fn(),
     atualizarEstado: vi.fn(),
+    atualizarTexto: vi.fn(),
   };
 }
 
@@ -133,7 +134,7 @@ describe('BaixarAnexosEditalUseCase', () => {
         buscarContratacaoPorNumero: vi.fn(),
       };
       const storage: ObjectStorage = {
-        armazenar: vi.fn().mockResolvedValue('editais/edital-001/anexos/edital.pdf'),
+        armazenar: vi.fn(async (chave: string) => chave),
         obter: vi.fn(),
         deletar: vi.fn(),
       };
@@ -146,12 +147,25 @@ describe('BaixarAnexosEditalUseCase', () => {
       const salvarCall = (anexoRepo.salvar as ReturnType<typeof vi.fn>).mock.calls[0] as unknown[];
       const [savedId, savedArquivos] = salvarCall as [
         string,
-        Array<{ estadoConfianca: string; nome: string; sequencialDocumento: number }>,
+        Array<{
+          estadoConfianca: string;
+          nome: string;
+          sequencialDocumento: number;
+          tipoDocumentoId: number;
+          tipoDocumentoNome: string;
+          textoKey: string;
+          paginas: number;
+        }>,
       ];
       expect(savedId).toBe(EDITAL_ID);
       expect(savedArquivos[0]!.estadoConfianca).toBe('pendente');
       expect(savedArquivos[0]!.nome).toBe('edital.pdf');
       expect(savedArquivos[0]!.sequencialDocumento).toBe(1);
+      expect(savedArquivos[0]!.tipoDocumentoId).toBe(2);
+      expect(savedArquivos[0]!.tipoDocumentoNome).toBe('Edital');
+      // texto ainda não extraído neste ponto — só depois do scan aprovar (EscanearAnexoUseCase, P-104/AB14)
+      expect(savedArquivos[0]!.paginas).toBe(0);
+      expect(savedArquivos[0]!.textoKey).toBe('');
 
       const publicarCall = (publisher.publicar as ReturnType<typeof vi.fn>).mock.calls[0] as unknown[];
       const [evento] = publicarCall as [AnexoQuarentenado];

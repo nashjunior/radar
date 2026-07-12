@@ -15,6 +15,7 @@ export type {
   ArquivoRef,
   DocumentosEditalGateway,
   DocumentosRef,
+  EscopoOrcamento,
   EstimativaDeCusto,
   EventPublisher,
   ExtracaoRepository,
@@ -66,5 +67,7 @@ export { RegistrarFeedbackTriagemUseCase, TriagemNaoEncontradaError } from './us
 export type { RegistrarFeedbackTriagemInput } from './use-cases/registrar-feedback-triagem.js';
 export { prepararEntradaExtracao } from './preparar-entrada-extracao.js';
 export type { ItemExtracao } from './preparar-entrada-extracao.js';
+export { selecionarDocumentoPrincipal } from './selecionar-documento-principal.js';
+export type { DocumentoPrincipalSelecionado } from './selecionar-documento-principal.js';
 export { carregarTriagemAutorizada } from './carregar-triagem-autorizada.js';
 export type { TriagemAutorizadaInput } from './carregar-triagem-autorizada.js';

@@ -465,7 +465,12 @@ describe('Gate A07 · AB13 — CRITERIO_MONITORAMENTO auditoria fail-closed (doc
 
 describe('Gate A07 · AB14 — trust-gating de anexos', () => {
   it('download de anexo sempre entra como pendente/quarentenado antes de consumo', async () => {
-    const anexoRepo = { listarPorEdital: vi.fn().mockResolvedValue([]), salvar: vi.fn(), atualizarEstado: vi.fn() };
+    const anexoRepo = {
+      listarPorEdital: vi.fn().mockResolvedValue([]),
+      salvar: vi.fn(),
+      atualizarEstado: vi.fn(),
+      atualizarTexto: vi.fn(),
+    };
     const eventos = { publicar: vi.fn() };
     const uc = new BaixarAnexosEditalUseCase(
       {
@@ -518,9 +523,18 @@ describe('Gate A07 · AB14 — trust-gating de anexos', () => {
       }]),
       salvar: vi.fn(),
       atualizarEstado: vi.fn(),
+      atualizarTexto: vi.fn(),
     };
     const eventos = { publicar: vi.fn() };
-    const uc = new EscanearAnexoUseCase(scanner, repo, eventos);
+    const objectStorage = {
+      armazenar: vi.fn().mockResolvedValue('landing/tenant-a/edital.pdf.txt'),
+      obter: vi.fn().mockResolvedValue(new Uint8Array([1])),
+      deletar: vi.fn(),
+    };
+    const extrator = {
+      extrair: vi.fn().mockResolvedValue({ texto: 'texto', paginas: 1, temTextoSelecionavel: true }),
+    };
+    const uc = new EscanearAnexoUseCase(scanner, repo, eventos, objectStorage, extrator);
 
     await uc.executar({
       editalId: EDITAL,
@@ -529,6 +543,7 @@ describe('Gate A07 · AB14 — trust-gating de anexos', () => {
     }, signal);
 
     expect(scanner.escanear).toHaveBeenCalledWith('landing/tenant-a/edital.pdf', signal);
+    expect(objectStorage.obter).toHaveBeenCalledWith('landing/tenant-a/edital.pdf', signal);
     expect(eventos.publicar.mock.calls[0]![0]).toBeInstanceOf(AnexoAprovado);
   });
 });

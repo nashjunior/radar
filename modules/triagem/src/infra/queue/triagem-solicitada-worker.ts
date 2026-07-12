@@ -3,6 +3,7 @@ import type { DocumentosEditalGateway, EventPublisher, ObjectStorage } from '../
 import type { EntradaExtracaoDTO } from '../../application/dtos.js';
 import type { TriarEditalUseCase } from '../../application/use-cases/triar-edital.js';
 import { TriagemFalhou } from '../../application/events.js';
+import { selecionarDocumentoPrincipal } from '../../application/selecionar-documento-principal.js';
 
 /** Contrato canônico de `triagem.solicitada` (A03 §3) — mesmo payload de `TriagemSolicitada`. */
 export interface TriagemSolicitadaMsg {
@@ -10,6 +11,8 @@ export interface TriagemSolicitadaMsg {
   usuarioId: string; // = clienteFinalId (nomeação de SolicitarTriagemUseCase/TriagemSolicitada)
   editalId: string;
   perfilId: string;
+  /** Assinatura em `trial` no momento da solicitação (RAD-271, P-109 L1) — ver `TriagemSolicitada`. */
+  coorteTrial: boolean;
 }
 
 interface DlqClient {
@@ -50,6 +53,7 @@ export class TriagemSolicitadaWorker {
           perfilId: PerfilId(msg.perfilId),
           editalId: EditalId(msg.editalId),
           conteudo,
+          coorteTrial: msg.coorteTrial,
         },
         signal,
       );
@@ -83,12 +87,12 @@ export class TriagemSolicitadaWorker {
   private async hidratar(msg: TriagemSolicitadaMsg, signal: AbortSignal): Promise<EntradaExtracaoDTO> {
     const editalId = EditalId(msg.editalId);
     const docs = await this.documentosGateway.obterRefs(editalId, signal);
-    const [principal, ...demais] = docs.arquivos;
+    const { principal, demais } = selecionarDocumentoPrincipal(docs.arquivos);
 
-    const textoPrincipal = principal ? await this.storage.obterTextoAnexo(principal.storageKey, signal) : '';
+    const textoPrincipal = principal ? await this.storage.obterTextoAnexo(principal.textoKey, signal) : '';
     const anexos: string[] = [];
     for (const arquivo of demais) {
-      anexos.push(await this.storage.obterTextoAnexo(arquivo.storageKey, signal));
+      anexos.push(await this.storage.obterTextoAnexo(arquivo.textoKey, signal));
     }
 
     return {
@@ -96,7 +100,7 @@ export class TriagemSolicitadaWorker {
       texto: textoPrincipal,
       temTextoSelecionavel: textoPrincipal.trim().length > 0,
       anexos,
-      paginas: 1, // nº de páginas desconhecido no MVP; piso de 1 (mesmo padrão de TriagemBatchWorker)
+      paginas: principal?.paginas ?? 0, // sem documento principal, nº de páginas é desconhecido
     };
   }
 }

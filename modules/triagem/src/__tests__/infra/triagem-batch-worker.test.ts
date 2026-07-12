@@ -18,10 +18,20 @@ function msg(id: string): EditalIngeridoMsg {
   };
 }
 
-function docsRef(editalId: EditalId, storageKeys: string[]): DocumentosRef {
+/** Fixture padrão: o PRIMEIRO da lista é o Edital (tipoDocumentoId 2) — preserva o shape legado. */
+function docsRef(editalId: EditalId, keys: string[]): DocumentosRef {
   return {
     editalId,
-    arquivos: storageKeys.map((k) => ({ nome: `${k}.pdf`, storageKey: k, tipoMime: 'application/pdf' })),
+    arquivos: keys.map((k, i) => ({
+      nome: `${k}.pdf`,
+      storageKey: k,
+      tipoMime: 'application/pdf',
+      sequencialDocumento: i + 1,
+      tipoDocumentoId: i === 0 ? 2 : 16,
+      tipoDocumentoNome: i === 0 ? 'Edital' : 'Outros Documentos',
+      textoKey: k,
+      paginas: i === 0 ? 7 : 1,
+    })),
   };
 }
 
@@ -109,6 +119,61 @@ describe('TriagemBatchWorker', () => {
     await worker.enfileirar(msg('e1'), signal);
     // O use case não é chamado porque itens.length === 0
     expect(extrairLoteUC.executar).not.toHaveBeenCalled();
+
+    worker.teardown();
+  });
+
+  it('seleciona o principal por tipoDocumentoId mesmo com o Edital fora da posição 0 (array como o real, P-110)', async () => {
+    const extrairLoteUC = {
+      executar: vi.fn().mockResolvedValue({ extraidos: 0, cacheHits: 0, ignorados: 0, insuficientes: 0, falhas: 0 }),
+    } as unknown as ExtrairEditaisEmLoteUseCase;
+    const docs: DocumentosRef = {
+      editalId: EditalId('e1'),
+      arquivos: [
+        {
+          nome: 'parecer-contabil.pdf',
+          storageKey: 'sk-parecer',
+          tipoMime: 'application/pdf',
+          sequencialDocumento: 1,
+          tipoDocumentoId: 16,
+          tipoDocumentoNome: 'Outros Documentos',
+          textoKey: 'texto-key-parecer',
+          paginas: 2,
+        },
+        {
+          nome: 'edital.pdf',
+          storageKey: 'sk-edital',
+          tipoMime: 'application/pdf',
+          sequencialDocumento: 2,
+          tipoDocumentoId: 2,
+          tipoDocumentoNome: 'Edital',
+          textoKey: 'texto-key-edital',
+          paginas: 9,
+        },
+      ],
+    };
+    const documentosGateway: DocumentosEditalGateway = { obterRefs: vi.fn().mockResolvedValue(docs) };
+    const storage: ObjectStorage = {
+      obterTextoAnexo: vi.fn(async (ref: string) => `texto-${ref}`),
+    };
+    const dlq = { encaminhar: vi.fn().mockResolvedValue(undefined) };
+    const worker = new TriagemBatchWorker(extrairLoteUC, documentosGateway, storage, dlq, {
+      tamanhoBatch: 1,
+      janelaMs: 60_000,
+    });
+
+    await worker.enfileirar(msg('e1'), signal);
+
+    const [itens] = (extrairLoteUC.executar as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    expect(itens).toEqual([
+      {
+        editalId: EditalId('e1'),
+        texto: 'texto-texto-key-edital',
+        temTextoSelecionavel: true,
+        anexosRefs: ['texto-key-parecer'],
+        paginas: 9,
+      },
+    ]);
 
     worker.teardown();
   });

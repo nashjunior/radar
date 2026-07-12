@@ -37,10 +37,29 @@ export interface ContratacaoData {
 }
 
 export interface ArquivoPncpData {
-  nome: string;
+  /** Texto livre digitado pelo órgão — só metadado de exibição; nunca compõe chave nem indica o papel do documento (arq/02 §6.1). */
+  titulo: string;
   urlOrigem: string;
+  /** Chave natural do documento dentro da compra — é o que deve compor a chave de object storage (RAD-278). */
+  sequencialDocumento: number;
+  /** Enum do PNCP: 2 Edital · 4 Termo de Referência · 7 Estudo Técnico Preliminar · 16 Outros Documentos. */
+  tipoDocumentoId: number;
+  tipoDocumentoNome: string;
+  /** Documento revogado/substituído ⇒ false — já filtrado por `buscarArquivos`, exposto para auditoria. */
+  statusAtivo: boolean;
+}
+
+/**
+ * Metadados resolvidos só no download — `/arquivos` não os fornece (arq/02 §6.1).
+ * O PNCP declara `content-type: application/octet-stream` para todo download, então
+ * `tipoMime` vem de sniff por magic bytes, nunca do header.
+ */
+export interface ArquivoBaixado {
+  conteudo: Uint8Array;
   tamanhoBytes: number;
   tipoMime: string;
+  /** Do header `content-disposition`; `null` se ausente ou não parseável. */
+  nomeArquivo: string | null;
 }
 
 /**
@@ -90,8 +109,8 @@ export interface PncpGateway {
     signal: AbortSignal,
   ): Promise<ArquivoPncpData[]>;
 
-  /** Baixa o conteúdo binário de um arquivo pelo URL de origem. */
-  downloadArquivo(urlOrigem: string, signal: AbortSignal): Promise<Uint8Array>;
+  /** Baixa um arquivo pelo URL de origem, resolvendo tamanho/mime/nome real (arq/02 §6.1). */
+  downloadArquivo(urlOrigem: string, signal: AbortSignal): Promise<ArquivoBaixado>;
 }
 
 /** Repositório do agregado Edital. Upsert idempotente por `numeroControlePNCP`. */
@@ -185,6 +204,17 @@ export interface AnexoEditalRepository {
     editalId: EditalId,
     sequencialDocumento: number,
     estado: EstadoConfiancaAnexo,
+    signal: AbortSignal,
+  ): Promise<void>;
+  /**
+   * Grava o texto extraído (`textoKey`/`paginas`) — chamado só depois do scan aprovar
+   * (`EscanearAnexoUseCase`, P-104/AB14): o parser nunca abre bytes ainda não escaneados.
+   */
+  atualizarTexto(
+    editalId: EditalId,
+    sequencialDocumento: number,
+    textoKey: string,
+    paginas: number,
     signal: AbortSignal,
   ): Promise<void>;
 }

@@ -19,6 +19,11 @@ export class DocumentosEditalAclAdapter implements DocumentosEditalGateway {
         nome: a.nome,
         storageKey: a.storageKey,
         tipoMime: a.tipoMime,
+        sequencialDocumento: a.sequencialDocumento,
+        tipoDocumentoId: a.tipoDocumentoId,
+        tipoDocumentoNome: a.tipoDocumentoNome,
+        textoKey: a.textoKey,
+        paginas: a.paginas,
       })),
     };
   }

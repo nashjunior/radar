@@ -26,6 +26,11 @@ export interface BaixarAnexosEditalInput {
  * Trust-gating (P-104, AB14): cada anexo é salvo com estado `pendente` e
  * um evento `AnexoQuarentenado` é publicado para o worker de scan assíncrono.
  * Triagem/front/download só recebem objetos aprovados como `limpo`.
+ *
+ * NUNCA extrai texto aqui — o binário ainda não passou pelo scan AV/malware. A
+ * extração (`ExtratorDeTexto`) só roda depois de `limpo`, dentro de `EscanearAnexoUseCase`
+ * (P-104/AB14: nem o parser pode abrir bytes não escaneados, P-110/RAD-280). `textoKey`/
+ * `paginas` nascem como placeholder e são preenchidos por `AnexoEditalRepository.atualizarTexto`.
  */
 export class BaixarAnexosEditalUseCase {
   constructor(
@@ -84,6 +89,11 @@ export class BaixarAnexosEditalUseCase {
               storageKey,
               tamanhoBytes: baixado.tamanhoBytes,
               tipoMime: baixado.tipoMime,
+              tipoDocumentoId: arquivo.tipoDocumentoId,
+              tipoDocumentoNome: arquivo.tipoDocumentoNome,
+              // placeholder — extração real só roda pós-scan (EscanearAnexoUseCase, P-104/AB14)
+              textoKey: '',
+              paginas: 0,
               estadoConfianca: ESTADO_INICIAL_ANEXO,
             },
           ],
