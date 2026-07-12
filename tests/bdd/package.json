@@ -4,14 +4,16 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "pretest": "pnpm --filter @radar/ingestao --filter @radar/matching --filter @radar/triagem --filter @radar/notificacao build",
-    "test": "node --import tsx/esm node_modules/@cucumber/cucumber/bin/cucumber.js --import support/hooks.ts --import steps/ingestao.steps.ts --import steps/matching.steps.ts --import steps/triagem.steps.ts --import steps/notificacao.steps.ts",
+    "pretest": "pnpm --filter @radar/ingestao --filter @radar/matching --filter @radar/triagem --filter @radar/notificacao --filter @radar/cobranca build",
+    "test": "node --import tsx/esm node_modules/@cucumber/cucumber/bin/cucumber.js --import support/hooks.ts --import steps/ingestao.steps.ts --import steps/matching.steps.ts --import steps/triagem.steps.ts --import steps/notificacao.steps.ts --import steps/cobranca.steps.ts",
     "test:matching": "node --import tsx/esm node_modules/@cucumber/cucumber/bin/cucumber.js --import support/hooks.ts --import steps/matching.steps.ts features/matching/**/*.feature",
     "test:ingestao": "node --import tsx/esm node_modules/@cucumber/cucumber/bin/cucumber.js --import support/hooks.ts --import steps/ingestao.steps.ts features/ingestao/**/*.feature",
     "test:triagem": "node --import tsx/esm node_modules/@cucumber/cucumber/bin/cucumber.js --import support/hooks.ts --import steps/triagem.steps.ts features/triagem/**/*.feature",
-    "test:notificacao": "node --import tsx/esm node_modules/@cucumber/cucumber/bin/cucumber.js --import support/hooks.ts --import steps/notificacao.steps.ts features/notificacao/**/*.feature"
+    "test:notificacao": "node --import tsx/esm node_modules/@cucumber/cucumber/bin/cucumber.js --import support/hooks.ts --import steps/notificacao.steps.ts features/notificacao/**/*.feature",
+    "test:cobranca": "node --import tsx/esm node_modules/@cucumber/cucumber/bin/cucumber.js --import support/hooks.ts --import steps/cobranca.steps.ts features/cobranca/**/*.feature"
   },
   "dependencies": {
+    "@radar/cobranca": "workspace:*",
     "@radar/ingestao": "workspace:*",
     "@radar/matching": "workspace:*",
     "@radar/notificacao": "workspace:*",

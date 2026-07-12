@@ -194,7 +194,7 @@ describe('TriarEditalUseCase', () => {
     expect(salvarExtracao).not.toHaveBeenCalled();
   });
 
-  it('gate de confiança: abaixo do limiar → ConfiancaInsuficienteError, persiste incompleta e não publica (RAD-79)', async () => {
+  it('gate de confiança: abaixo do limiar → ConfiancaInsuficienteError, persiste incompleta e publica triagem.falhou (RAD-79, RAD-255)', async () => {
     const { uc, porId, salvarTriagem, publicar } = deps({ existente: extracao(0.4) });
     await expect(uc.executar({ ...INPUT, limiarConfianca: 0.7 }, noop)).rejects.toThrow(
       ConfiancaInsuficienteError,
@@ -203,7 +203,17 @@ describe('TriarEditalUseCase', () => {
     // RAD-79: persiste status 'incompleta' antes de re-lançar para que leitores vejam o estado
     expect(salvarTriagem).toHaveBeenCalledOnce();
     expect(salvarTriagem.mock.calls[0]![0].status).toBe('incompleta');
-    expect(publicar).not.toHaveBeenCalled();
+    // RAD-255 (P-107 (c)): libera a reserva de cota em Cobrança
+    expect(publicar).toHaveBeenCalledOnce();
+    const [evento] = publicar.mock.calls[0]!;
+    expect(evento.type).toBe('triagem.falhou');
+    expect(evento.payload).toEqual({
+      tenantId: TENANT,
+      clienteFinalId: CLIENTE,
+      editalId: EDITAL,
+      perfilId: PERFIL,
+      motivo: 'CONFIANCA_INSUFICIENTE',
+    });
   });
 
   it('P-19: sem limiarConfianca explícito, o gate aplica LIMIAR_CONFIANCA_PADRAO (fonte única)', async () => {
@@ -218,11 +228,12 @@ describe('TriarEditalUseCase', () => {
       conteudo: CONTEUDO,
     }; // sem limiarConfianca (agora opcional)
 
-    // logo ABAIXO do default → degrada para leitura assistida (incompleta), não publica
+    // logo ABAIXO do default → degrada para leitura assistida (incompleta), publica triagem.falhou
     const abaixo = deps({ existente: extracao(LIMIAR_CONFIANCA_PADRAO - eps) });
     await expect(abaixo.uc.executar(INPUT_SEM_LIMIAR, noop)).rejects.toThrow(ConfiancaInsuficienteError);
     expect(abaixo.salvarTriagem.mock.calls[0]![0].status).toBe('incompleta');
-    expect(abaixo.publicar).not.toHaveBeenCalled();
+    expect(abaixo.publicar).toHaveBeenCalledOnce();
+    expect(abaixo.publicar.mock.calls[0]![0].type).toBe('triagem.falhou');
 
     // logo ACIMA do default → conclui e publica triagem.concluida
     const acima = deps({ existente: extracao(LIMIAR_CONFIANCA_PADRAO + eps) });
@@ -252,13 +263,24 @@ describe('TriarEditalUseCase', () => {
     expect(salvarTriagem).not.toHaveBeenCalled();
   });
 
-  it('perfil inexistente → PerfilNaoEncontradoError (erro de orquestração, 404)', async () => {
-    const { uc, salvarTriagem } = deps({ existente: extracao(), perfil: null });
+  it('perfil inexistente → PerfilNaoEncontradoError (erro de orquestração, 404), publica triagem.falhou com dados do INPUT', async () => {
+    const { uc, salvarTriagem, publicar } = deps({ existente: extracao(), perfil: null });
     await expect(uc.executar(INPUT, noop)).rejects.toThrow(PerfilNaoEncontradoError);
     expect(salvarTriagem).not.toHaveBeenCalled();
+    // RAD-255: mesmo sem perfil resolvido, a quádrupla vem do INPUT (chave da reserva em Cobrança)
+    expect(publicar).toHaveBeenCalledOnce();
+    const [evento] = publicar.mock.calls[0]!;
+    expect(evento.type).toBe('triagem.falhou');
+    expect(evento.payload).toEqual({
+      tenantId: TENANT,
+      clienteFinalId: CLIENTE,
+      editalId: EDITAL,
+      perfilId: PERFIL,
+      motivo: 'PERFIL_NAO_ENCONTRADO',
+    });
   });
 
-  it('perfil de OUTRO cliente → AcessoNegadoError (authz por objeto, defesa em profundidade)', async () => {
+  it('perfil de OUTRO cliente → AcessoNegadoError (authz por objeto, defesa em profundidade), publica triagem.falhou', async () => {
     const { uc, salvarTriagem, publicar } = deps({
       existente: extracao(),
       perfil: PerfilHabilitacao.de({
@@ -272,7 +294,18 @@ describe('TriarEditalUseCase', () => {
     });
     await expect(uc.executar(INPUT, noop)).rejects.toThrow(AcessoNegadoError);
     expect(salvarTriagem).not.toHaveBeenCalled();
-    expect(publicar).not.toHaveBeenCalled();
+    // RAD-255 (P-107 (c)): fila envenenada também precisa liberar a reserva de quem SOLICITOU
+    // (input.clienteFinalId = CLIENTE) — nunca o clienteFinalId do perfil alheio (cliente-999).
+    expect(publicar).toHaveBeenCalledOnce();
+    const [evento] = publicar.mock.calls[0]!;
+    expect(evento.type).toBe('triagem.falhou');
+    expect(evento.payload).toEqual({
+      tenantId: TENANT,
+      clienteFinalId: CLIENTE,
+      editalId: EDITAL,
+      perfilId: PERFIL,
+      motivo: 'ACESSO_NEGADO',
+    });
   });
 });
 
@@ -300,18 +333,22 @@ describe('TriarEditalUseCase — admission control + orçamento (RAD-243)', () =
     expect(estimarCusto).not.toHaveBeenCalled();
   });
 
-  it('entrada excede o teto de admissão → EntradaExcedeTetoDeAdmissaoError, sem chamar o LLM', async () => {
-    const { uc, extrair } = deps({
+  it('entrada excede o teto de admissão → EntradaExcedeTetoDeAdmissaoError, sem chamar o LLM, publica triagem.falhou', async () => {
+    const { uc, extrair, publicar } = deps({
       existente: null,
       estimativa: { modelo: 'claude-opus-4-8', inputTokens: MAX_INPUT_TOKENS_ADMISSAO + 1, custoEstimadoUsd: 5 },
     });
     await expect(uc.executar(INPUT, noop)).rejects.toThrow(EntradaExcedeTetoDeAdmissaoError);
     expect(extrair).not.toHaveBeenCalled();
+    expect(publicar.mock.calls[0]![0]).toMatchObject({
+      type: 'triagem.falhou',
+      payload: { motivo: 'ENTRADA_EXCEDE_TETO_DE_ADMISSAO' },
+    });
   });
 
-  it('orçamento GLOBAL excedido → OrcamentoDeCustoExcedidoError, sem chamar o LLM', async () => {
+  it('orçamento GLOBAL excedido → OrcamentoDeCustoExcedidoError, sem chamar o LLM, publica triagem.falhou', async () => {
     const orcamento: PoliticaOrcamento = { janelaHoras: 24, orcamentoGlobalUsd: 10, orcamentoPorTenantUsd: null };
-    const { uc, extrair } = deps({
+    const { uc, extrair, publicar } = deps({
       existente: null,
       estimativa: { modelo: 'claude-sonnet-5', inputTokens: 1000, custoEstimadoUsd: 0.5 },
       gastoGlobalUsd: 9.6,
@@ -319,6 +356,10 @@ describe('TriarEditalUseCase — admission control + orçamento (RAD-243)', () =
     });
     await expect(uc.executar(INPUT, noop)).rejects.toThrow(OrcamentoDeCustoExcedidoError);
     expect(extrair).not.toHaveBeenCalled();
+    expect(publicar.mock.calls[0]![0]).toMatchObject({
+      type: 'triagem.falhou',
+      payload: { motivo: 'ORCAMENTO_DE_CUSTO_EXCEDIDO' },
+    });
   });
 
   it('orçamento POR TENANT excedido (mesmo com o global sobrando) → OrcamentoDeCustoExcedidoError', async () => {
@@ -347,7 +388,7 @@ describe('TriarEditalUseCase — admission control + orçamento (RAD-243)', () =
   });
 
   it('GAP fechado: recusa do modelo (usoParcial) registra o custo e degrada a triagem para "recusada"', async () => {
-    const { uc, extrair, registrar, salvarTriagem } = deps({ existente: null });
+    const { uc, extrair, registrar, salvarTriagem, publicar } = deps({ existente: null });
     extrair.mockRejectedValue(new ExtracaoRecusadaError(USO_FAKE));
 
     await expect(uc.executar(INPUT, noop)).rejects.toThrow(ExtracaoRecusadaError);
@@ -360,14 +401,68 @@ describe('TriarEditalUseCase — admission control + orçamento (RAD-243)', () =
       perfilId: PERFIL,
       modelo: USO_FAKE.modelo,
     });
+    // RAD-255: falha de extração também libera a reserva de cota
+    expect(publicar.mock.calls[0]![0]).toMatchObject({
+      type: 'triagem.falhou',
+      payload: { motivo: 'EXTRACAO_RECUSADA' },
+    });
     expect(salvarTriagem.mock.calls[0]![0].status).toBe('recusada');
   });
 
   it('GAP fechado: truncamento (SaidaLlmInvalidaError com usoParcial) registra o custo antes de propagar', async () => {
-    const { uc, extrair, registrar } = deps({ existente: null });
+    const { uc, extrair, registrar, publicar } = deps({ existente: null });
     extrair.mockRejectedValue(new SaidaLlmInvalidaError('resposta truncada (max_tokens)', USO_FAKE));
 
     await expect(uc.executar(INPUT, noop)).rejects.toThrow(SaidaLlmInvalidaError);
     expect(registrar).toHaveBeenCalledTimes(1);
+    expect(publicar.mock.calls[0]![0]).toMatchObject({
+      type: 'triagem.falhou',
+      payload: { motivo: 'SAIDA_LLM_INVALIDA' },
+    });
+  });
+});
+
+describe('TriarEditalUseCase — triagem.falhou (RAD-255, P-107 (c))', () => {
+  it('erro que não é DomainError (ex.: cancelamento via AbortSignal) publica motivo genérico seguro', async () => {
+    const { uc, extrair, publicar } = deps({ existente: null });
+    extrair.mockRejectedValue(new DOMException('This operation was aborted', 'AbortError'));
+
+    await expect(uc.executar(INPUT, noop)).rejects.toThrow();
+    expect(publicar.mock.calls[0]![0]).toMatchObject({
+      type: 'triagem.falhou',
+      payload: {
+        tenantId: TENANT,
+        clienteFinalId: CLIENTE,
+        editalId: EDITAL,
+        perfilId: PERFIL,
+        motivo: 'erro_inesperado', // nunca a mensagem/stack — pode carregar detalhe interno
+      },
+    });
+  });
+
+  it('o erro original ainda é lançado após a publicação de triagem.falhou (contrato do use case preservado)', async () => {
+    const { uc, publicar } = deps({ existente: extracao(0.4) });
+    await expect(uc.executar({ ...INPUT, limiarConfianca: 0.7 }, noop)).rejects.toThrow(
+      ConfiancaInsuficienteError,
+    );
+    expect(publicar).toHaveBeenCalledOnce();
+  });
+
+  it('cancelamento: signal JÁ ABORTADO no momento da falha não impede a publicação de triagem.falhou', async () => {
+    // guardiao-arquitetura (revisão desta issue): reusar o `signal` original na publicação de
+    // compensação faria o publish falhar exatamente no caso que ele existe para cobrir — o
+    // `signal` de `executar` pode já estar abortado quando o catch roda (cancelamento).
+    const controller = new AbortController();
+    const { uc, extrair, publicar } = deps({ existente: null });
+    extrair.mockImplementation(() => {
+      controller.abort();
+      return Promise.reject(new DOMException('This operation was aborted', 'AbortError'));
+    });
+
+    await expect(uc.executar(INPUT, controller.signal)).rejects.toThrow();
+    expect(controller.signal.aborted).toBe(true);
+    expect(publicar).toHaveBeenCalledOnce(); // não lançou AbortError ao tentar publicar
+    const [, signalDaPublicacao] = publicar.mock.calls[0]!;
+    expect(signalDaPublicacao.aborted).toBe(false); // signal PRÓPRIO, não o abortado
   });
 });

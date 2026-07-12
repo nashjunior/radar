@@ -1,4 +1,4 @@
-import { AcessoNegadoError } from '@radar/kernel';
+import { AcessoNegadoError, DomainError } from '@radar/kernel';
 import type { ClienteFinalId, EditalId, PerfilId, TenantId } from '@radar/kernel';
 import {
   ConfiancaInsuficienteError,
@@ -15,7 +15,7 @@ import { Triagem } from '../../domain/triagem.js';
 import { triagemParaDTO } from '../dtos.js';
 import type { EntradaExtracaoDTO, TriagemDTO } from '../dtos.js';
 import { LIMIAR_CONFIANCA_PADRAO } from '../politica-confianca.js';
-import { TriagemConcluida } from '../events.js';
+import { TriagemConcluida, TriagemFalhou } from '../events.js';
 import { calcularCustoUsd } from '../precificacao-llm.js';
 import {
   excedeOrcamento,
@@ -47,7 +47,9 @@ export interface TriarEditalInput {
 /**
  * Entrypoint: worker que consome `triagem.solicitada` (A03 §3). Extração é cacheada por edital
  * (P-45); a aderência é por perfil (não cacheável). Autorização por objeto reforçada aqui — defesa
- * em profundidade contra IDOR/BOLA, além da checagem de `SolicitarTriagem`.
+ * em profundidade contra IDOR/BOLA, além da checagem de `SolicitarTriagem`. Todo caminho de erro
+ * (incluindo cancelamento via `signal`) publica `triagem.falhou` — RAD-255, P-107 (c): a reserva
+ * de cota feita por `SolicitarTriagemUseCase` só é liberada por Cobrança se este evento chegar.
  */
 export class TriarEditalUseCase {
   constructor(
@@ -61,6 +63,30 @@ export class TriarEditalUseCase {
   ) {}
 
   async executar(input: TriarEditalInput, signal: AbortSignal): Promise<TriagemDTO> {
+    try {
+      return await this.executarOuLancar(input, signal);
+    } catch (err) {
+      // RAD-255 (P-107 (c)): todo caminho de falha/timeout/cancelamento publica `triagem.falhou`
+      // para que Cobrança libere a reserva de cota — sem isto a cota vaza (docs/13 §3). `motivo`
+      // é o `code` estável de `DomainError`; nunca a mensagem/stack (pode carregar detalhe interno).
+      // Publica com um AbortSignal PRÓPRIO, nunca o `signal` recebido: cancelamento é um dos
+      // próprios gatilhos deste catch, então `signal` pode já estar abortado aqui — reusá-lo faria
+      // a publicação de compensação falhar exatamente no caminho que ela existe para cobrir.
+      await this.eventos.publicar(
+        new TriagemFalhou({
+          tenantId: input.tenantId,
+          clienteFinalId: input.clienteFinalId,
+          editalId: input.editalId,
+          perfilId: input.perfilId,
+          motivo: err instanceof DomainError ? err.code : 'erro_inesperado',
+        }),
+        new AbortController().signal,
+      );
+      throw err;
+    }
+  }
+
+  private async executarOuLancar(input: TriarEditalInput, signal: AbortSignal): Promise<TriagemDTO> {
     // 1. Autorização POR OBJETO (P-51 / AB1) ANTES da extração paga: o perfil deve pertencer ao
     //    clienteFinal solicitante. O perfil não é insumo da extração — checá-lo primeiro fecha a
     //    chamada PAGA de LLM (passo 2) atrás do authz, protegendo contra fila envenenada (defesa em

@@ -49,6 +49,29 @@ export class TriagemConcluida implements DomainEvent {
   }
 }
 
+/**
+ * Published Language (RAD-255): emitido por `TriarEditalUseCase` em todo caminho de falha/timeout/
+ * cancelamento (worker e DLQ) → consumido por Cobrança para liberar a reserva de cota (P-107 (c),
+ * docs/13 §3, tabela Reserva × RegistroDeUso). Mesma quádrupla de idempotência de `triagem.concluida`.
+ * `motivo` é o `code` estável de `DomainError` (curto) — nunca stack trace, mensagem interna ou PII.
+ */
+export class TriagemFalhou implements DomainEvent {
+  readonly type = 'triagem.falhou' as const;
+  readonly occurredAt: Date;
+
+  constructor(
+    readonly payload: {
+      readonly tenantId: TenantId;
+      readonly clienteFinalId: ClienteFinalId;
+      readonly editalId: EditalId;
+      readonly perfilId: PerfilId;
+      readonly motivo: string;
+    },
+  ) {
+    this.occurredAt = new Date();
+  }
+}
+
 /** Published Language (RAD-81): usuário aceitou a análise — UTI1 (aceitação). */
 export class TriagemAceita implements DomainEvent {
   readonly type = 'triagem.aceita' as const;

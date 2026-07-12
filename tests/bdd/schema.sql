@@ -108,3 +108,38 @@ CREATE TABLE IF NOT EXISTS proveniencias (
   base_legal  TEXT        NOT NULL,
   coletado_em TIMESTAMPTZ NOT NULL
 );
+
+-- ---------------------------------------------------------------------------
+-- Cobrança & Assinatura (P-107) — modules/cobranca/src/infra/migrations/001_assinatura_registro_uso.sql
+-- ---------------------------------------------------------------------------
+
+-- uso_reservado é o GATE (UPDATE atômico na borda, P-107 (3)); uso_confirmado é a
+-- FATURA (RAD-247). Os dois vivem na mesma linha por design — espalhar cota e uso
+-- por tabelas diferentes reintroduz a race que a reserva existe para fechar.
+CREATE TABLE IF NOT EXISTS assinatura (
+  tenant_id             TEXT        PRIMARY KEY,
+  status                TEXT        NOT NULL,
+  plano_codigo          TEXT        NOT NULL,
+  cota_triagens_mes     INTEGER     NOT NULL,
+  preco_centavos        INTEGER     NOT NULL,
+  uso_reservado         INTEGER     NOT NULL DEFAULT 0,
+  uso_confirmado        INTEGER     NOT NULL DEFAULT 0,
+  periodo_inicio        DATE        NOT NULL,
+  periodo_fim           DATE        NOT NULL,
+  assinatura_externa_id TEXT,
+  CONSTRAINT assinatura_uso_reservado_nao_negativo CHECK (uso_reservado >= 0),
+  CONSTRAINT assinatura_uso_confirmado_nao_negativo CHECK (uso_confirmado >= 0),
+  CONSTRAINT assinatura_uso_reservado_cabe_na_cota CHECK (uso_reservado <= cota_triagens_mes)
+);
+
+CREATE TABLE IF NOT EXISTS registro_uso (
+  id                BIGSERIAL   PRIMARY KEY,
+  tenant_id         TEXT        NOT NULL,
+  cliente_final_id  TEXT        NOT NULL,
+  edital_id         TEXT        NOT NULL,
+  perfil_id         TEXT        NOT NULL,
+  periodo           TEXT        NOT NULL,
+  confirmado_em     TIMESTAMPTZ NOT NULL,
+  CONSTRAINT registro_uso_chave_natural
+    UNIQUE (tenant_id, cliente_final_id, edital_id, perfil_id, periodo)
+);

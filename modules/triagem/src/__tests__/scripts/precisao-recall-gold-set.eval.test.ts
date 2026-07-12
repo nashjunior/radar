@@ -56,6 +56,7 @@ function carregarGoldSet(): GoldSet {
 /**
  * Texto determinístico por edital. As frases-âncora por campo são exatas o suficiente para
  * que bindCitacao (camada 6) as encontre no texto normalizado (sem diacríticos, minúsculo).
+ * Uma âncora por categoria de habilitação para que o fixtureLlm gere citações vinculáveis.
  */
 function textoSintetico(id: string): string {
   return [
@@ -63,7 +64,10 @@ function textoSintetico(id: string): string {
     `OBJETO: fornecimento de equipamentos ${id}.`,
     `VALOR ESTIMADO: R$ 100000 referente a ${id}.`,
     `DATA ABERTURA: 2026-10-01 sessao ${id}.`,
-    `HABILITACAO: certidao fiscal requerida ${id}.`,
+    `HABILITACAO JURIDICA: certidao juridica requerida ${id}.`,
+    `HABILITACAO FISCAL: certidao fiscal requerida ${id}.`,
+    `HABILITACAO TECNICA: qualificacao tecnica requerida ${id}.`,
+    `HABILITACAO ECONOMICA: qualificacao economica requerida ${id}.`,
   ].join('\n');
 }
 
@@ -73,6 +77,16 @@ function cit(trecho: string): CitacaoRaw {
   return { pagina: 1, secao: null, trecho };
 }
 
+const CATEGORIAS_HABILITACAO = ['juridica', 'fiscal', 'tecnica', 'economica'] as const;
+type CategoriaHab = (typeof CATEGORIAS_HABILITACAO)[number];
+
+const ANCORA_HABILITACAO: Record<CategoriaHab, string> = {
+  juridica: 'certidao juridica requerida',
+  fiscal: 'certidao fiscal requerida',
+  tecnica: 'qualificacao tecnica requerida',
+  economica: 'qualificacao economica requerida',
+};
+
 /**
  * Fixture LLM para um edital do gold set. A citação sempre aponta para uma frase presente no
  * textoSintetico do mesmo edital, garantindo que bindCitacao passe (citacao != null). O valor
@@ -80,9 +94,25 @@ function cit(trecho: string): CitacaoRaw {
  *   — extraidoCorreto=true  → valor "correto" com citação válida
  *   — extraidoCorreto=false → valor errado com citação válida (simulação de alucinação)
  *   — rotuloPresente=false  → null sem citação (LLM acertou a ausência)
+ * Para habilitação: emite um requisito por item com confianca ≥ LIMIAR (abaixo do limiar = não
+ * surfaced = ausente no output). extraidoCorreto=false com conf ≥ LIMIAR → FP com descricão errada.
  */
 function fixtureLlm(edital: EditalRotulado): unknown {
   const { id, campos } = edital;
+
+  const requisitos: unknown[] = [];
+  for (const cat of CATEGORIAS_HABILITACAO) {
+    for (const item of campos.habilitacao[cat]) {
+      if (item.confianca < LIMIAR_CONFIANCA_PADRAO) continue;
+      requisitos.push({
+        categoria: cat,
+        descricao: item.extraidoCorreto
+          ? `${ANCORA_HABILITACAO[cat]} ${id}`
+          : `descricao incorreta ${cat} ${id}`,
+        citacao: cit(`${ANCORA_HABILITACAO[cat]} ${id}`),
+      });
+    }
+  }
 
   return {
     objeto: {
@@ -114,13 +144,7 @@ function fixtureLlm(edital: EditalRotulado): unknown {
         ? cit(`2026-10-01 sessao ${id}`)
         : null,
     },
-    requisitos: [
-      {
-        categoria: 'fiscal',
-        descricao: `certidao fiscal requerida ${id}`,
-        citacao: cit(`certidao fiscal requerida ${id}`),
-      },
-    ],
+    requisitos,
     riscos: [],
   };
 }
@@ -205,6 +229,33 @@ function computarMetricasCampo(
   return { campo: campoNome, total, tp, fp, fn, alucinacoesNumericas, recall, precisao };
 }
 
+/**
+ * Habilitação: usa a confiança do rótulo (não há confiança per-requisito no agregado extraído)
+ * para replicar a semântica de "surfaced" de computarMetricasCampo — consistente com
+ * camposAtomicos() em calibracao-limiar.ts que aplica o mesmo limiar aos itens de habilitação.
+ * FP = items surfaced com extraidoCorreto=false; itens abaixo do limiar → FN silencioso.
+ */
+function computarMetricasHabilitacao(resultados: Resultado[], limiar: number): MetricasCampo {
+  let total = 0, tp = 0, fp = 0, alucinacoesNumericas = 0;
+
+  for (const { edital } of resultados) {
+    for (const cat of CATEGORIAS_HABILITACAO) {
+      for (const item of edital.campos.habilitacao[cat]) {
+        if (!item.critico || !item.rotuloPresente) continue;
+        total++;
+        const surfaced = item.confianca >= limiar;
+        if (surfaced && item.extraidoCorreto) tp++;
+        if (surfaced && !item.extraidoCorreto) fp++;
+      }
+    }
+  }
+
+  const fn = total - tp - fp;
+  const recall = total > 0 ? tp / total : 0;
+  const precisao = tp + fp > 0 ? tp / (tp + fp) : 1;
+  return { campo: 'habilitacao', total, tp, fp, fn, alucinacoesNumericas, recall, precisao };
+}
+
 function computarMetricasGlobal(por_campo: MetricasCampo[]): MetricasCampo {
   const total = por_campo.reduce((s, m) => s + m.total, 0);
   const tp = por_campo.reduce((s, m) => s + m.tp, 0);
@@ -275,6 +326,7 @@ let resultados: Resultado[];
 let metricasObjeto: MetricasCampo;
 let metricasValor: MetricasCampo;
 let metricasData: MetricasCampo;
+let metricasHabilitacao: MetricasCampo;
 let metricasGlobal: MetricasCampo;
 const goldSet = carregarGoldSet();
 
@@ -283,8 +335,9 @@ beforeAll(async () => {
   metricasObjeto = computarMetricasCampo(resultados, 'objeto', LIMIAR_CONFIANCA_PADRAO);
   metricasValor = computarMetricasCampo(resultados, 'valorEstimado', LIMIAR_CONFIANCA_PADRAO);
   metricasData = computarMetricasCampo(resultados, 'dataAberturaPropostas', LIMIAR_CONFIANCA_PADRAO);
-  metricasGlobal = computarMetricasGlobal([metricasObjeto, metricasValor, metricasData]);
-  imprimirRelatorio([metricasObjeto, metricasValor, metricasData], metricasGlobal);
+  metricasHabilitacao = computarMetricasHabilitacao(resultados, LIMIAR_CONFIANCA_PADRAO);
+  metricasGlobal = computarMetricasGlobal([metricasObjeto, metricasValor, metricasData, metricasHabilitacao]);
+  imprimirRelatorio([metricasObjeto, metricasValor, metricasData, metricasHabilitacao], metricasGlobal);
 });
 
 // ─── testes ───────────────────────────────────────────────────────────────────
@@ -343,10 +396,23 @@ describe('harness RecordReplay — sem ANTHROPIC_API_KEY, sem rede', () => {
     }
   });
 
-  it('cada ExtracaoEdital tem ao menos um requisito de habilitação (fiscal)', () => {
-    for (const { extracao } of resultados) {
-      expect(extracao.requisitos.length).toBeGreaterThanOrEqual(1);
-      expect(extracao.requisitos[0]!.categoria).toBe('fiscal');
+  it('gs-001..003: pipeline extrai 1 jurídico + 1 fiscal por rótulo', () => {
+    for (const id of ['gs-001', 'gs-002', 'gs-003']) {
+      const r = resultados.find((x) => x.edital.id === id)!;
+      expect(r.extracao.requisitos.filter((x) => x.categoria === 'juridica')).toHaveLength(1);
+      expect(r.extracao.requisitos.filter((x) => x.categoria === 'fiscal')).toHaveLength(1);
+    }
+  });
+
+  it('gs-012: pipeline extrai 8 dos 9 requisitos técnicos (1 abaixo do limiar 0,55 não surfaced)', () => {
+    const r = resultados.find((x) => x.edital.id === 'gs-012')!;
+    expect(r.extracao.requisitos.filter((x) => x.categoria === 'tecnica')).toHaveLength(8);
+  });
+
+  it('editais sem habilitação no rótulo (ex: gs-005, gs-010, gs-025): nenhum requisito extraído', () => {
+    for (const id of ['gs-005', 'gs-010', 'gs-025']) {
+      const r = resultados.find((x) => x.edital.id === id)!;
+      expect(r.extracao.requisitos).toHaveLength(0);
     }
   });
 });
@@ -380,13 +446,14 @@ describe('gates de release — docs/07 §6', () => {
     expect(metricasData.alucinacoesNumericas).toBe(0);
   });
 
-  it('métricas globais batem com resultado do calibrar-limiar @0,70: recall ≈ 95,4%', () => {
-    // Verificação de regressão: se os rótulos mudarem, este teste avisará.
-    expect(metricasGlobal.total).toBe(87);
-    expect(metricasGlobal.tp).toBe(83);
+  it('métricas globais batem com resultado do calibrar-limiar @0,70: recall ≈ 95,1% (RAD-223)', () => {
+    // Regressão: 87 scalares + 15 hab = 102 total; 83 + 14 = 97 TP; fn=4 scalares + 1 hab (gs-012 tecnica[8]).
+    // Se os rótulos mudarem, este teste avisará.
+    expect(metricasGlobal.total).toBe(102);
+    expect(metricasGlobal.tp).toBe(97);
     expect(metricasGlobal.fp).toBe(0);
-    expect(metricasGlobal.fn).toBe(4);
-    expect(metricasGlobal.recall).toBeCloseTo(0.954, 2);
+    expect(metricasGlobal.fn).toBe(5);
+    expect(metricasGlobal.recall).toBeCloseTo(0.951, 2);
   });
 });
 

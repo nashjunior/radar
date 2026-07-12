@@ -19,6 +19,9 @@ export type CriterioId = Brand<string, 'CriterioId'>;
 /** Identificador opaco de um alerta gerado pelo matching. */
 export type AlertaId = Brand<string, 'AlertaId'>;
 
+/** Identificador opaco de um registro de uso (Cobrança & Assinatura, docs/13 §3). */
+export type RegistroDeUsoId = Brand<string, 'RegistroDeUsoId'>;
+
 /** Construtores de IDs — usados apenas na infra (entrada de dados externos). */
 export const TenantId = (raw: string): TenantId => raw as TenantId;
 export const ClienteFinalId = (raw: string): ClienteFinalId => raw as ClienteFinalId;
@@ -26,3 +29,4 @@ export const EditalId = (raw: string): EditalId => raw as EditalId;
 export const PerfilId = (raw: string): PerfilId => raw as PerfilId;
 export const CriterioId = (raw: string): CriterioId => raw as CriterioId;
 export const AlertaId = (raw: string): AlertaId => raw as AlertaId;
+export const RegistroDeUsoId = (raw: string): RegistroDeUsoId => raw as RegistroDeUsoId;
