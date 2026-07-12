@@ -6,6 +6,12 @@
  *   clienteFinalId vem do contexto de auth (via perfilAtivo), nunca do corpo.
  *   Depende de FaixaValorReferencia (adapter de produção via RAD-76; stub retorna []).
  *
+ * GET /api/matching/criterios
+ *   RAD-311: Lista os critérios de monitoramento do tenant autenticado —
+ *   cold-start do onboarding (P-23): tenant sem critério ⇒ 200 [] (nunca 404),
+ *   sinal que o front usa para decidir wizard-vs-Configurar.
+ *   Auditoria de leitura append-only fail-closed (AB13/P-61) no use case.
+ *
  * PATCH /api/matching/alertas/:alertaId/feedback
  *   US-06: Marca alerta como relevante/irrelevante.
  *   Autorização por objeto (P-51/AB1): verificada no use case — alertaId deve
@@ -17,8 +23,8 @@
  *   Gate P-21: somente leitura — nenhum limiar de matching é alterado.
  *
  * RBAC (P-52, docs/05 §4): CRITERIO_MONITORAMENTO criar (POST /criterios);
- * ALERTA decidir (PATCH feedback); ALERTA ler (GET /metricas — precisão é
- * derivada do feedback de alerta, P-14).
+ * CRITERIO_MONITORAMENTO ler (GET /criterios); ALERTA decidir (PATCH feedback);
+ * ALERTA ler (GET /metricas — precisão é derivada do feedback de alerta, P-14).
  *
  * Refs: RAD-77, RAD-78, docs/14 §2 (US-04/US-06), arquitetura/17 §5.3 (authz por objeto),
  *       modules/matching/src/application/use-cases/*, P-51, P-52.
@@ -28,6 +34,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { AlertaId } from '@radar/kernel';
 import type {
+  ConsultarCriteriosTenantUseCase,
   ConsultarMetricasMatchingUseCase,
   DefinirCriterioMonitoramentoUseCase,
   RegistrarFeedbackAlertaUseCase,
@@ -40,6 +47,7 @@ import type { AutorizarMiddleware } from '../middleware/autorizacao.js';
 
 export interface MatchingContainer {
   definirCriterio: DefinirCriterioMonitoramentoUseCase;
+  consultarCriterios: ConsultarCriteriosTenantUseCase;
   registrarFeedback: RegistrarFeedbackAlertaUseCase;
   consultarMetricas: ConsultarMetricasMatchingUseCase;
   perfilAtivo: PerfilAtivoGateway;
@@ -92,6 +100,20 @@ export function criarMatchingRouter(container: MatchingContainer): Hono {
       );
 
       return c.json(resultado, 201);
+    } catch (err) {
+      return responderErro(c, err);
+    }
+  });
+
+  // GET /criterios — RAD-311 ConsultarCriteriosTenant — RBAC: CRITERIO_MONITORAMENTO ler
+  // Tenant sem critério ⇒ 200 [] (cold-start do onboarding P-23), nunca 404.
+  router.get('/criterios', container.autorizar('CRITERIO_MONITORAMENTO', 'ler'), async (c) => {
+    const tenantId = c.get('tenantId');
+    const signal = c.req.raw.signal;
+
+    try {
+      const resultado = await container.consultarCriterios.executar({ tenantId }, signal);
+      return c.json(resultado);
     } catch (err) {
       return responderErro(c, err);
     }

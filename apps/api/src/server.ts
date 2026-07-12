@@ -25,6 +25,7 @@ import {
 import { FakePagamentoGateway, WebhookPagamentoWorker } from '@radar/cobranca/infra';
 import {
   ConsultarAlertasTenantUseCase,
+  ConsultarCriteriosTenantUseCase,
   ConsultarMetricasMatchingUseCase,
   DefinirCriterioMonitoramentoUseCase,
   RegistrarFeedbackAlertaUseCase,
@@ -122,6 +123,7 @@ export function criarApp(): Hono {
     systemClock,
     auditCriterioStub,
   );
+  const consultarCriterios = new ConsultarCriteriosTenantUseCase(criterioStub, auditCriterioStub);
   const registrarFeedbackAlerta = new RegistrarFeedbackAlertaUseCase(alertaStub, eventPublisherStub);
   const consultarAlertas = new ConsultarAlertasTenantUseCase(alertaStub, editalCatalogoStub);
   const consultarMetricas = new ConsultarMetricasMatchingUseCase(metricaStub);
@@ -179,7 +181,7 @@ export function criarApp(): Hono {
   app.route('/api/checkout', criarCheckoutRouter({ iniciarCheckout }));
   app.route('/api/alertas', criarAlertasRouter({ consultarAlertas, autorizar }));
   app.route('/api/triagem', criarTriagemRouter({ consultarTriagem, solicitarTriagem, registrarFeedback: registrarFeedbackTriagem, perfilAtivo, autorizar, entitlement }));
-  app.route('/api/matching', criarMatchingRouter({ definirCriterio, registrarFeedback: registrarFeedbackAlerta, consultarMetricas, perfilAtivo, autorizar }));
+  app.route('/api/matching', criarMatchingRouter({ definirCriterio, consultarCriterios, registrarFeedback: registrarFeedbackAlerta, consultarMetricas, perfilAtivo, autorizar }));
   app.route('/api/identidade', criarIdentidadeRouter({ gerenciarPerfil, consultarPerfil, perfilAtivo, autorizar }));
   app.route('/api/notificacao', criarNotificacaoRouter({ definirPreferencias, autorizar }));
 

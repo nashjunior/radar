@@ -31,6 +31,7 @@ vi.mock('../../security.js', async (importOriginal) => ({
 import { criarMatchingRouter } from '../../routes/matching.js';
 import type { MatchingContainer } from '../../routes/matching.js';
 import type {
+  ConsultarCriteriosTenantUseCase,
   ConsultarMetricasMatchingUseCase,
   DefinirCriterioMonitoramentoUseCase,
   RegistrarFeedbackAlertaUseCase,
@@ -78,6 +79,9 @@ function buildApp(overrides?: Partial<MatchingContainer>): Hono {
     definirCriterio: {
       executar: vi.fn().mockResolvedValue(CRITERIO_DTO),
     } as unknown as DefinirCriterioMonitoramentoUseCase,
+    consultarCriterios: {
+      executar: vi.fn().mockResolvedValue([CRITERIO_DTO]),
+    } as unknown as ConsultarCriteriosTenantUseCase,
     registrarFeedback: {
       executar: vi.fn().mockResolvedValue(undefined),
     } as unknown as RegistrarFeedbackAlertaUseCase,
@@ -206,6 +210,43 @@ describe('POST /api/matching/criterios', () => {
         body: JSON.stringify({}),
       }),
     );
+
+    const [input] = executar.mock.calls[0] as [{ tenantId: string }];
+    expect(input.tenantId).toBe(TENANT);
+  });
+});
+
+// ─────────────────────────────────────────────
+// GET /api/matching/criterios
+// ─────────────────────────────────────────────
+describe('GET /api/matching/criterios', () => {
+  it('200 + CriterioDTO[] quando o tenant tem critérios', async () => {
+    const app = buildApp();
+    const res = await app.request(new Request(`${BASE}/criterios`));
+
+    expect(res.status).toBe(200);
+    const body = await res.json() as (typeof CRITERIO_DTO)[];
+    expect(body).toEqual([CRITERIO_DTO]);
+  });
+
+  it('200 [] quando o tenant está em cold-start (sem critério) — nunca 404', async () => {
+    const app = buildApp({
+      consultarCriterios: { executar: vi.fn().mockResolvedValue([]) } as unknown as ConsultarCriteriosTenantUseCase,
+    });
+    const res = await app.request(new Request(`${BASE}/criterios`));
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual([]);
+  });
+
+  it('tenantId do JWT é passado ao use case (P-51, nunca de body/query)', async () => {
+    const executar = vi.fn().mockResolvedValue([]);
+    const app = buildApp({
+      consultarCriterios: { executar } as unknown as ConsultarCriteriosTenantUseCase,
+    });
+
+    await app.request(new Request(`${BASE}/criterios`));
 
     const [input] = executar.mock.calls[0] as [{ tenantId: string }];
     expect(input.tenantId).toBe(TENANT);

@@ -102,6 +102,7 @@ function buildApp(): Hono {
 
   app.route('/api/matching', criarMatchingRouter({
     definirCriterio: { executar: vi.fn().mockResolvedValue({ id: 'crit-1', tenantId: TENANT, clienteFinalId: CLIENTE, palavrasChave: [], ativo: true }) } as never,
+    consultarCriterios: { executar: vi.fn().mockResolvedValue([]) } as never,
     registrarFeedback: { executar: vi.fn().mockResolvedValue(undefined) } as never,
     consultarMetricas: { executar: vi.fn().mockResolvedValue({ precisao: 0.7, precisaoAlvo: 0.6, ativacao: 0.5, ativacaoAlvo: 0.5, janelaEmDias: 7 }) } as never,
     perfilAtivo: perfilAtivoOk,
@@ -162,6 +163,19 @@ describe('RBAC (AB2) — POST /api/matching/criterios: CRITERIO_MONITORAMENTO cr
       headers: { 'content-type': 'application/json', ...headerDe(usuarioId) },
       body: JSON.stringify({}),
     });
+    expect(res.status).toBe(status);
+  });
+});
+
+describe('RBAC (AB2) — GET /api/matching/criterios: CRITERIO_MONITORAMENTO ler', () => {
+  it.each([
+    ['ADMIN_CONSULTORIA', USUARIO_ADMIN, 200],
+    ['OPERADOR', USUARIO_OPERADOR, 200],
+    ['CLIENTE_FINAL_READONLY', USUARIO_READONLY, 200],
+    ['sem papel', USUARIO_SEM_PAPEL, 403],
+  ] as const)('%s', async (_papel, usuarioId, status) => {
+    const app = buildApp();
+    const res = await app.request('/api/matching/criterios', { headers: headerDe(usuarioId) });
     expect(res.status).toBe(status);
   });
 });
