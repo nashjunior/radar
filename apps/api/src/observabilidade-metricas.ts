@@ -12,7 +12,7 @@
  * existe, sem inventar um consumidor de fila novo.
  */
 
-import type { AlertaGerado } from '@radar/matching';
+import type { AlertaGerado, AlertaPrazoCriticoReconciliado } from '@radar/matching';
 import type { NotificacaoEnviada } from '@radar/notificacao';
 import type { TriagemConcluida } from '@radar/triagem';
 import type { PipelineBreakerEstadoMudou, PipelineCicloConcluido } from '@radar/ingestao';
@@ -27,7 +27,8 @@ type EventoComMetrica =
   | NotificacaoEnviada
   | TriagemConcluida
   | PipelineCicloConcluido
-  | PipelineBreakerEstadoMudou;
+  | PipelineBreakerEstadoMudou
+  | AlertaPrazoCriticoReconciliado;
 
 /**
  * Decora um `EventPublisher` de qualquer módulo: emite a métrica de SLO correspondente (se
@@ -58,6 +59,8 @@ function emitirMetricasDoEvento(evento: EventoComMetrica, ambiente: string): voi
       return metricaDePipelineCicloConcluido(evento, ambiente);
     case 'pipeline.breaker.estado-mudou':
       return metricaDePipelineBreakerEstadoMudou(evento, ambiente);
+    case 'alerta.prazo-critico.reconciliado':
+      return metricaDeAlertaPrazoCriticoReconciliado(evento, ambiente);
     default:
       return; // evento sem métrica de SLO associada (A18 §5) — no-op
   }
@@ -123,5 +126,45 @@ export function metricaDePipelineBreakerEstadoMudou(evento: PipelineBreakerEstad
   emitirMetricaEmf({
     ambiente,
     metricas: [{ nome: 'pipeline.breaker.aberto', valor: evento.payload.estadoAtual === 'ABERTO' ? 1 : 0, unidade: 'Count' }],
+  });
+}
+
+/**
+ * Falha de CICLO de um scheduler periódico (`iniciarAgendadorAbortavel`, kernel) — chamar do
+ * `aoFalhar` de cada composition root (RAD-332, achado do guardiao-observabilidade na RAD-331).
+ * Sem isto, um ciclo que lança antes de publicar seu evento de sucesso (ex.: `cobertura.contar`
+ * quebrando no Postgres) não deixa nenhum rastro medível — só log, e nenhum alarme (Radar/SLO,
+ * A18 §5) enxerga. `contexto` vira o prefixo do nome (um por scheduler: `alerta.prazo_critico`,
+ * `pipeline`, `notificacao.digest`) sob o segmento `.ciclo.falhou` — mesma hierarquia de
+ * `pipeline.ciclo.ok`/`pipeline.ciclo.erro`, não um nome solto. `erro` vai só como `campos` do
+ * log (passa por `redigirParaLog`: `{ tipo, code? }`, nunca message/stack) — nunca dimensão
+ * CloudWatch, pra não multiplicar combinação de dimensão por scheduler.
+ */
+export function metricaDeCicloFalhou(contexto: string, ambiente: string, erro?: unknown): void {
+  emitirMetricaEmf({
+    ambiente,
+    metricas: [{ nome: `${contexto}.ciclo.falhou`, valor: 1, unidade: 'Count' }],
+    ...(erro === undefined ? {} : { campos: { erro } }),
+  });
+}
+
+/**
+ * SLO "alerta de prazo crítico" (docs/08 §4.1) — error budget ZERO. `perdido` é o déficit
+ * (`elegivel − coberto`) já calculado pelo reconciliador (A18 §5.1(3)/§5.2, P-114); o assinante
+ * só traduz para EMF. Sem dimensão `tenantId` (o evento é agregado global do ciclo, não teria
+ * o que segmentar de qualquer forma). Nomes fixados em A18 §5.
+ */
+export function metricaDeAlertaPrazoCriticoReconciliado(
+  evento: AlertaPrazoCriticoReconciliado,
+  ambiente: string,
+): void {
+  const { elegivel, coberto, perdido } = evento.payload;
+  emitirMetricaEmf({
+    ambiente,
+    metricas: [
+      { nome: 'alerta.prazo_critico.elegivel', valor: elegivel, unidade: 'Count' },
+      { nome: 'alerta.prazo_critico.coberto', valor: coberto, unidade: 'Count' },
+      { nome: 'alerta.prazo_critico.perdido', valor: perdido, unidade: 'Count' },
+    ],
   });
 }

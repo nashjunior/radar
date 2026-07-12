@@ -61,3 +61,9 @@ variable "prazo_critico_perdido_threshold" {
   type        = number
   default     = 1
 }
+
+variable "prazo_critico_ciclo_falhou_threshold" {
+  description = "SLO 'Alerta de prazo crítico': error budget = 0 — qualquer ciclo do reconciliador que lançou (>=1), distinto de 'perdido'. docs/08 §4.1, RAD-332/RAD-333."
+  type        = number
+  default     = 1
+}

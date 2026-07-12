@@ -1,13 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AlertaId, ClienteFinalId, CriterioId, EditalId, PerfilId, TenantId } from '@radar/kernel';
-import { AlertaGerado } from '@radar/matching';
+import { AlertaGerado, AlertaPrazoCriticoReconciliado } from '@radar/matching';
 import { NotificacaoEnviada, NotificacaoId, UsuarioId } from '@radar/notificacao';
 import { TriagemConcluida } from '@radar/triagem';
 import { PipelineBreakerEstadoMudou, PipelineCicloConcluido } from '@radar/ingestao';
 import {
   criarEventPublisherComMetricas,
   metricaDeAlertaGerado,
+  metricaDeCicloFalhou,
   metricaDeNotificacaoEnviada,
+  metricaDeAlertaPrazoCriticoReconciliado,
   metricaDePipelineBreakerEstadoMudou,
   metricaDePipelineCicloConcluido,
   metricaDeTriagemConcluida,
@@ -254,6 +256,69 @@ describe('metricaDePipelineBreakerEstadoMudou (SLO disponibilidade — 2/2)', ()
 
       const registro = JSON.parse(linhas[0]!);
       expect(registro['pipeline.breaker.aberto']).toBe(0);
+    } finally {
+      restaurar();
+    }
+  });
+});
+
+describe('metricaDeAlertaPrazoCriticoReconciliado (SLO error budget zero)', () => {
+  it('emite elegivel/coberto/perdido do payload já calculado pelo reconciliador', () => {
+    const { linhas, restaurar } = capturarConsoleLog();
+    try {
+      const evento = new AlertaPrazoCriticoReconciliado({ elegivel: 10, coberto: 7, perdido: 3 });
+
+      metricaDeAlertaPrazoCriticoReconciliado(evento, 'prod');
+
+      expect(linhas).toHaveLength(1);
+      const registro = JSON.parse(linhas[0]!);
+      expect(registro['alerta.prazo_critico.elegivel']).toBe(10);
+      expect(registro['alerta.prazo_critico.coberto']).toBe(7);
+      expect(registro['alerta.prazo_critico.perdido']).toBe(3);
+      expect(registro.tenantId).toBeUndefined();
+    } finally {
+      restaurar();
+    }
+  });
+});
+
+describe('metricaDeCicloFalhou (RAD-332 — aoFalhar de scheduler periódico)', () => {
+  it('emite <contexto>.ciclo.falhou = 1 (mesma hierarquia de pipeline.ciclo.ok/erro)', () => {
+    const { linhas, restaurar } = capturarConsoleLog();
+    try {
+      metricaDeCicloFalhou('alerta.prazo_critico', 'prod');
+
+      expect(linhas).toHaveLength(1);
+      const registro = JSON.parse(linhas[0]!);
+      expect(registro['alerta.prazo_critico.ciclo.falhou']).toBe(1);
+      expect(registro._aws.CloudWatchMetrics[0].Namespace).toBe('Radar/SLO');
+      expect(registro.erro).toBeUndefined();
+    } finally {
+      restaurar();
+    }
+  });
+
+  it('prefixo do nome varia por contexto (um scheduler não pisa no nome do outro)', () => {
+    const { linhas, restaurar } = capturarConsoleLog();
+    try {
+      metricaDeCicloFalhou('pipeline', 'prod');
+
+      const registro = JSON.parse(linhas[0]!);
+      expect(registro['pipeline.ciclo.falhou']).toBe(1);
+      expect(registro['alerta.prazo_critico.ciclo.falhou']).toBeUndefined();
+    } finally {
+      restaurar();
+    }
+  });
+
+  it('quando erro é passado, vira campo de log redigido ({ tipo, code? }) — nunca message/stack', () => {
+    const { linhas, restaurar } = capturarConsoleLog();
+    try {
+      metricaDeCicloFalhou('pipeline', 'prod', new RangeError('detalhe sensível do banco'));
+
+      const registro = JSON.parse(linhas[0]!);
+      expect(registro.erro).toEqual({ tipo: 'RangeError' });
+      expect(JSON.stringify(registro)).not.toContain('detalhe sensível');
     } finally {
       restaurar();
     }

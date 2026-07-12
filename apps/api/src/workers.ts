@@ -60,13 +60,19 @@ import {
   type Notifier,
 } from '@radar/notificacao';
 import { CryptoIdProvider as CryptoIdProviderNotificacao, NotificacaoWorker } from '@radar/notificacao/infra';
-import { criarMatchingComposicao, type MatchingComposicao } from '@radar/matching/infra';
+import { ReconciliarPrazoCriticoUseCase, type EventPublisher as MatchingEventPublisher } from '@radar/matching';
+import {
+  criarMatchingComposicao,
+  ReconciliadorPrazoCriticoScheduler,
+  INTERVALO_RECONCILIADOR_PRAZO_CRITICO_MS_PADRAO,
+  type MatchingComposicao,
+} from '@radar/matching/infra';
 import { criarLogger, type Logger } from '@radar/observabilidade';
 import { DocumentosEditalAclAdapter } from './infra/documentos-edital-acl-adapter.js';
 import { triagemStub } from './infra/triagem-stub.js';
 import { preferenciaStub } from './infra/notificacao-stub.js';
 import { systemClock } from './infra/system-clock.js';
-import { criarEventPublisherComMetricas } from './observabilidade-metricas.js';
+import { criarEventPublisherComMetricas, metricaDeCicloFalhou } from './observabilidade-metricas.js';
 import { criarEventPublisherComCoberturaPrazoCritico } from './cobertura-prazo-critico-assinante.js';
 import { SqsQueueClient } from './infra/sqs-queue-client.js';
 import { criarPublisherRoteado, resolverQueueUrl } from './infra/event-publisher-roteado.js';
@@ -436,6 +442,64 @@ interface MatchingIniciado {
   readonly db: PgDbClient;
 }
 
+/**
+ * Reconciliador de prazo crítico (P-114, A18 §5.1(3)/§6, RAD-331) — job periódico, nunca o
+ * caminho síncrono da API. Gated por `RECONCILIADOR_PRAZO_CRITICO_ENABLED`, **default OFF**:
+ * mesmo padrão de `INGESTAO_SCHEDULER_ENABLED` (`scheduler.ts`) — compor ≠ ligar, ligar em
+ * produção é decisão de operação separada (P-113 (5)). Não depende de credencial AWS: o
+ * `AlertaPrazoCriticoReconciliado` publicado não tem fila própria (arq/18 §5), só alimenta o
+ * assinante evento→EMF (RAD-302) — o `EventPublisher` aqui é um stub decorado, não SQS.
+ */
+function iniciarReconciliadorPrazoCritico(composicao: MatchingComposicao, controllers: AbortController[]): void {
+  if (process.env['RECONCILIADOR_PRAZO_CRITICO_ENABLED'] !== 'true') {
+    loggerMatching.warn(
+      'reconciliador-prazo-critico.nao-iniciado',
+      'ReconciliadorPrazoCriticoScheduler não iniciado — RECONCILIADOR_PRAZO_CRITICO_ENABLED ausente/false',
+      {},
+    );
+    return;
+  }
+
+  const eventosReconciliadorBase: MatchingEventPublisher = {
+    async publicar(_evento, _signal) {
+      /* stub — sem fila própria (arq/18 §5); o publish só existe para o assinante evento→EMF abaixo rodar */
+    },
+  };
+  const eventosReconciliador = criarEventPublisherComMetricas(eventosReconciliadorBase, AMBIENTE);
+  const reconciliarPrazoCriticoUC = new ReconciliarPrazoCriticoUseCase(
+    composicao.coberturaPrazoCritico,
+    eventosReconciliador,
+    systemClock,
+  );
+
+  const intervaloMs = Number(
+    process.env['RECONCILIADOR_PRAZO_CRITICO_INTERVALO_MS'] ?? INTERVALO_RECONCILIADOR_PRAZO_CRITICO_MS_PADRAO,
+  );
+  const scheduler = new ReconciliadorPrazoCriticoScheduler(reconciliarPrazoCriticoUC, {
+    intervaloMs,
+    aoFalhar: (erro) => {
+      // SLO "0 alertas de prazo crítico perdidos" tem error budget ZERO (A18 §5.1(3)) — sem
+      // esta métrica, um ciclo que lança antes de publicar AlertaPrazoCriticoReconciliado (ex.:
+      // cobertura.contar quebrando no Postgres) some sem nenhum sinal medível (RAD-332).
+      metricaDeCicloFalhou('alerta.prazo_critico', AMBIENTE, erro);
+      loggerMatching.error(
+        'reconciliador-prazo-critico.ciclo-falhou',
+        'Ciclo do ReconciliarPrazoCriticoUseCase falhou',
+        { erro },
+      );
+    },
+  });
+
+  const controller = new AbortController();
+  controllers.push(controller);
+  scheduler.iniciar(controller.signal);
+  loggerMatching.info(
+    'reconciliador-prazo-critico.iniciado',
+    'ReconciliadorPrazoCriticoScheduler iniciado (RECONCILIADOR_PRAZO_CRITICO_ENABLED=true)',
+    { intervaloMs },
+  );
+}
+
 function iniciarMatching(sqsClient: SqsQueueClient, controllers: AbortController[]): MatchingIniciado | null {
   const databaseUrl = process.env['DATABASE_URL'];
   if (!databaseUrl) {
@@ -468,6 +532,8 @@ function iniciarMatching(sqsClient: SqsQueueClient, controllers: AbortController
     ambiente: AMBIENTE,
   });
   loggerMatching.info('worker.iniciado', 'MatchingComposicao iniciada (DbClient+SqsClient reais)', {});
+
+  iniciarReconciliadorPrazoCritico(composicao, controllers);
 
   iniciarConsumidor<EditalIngeridoMatchingMsg>(
     sqsClient,

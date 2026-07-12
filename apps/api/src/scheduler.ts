@@ -21,7 +21,7 @@ import {
   PncpPollingScheduler,
 } from '@radar/ingestao/infra';
 import { criarLogger } from '@radar/observabilidade';
-import { criarEventPublisherComMetricas } from './observabilidade-metricas.js';
+import { criarEventPublisherComMetricas, metricaDeCicloFalhou } from './observabilidade-metricas.js';
 
 const logger = criarLogger('scheduler:ingestao-pncp');
 
@@ -109,15 +109,35 @@ export function iniciarSchedulerIngestao(): SchedulerIngestaoHandle | null {
     ids,
   );
 
+  // Ciclo que lança (não capturado pelo BreakerAbertoError interno de PncpPollingScheduler)
+  // nunca chega a publicar PipelineCicloConcluido — sem aoFalhar, o único rastro seria nenhum
+  // (nem log, nem métrica). RAD-332: mesmo padrão do reconciliador de prazo crítico.
+  const aoFalharCicloPncp = (regime: string) => (erro: unknown) => {
+    metricaDeCicloFalhou('pipeline', AMBIENTE, erro);
+    logger.error('scheduler.ciclo-falhou', `Ciclo do PncpPollingScheduler (${regime}) falhou`, { erro });
+  };
+
   const schedulerPublicacao = new PncpPollingScheduler(
     ingerirEditaisUC,
-    { modalidades: MODALIDADES_MVP, intervaloMs: INTERVALO_MS, tamanhoJanelaMs: TAMANHO_JANELA_MS, regime: 'publicacao' },
+    {
+      modalidades: MODALIDADES_MVP,
+      intervaloMs: INTERVALO_MS,
+      tamanhoJanelaMs: TAMANHO_JANELA_MS,
+      regime: 'publicacao',
+      aoFalhar: aoFalharCicloPncp('publicacao'),
+    },
     ingerirAtualizacoesUC,
     eventosIngestaoStub,
   );
   const schedulerAtualizacao = new PncpPollingScheduler(
     ingerirEditaisUC,
-    { modalidades: MODALIDADES_MVP, intervaloMs: INTERVALO_MS, tamanhoJanelaMs: TAMANHO_JANELA_MS, regime: 'atualizacao' },
+    {
+      modalidades: MODALIDADES_MVP,
+      intervaloMs: INTERVALO_MS,
+      tamanhoJanelaMs: TAMANHO_JANELA_MS,
+      regime: 'atualizacao',
+      aoFalhar: aoFalharCicloPncp('atualizacao'),
+    },
     ingerirAtualizacoesUC,
     eventosIngestaoStub,
   );

@@ -9,10 +9,11 @@ output "alarm_refs" {
     triagem_latencia                = aws_cloudwatch_metric_alarm.triagem_latencia.arn
     caminho_critico_disponibilidade = aws_cloudwatch_metric_alarm.caminho_critico_disponibilidade.arn
     prazo_critico_perdido           = aws_cloudwatch_metric_alarm.prazo_critico_perdido.arn
+    prazo_critico_ciclo_falhou      = aws_cloudwatch_metric_alarm.prazo_critico_ciclo_falhou.arn
   }
 }
 
 output "dashboard_ref" {
-  description = "Handle do dashboard dos 5 SLOs. AWS: CloudWatch dashboard ARN"
+  description = "Handle do dashboard dos SLOs. AWS: CloudWatch dashboard ARN"
   value       = aws_cloudwatch_dashboard.slo.dashboard_arn
 }

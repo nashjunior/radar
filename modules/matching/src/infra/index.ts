@@ -13,3 +13,8 @@ export { ConsumidorAlertaBatch } from './queue/consumidor-alerta-batch.js';
 export { MatchingWorker } from './queue/matching-worker.js';
 export { criarMatchingComposicao } from './composicao.js';
 export type { MatchingComposicao, MatchingComposicaoConfig } from './composicao.js';
+export {
+  ReconciliadorPrazoCriticoScheduler,
+  INTERVALO_RECONCILIADOR_PRAZO_CRITICO_MS_PADRAO,
+} from './schedulers/reconciliador-prazo-critico-scheduler.js';
+export type { ReconciliadorPrazoCriticoSchedulerConfig } from './schedulers/reconciliador-prazo-critico-scheduler.js';

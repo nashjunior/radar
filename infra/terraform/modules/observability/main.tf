@@ -1,9 +1,11 @@
 # Módulo: observability
 # Detecção sobre os SLOs de docs/08 §4.1 (A18 §5, P-111, RAD-300 story 4/5). Consome o que o
 # assinante evento→EMF do app publica (RAD-302) — não faz PutMetricData, não instrumenta
-# use case. Um alarme por SLO + dashboard. Bloqueado, por natureza, pelas stories 1-3 do
-# RAD-300 no que toca dado real; os alarmes existem hoje mesmo assim (INSUFFICIENT_DATA
-# honesto — ver o de prazo crítico abaixo — é o estado correto, alarme ausente não é).
+# use case. Um alarme por SLO + dashboard (o SLO de prazo crítico tem dois: déficit apurado
+# e incapacidade de apurar, RAD-332/RAD-333 — §5 abaixo). Bloqueado, por natureza, pelas
+# stories 1-3 do RAD-300 no que toca dado real; os alarmes existem hoje mesmo assim
+# (INSUFFICIENT_DATA honesto — ver o de prazo crítico abaixo — é o estado correto, alarme
+# ausente não é).
 #
 # Sobre (a) "metric filters" do EMF: EMF não usa aws_cloudwatch_log_metric_filter. O
 # CloudWatch extrai a métrica automaticamente de QUALQUER log event no formato EMF
@@ -150,9 +152,24 @@ resource "aws_cloudwatch_metric_alarm" "caminho_critico_disponibilidade" {
     }
   }
 
+  # Ciclo que lança antes de publicar `pipeline.ciclo.concluido` (RAD-332) não incrementa
+  # `ok` nem `erro` — sem somar aqui, esse ciclo fica invisível e, se for o único ciclo da
+  # janela, `total == 0` lê como 100% de disponibilidade (o pior caso lido como o melhor).
+  metric_query {
+    id          = "cicloFalhou"
+    return_data = false
+    metric {
+      metric_name = "pipeline.ciclo.falhou"
+      namespace   = local.namespace
+      period      = 300
+      stat        = "Sum"
+      dimensions  = { ambiente = var.env }
+    }
+  }
+
   metric_query {
     id          = "total"
-    expression  = "FILL(ok,0) + FILL(erro,0) + FILL(erro5xx,0)"
+    expression  = "FILL(ok,0) + FILL(erro,0) + FILL(erro5xx,0) + FILL(cicloFalhou,0)"
     label       = "Total de ciclos"
     return_data = false
   }
@@ -194,7 +211,34 @@ resource "aws_cloudwatch_metric_alarm" "prazo_critico_perdido" {
   tags = merge(local.tags, { slo = "prazo-critico-perdido", severidade = "maxima" })
 }
 
-# --- Dashboard: os 5 SLOs num só lugar --------------------------------------------------
+# --- SLO 5b: Reconciliador de prazo crítico incapaz de apurar — ERROR BUDGET ZERO ------
+# Irmão do alarme acima, não substituto: `perdido` mede déficit apurado (o reconciliador
+# terminou o ciclo e contou); este mede incapacidade de apurar (o ciclo lançou antes de
+# publicar `alerta.prazo-critico.reconciliado` — ex. `cobertura.contar` quebrando no
+# Postgres, RAD-332). Sem alarme dedicado, um reconciliador que nunca completa fica
+# INSUFFICIENT_DATA em `prazo_critico_perdido` — indistinguível de "nunca rodou". Mesma
+# ausência deliberada de treat_missing_data (arquitetura/18 §5.1): INSUFFICIENT_DATA até a
+# métrica nascer é o estado honesto.
+
+resource "aws_cloudwatch_metric_alarm" "prazo_critico_ciclo_falhou" {
+  alarm_name          = "${var.project}-${var.env}-slo-prazo-critico-ciclo-falhou-severidade-maxima"
+  namespace           = local.namespace
+  metric_name         = "alerta.prazo_critico.ciclo.falhou"
+  dimensions          = { ambiente = var.env }
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  threshold           = var.prazo_critico_ciclo_falhou_threshold
+  alarm_description   = "ERROR BUDGET ZERO (docs/08 §4.1): o reconciliador de prazo crítico lançou antes de terminar o ciclo — incapacidade de apurar, não déficit apurado (distinto de prazo-critico-perdido). Mesmo procedimento de RCA + replay (P-36/P-35). INSUFFICIENT_DATA até o reconciliador rodar é esperado."
+
+  alarm_actions = local.alarm_actions
+  ok_actions    = local.alarm_actions
+
+  tags = merge(local.tags, { slo = "prazo-critico-ciclo-falhou", severidade = "maxima" })
+}
+
+# --- Dashboard: os SLOs num só lugar -----------------------------------------------------
 
 resource "aws_cloudwatch_dashboard" "slo" {
   dashboard_name = "${var.project}-${var.env}-slo"
@@ -269,7 +313,8 @@ resource "aws_cloudwatch_dashboard" "slo" {
             ["Radar/SLO", "pipeline.ciclo.ok", "ambiente", var.env, { id = "ok", visible = false, stat = "Sum" }],
             ["Radar/SLO", "pipeline.ciclo.erro", "ambiente", var.env, { id = "erro", visible = false, stat = "Sum" }],
             ["Radar/SLO", "api.5xx", "ambiente", var.env, { id = "erro5xx", visible = false, stat = "Sum" }],
-            [{ expression = "FILL(ok,0)+FILL(erro,0)+FILL(erro5xx,0)", id = "total", visible = false, label = "Total" }],
+            ["Radar/SLO", "pipeline.ciclo.falhou", "ambiente", var.env, { id = "cicloFalhou", visible = false, stat = "Sum" }],
+            [{ expression = "FILL(ok,0)+FILL(erro,0)+FILL(erro5xx,0)+FILL(cicloFalhou,0)", id = "total", visible = false, label = "Total" }],
             [{ expression = "IF(total==0,100,100*FILL(ok,0)/total)", id = "disponibilidade", label = "Disponibilidade (%)" }]
           ]
           annotations = {
@@ -292,7 +337,8 @@ resource "aws_cloudwatch_dashboard" "slo" {
           metrics = [
             ["Radar/SLO", "alerta.prazo_critico.elegivel", "ambiente", var.env, { stat = "Sum", label = "Elegíveis" }],
             ["Radar/SLO", "alerta.prazo_critico.coberto", "ambiente", var.env, { stat = "Sum", label = "Cobertos" }],
-            ["Radar/SLO", "alerta.prazo_critico.perdido", "ambiente", var.env, { stat = "Sum", label = "Perdidos", color = "#d62728" }]
+            ["Radar/SLO", "alerta.prazo_critico.perdido", "ambiente", var.env, { stat = "Sum", label = "Perdidos", color = "#d62728" }],
+            ["Radar/SLO", "alerta.prazo_critico.ciclo.falhou", "ambiente", var.env, { stat = "Sum", label = "Ciclo falhou (não apurado)", color = "#9467bd" }]
           ]
         }
       },
