@@ -14,6 +14,8 @@ import { Assinatura, CicloDeFaturamento, LiberarReservaUseCase, PlanoComercial, 
 import { criarEntitlementMiddleware } from '../middleware/entitlement.js';
 
 const CICLO = CicloDeFaturamento.criar(new Date('2026-01-01'), new Date('2026-02-01'));
+const AGORA = new Date('2026-01-15');
+const CLOCK = { agora: () => AGORA };
 
 function planoCom(cota: number, codigo = 'starter'): PlanoComercial {
   return PlanoComercial.criar({ codigo, cotaTriagensMes: cota, precoCentavos: 12900 });
@@ -39,18 +41,15 @@ class FakeAssinaturaRepository implements AssinaturaRepository {
     return null;
   }
 
-  /** Fora do escopo de RAD-246 (é RAD-247) — presente só para satisfazer a interface. */
+  /**
+   * Fora do escopo de RAD-246 (é RAD-247) — presente só para satisfazer a
+   * interface. NÃO libera `usoReservado` (RAD-275): a reserva só volta ao pool
+   * na falha (`liberarReserva`).
+   */
   async confirmarUso(tenantId: TenantId, _signal: AbortSignal): Promise<void> {
     const atual = this.porTenant.get(tenantId);
     if (!atual) return;
-    this.porTenant.set(
-      tenantId,
-      Assinatura.criar({
-        ...atual,
-        usoReservado: Math.max(atual.usoReservado - 1, 0),
-        usoConfirmado: atual.usoConfirmado + 1,
-      }),
-    );
+    this.porTenant.set(tenantId, Assinatura.criar({ ...atual, usoConfirmado: atual.usoConfirmado + 1 }));
   }
 
   async salvar(assinatura: Assinatura, _signal: AbortSignal): Promise<void> {
@@ -62,6 +61,7 @@ class FakeAssinaturaRepository implements AssinaturaRepository {
     if (!atual) return false;
     if (atual.estado !== 'ativa' && atual.estado !== 'trial') return false;
     if (atual.usoReservado >= atual.plano.cota.valor) return false;
+    if (atual.trialVencido(AGORA)) return false; // RAD-277 — mesmo gate do adapter Postgres
     this.porTenant.set(tenantId, Assinatura.criar({ ...atual, usoReservado: atual.usoReservado + 1 }));
     return true;
   }
@@ -83,7 +83,7 @@ function buildApp(repo: FakeAssinaturaRepository, statusDownstream: number) {
   });
 
   const entitlement = criarEntitlementMiddleware({
-    reservarCota: new ReservarCotaUseCase(repo),
+    reservarCota: new ReservarCotaUseCase(repo, CLOCK),
     liberarReserva: new LiberarReservaUseCase(repo),
   });
   app.use('*', entitlement);
@@ -149,6 +149,20 @@ describe('criarEntitlementMiddleware — 402 (P-107 (3))', () => {
 
     expect(res.status).toBe(403);
   });
+
+  it('retorna 403 quando o trial venceu (cicloVigente.fim no passado), mesmo com cota sobrando (RAD-277)', async () => {
+    const repo = new FakeAssinaturaRepository();
+    const tenant = TenantId('tenant-trial-vencido');
+    const cicloVencido = CicloDeFaturamento.criar(new Date('2025-12-01'), new Date('2025-12-15')); // fim antes de AGORA
+    repo.definir(tenant, Assinatura.iniciarTrial(tenant, planoCom(5), cicloVencido));
+    const app = buildApp(repo, 202);
+
+    const res = await pedir(app, tenant);
+
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { codigo: string };
+    expect(body.codigo).toBe('ASSINATURA_INATIVA');
+  });
 });
 
 describe('criarEntitlementMiddleware — rollback da reserva na falha síncrona (P-107 (c))', () => {
@@ -176,7 +190,7 @@ describe('criarEntitlementMiddleware — rollback da reserva na falha síncrona 
       await next();
     });
     const entitlement = criarEntitlementMiddleware({
-      reservarCota: new ReservarCotaUseCase(repo),
+      reservarCota: new ReservarCotaUseCase(repo, CLOCK),
       liberarReserva: new LiberarReservaUseCase(repo),
     });
     app.use('*', entitlement);

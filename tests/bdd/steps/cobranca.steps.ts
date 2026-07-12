@@ -16,6 +16,7 @@ import { getFixture } from '../support/hooks.js';
 
 const SIGNAL = new AbortController().signal;
 const CICLO = CicloDeFaturamento.criar(new Date('2026-01-01'), new Date('2026-02-01'));
+const CLOCK = { agora: () => new Date() };
 
 interface CobrancaCtx {
   erroCatch: unknown;
@@ -77,18 +78,32 @@ Given(
   },
 );
 
+// RAD-277: trial vencido (cicloVigente.fim no passado) — o gate do PRÓPRIO
+// Postgres (`periodo_fim > now()`) precisa barrar, não só a leitura de apoio.
+Given(
+  'uma assinatura em trial vencido do tenant {string} com cota {int} e uso reservado {int}',
+  async function (tenantIdRaw: string, cota: number, usoReservado: number) {
+    const tenantId = TenantId(tenantIdRaw);
+    const plano = PlanoComercial.criar({ codigo: 'starter', cotaTriagensMes: cota, precoCentavos: 12900 });
+    const cicloVencido = CicloDeFaturamento.criar(new Date('2020-01-01'), new Date('2020-01-15'));
+    const trial = Assinatura.iniciarTrial(tenantId, plano, cicloVencido);
+    const assinatura = Assinatura.criar({ ...trial, usoReservado });
+    await repo().salvar(assinatura, SIGNAL);
+  },
+);
+
 // ---------------------------------------------------------------------------
 // When
 // ---------------------------------------------------------------------------
 
 When('o sistema reserva a cota do tenant {string}', async function (tenantIdRaw: string) {
-  const uc = new ReservarCotaUseCase(repo());
+  const uc = new ReservarCotaUseCase(repo(), CLOCK);
   await uc.executar({ tenantId: TenantId(tenantIdRaw) }, SIGNAL);
   ctx.reservaConcedida = true;
 });
 
 When('o sistema tenta reservar a cota do tenant {string}', async function (tenantIdRaw: string) {
-  const uc = new ReservarCotaUseCase(repo());
+  const uc = new ReservarCotaUseCase(repo(), CLOCK);
   try {
     await uc.executar({ tenantId: TenantId(tenantIdRaw) }, SIGNAL);
     ctx.reservaConcedida = true;
@@ -102,6 +117,13 @@ When('o sistema libera a reserva do tenant {string}', async function (tenantIdRa
   await uc.executar({ tenantId: TenantId(tenantIdRaw) }, SIGNAL);
 });
 
+// `confirmarUso` é chamado direto no repositório (não via `ConfirmarUsoUseCase`,
+// que também grava `RegistroDeUso`/publica evento) — o que este cenário prova é o
+// contrato do adapter com o gate (RAD-275), não a orquestração de RAD-247.
+When('o sistema confirma o uso do tenant {string}', async function (tenantIdRaw: string) {
+  await repo().confirmarUso(TenantId(tenantIdRaw), SIGNAL);
+});
+
 When(
   '{int} requisições paralelas tentam reservar a cota do tenant {string}',
   async function (quantidade: number, tenantIdRaw: string) {
@@ -111,7 +133,7 @@ When(
     // Postgres, não de qualquer coordenação em JS (prova a garantia real, P-107 (3)).
     ctx.resultadosConcorrencia = await Promise.all(
       Array.from({ length: quantidade }, () => {
-        const uc = new ReservarCotaUseCase(repo());
+        const uc = new ReservarCotaUseCase(repo(), CLOCK);
         return uc.executar({ tenantId }, SIGNAL).then(
           (): 'concedida' => 'concedida',
           (erro: unknown): 'negada' | 'erro-inesperado' =>

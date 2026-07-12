@@ -23,6 +23,7 @@ describe('PostgresAssinaturaRepository.reservarCota — UPDATE atômico único (
     expect(texto).toContain('uso_reservado = uso_reservado + 1');
     expect(texto).toContain("status IN ('ativa', 'trial')");
     expect(texto).toContain('uso_reservado < cota_triagens_mes');
+    expect(texto).toContain("(status <> 'trial' OR periodo_fim > now())"); // RAD-277 — trial vencido não passa
     expect(texto).not.toContain('SELECT');
     expect(params).toEqual([TENANT]);
     expect(opts).toEqual({ signal: SIGNAL });
@@ -51,8 +52,8 @@ describe('PostgresAssinaturaRepository.liberarReserva — compensação (P-107 (
   });
 });
 
-describe('PostgresAssinaturaRepository.confirmarUso — converte reserva em uso confirmado (RAD-247)', () => {
-  it('incrementa uso_confirmado e decrementa uso_reservado (GREATEST, nunca negativo) num único UPDATE', async () => {
+describe('PostgresAssinaturaRepository.confirmarUso — marca reserva como faturável, NÃO libera (RAD-275)', () => {
+  it('incrementa uso_confirmado e NÃO mexe em uso_reservado', async () => {
     const query = vi.fn().mockResolvedValue({ rows: [] });
     const repo = new PostgresAssinaturaRepository({ query });
 
@@ -63,7 +64,7 @@ describe('PostgresAssinaturaRepository.confirmarUso — converte reserva em uso 
     const texto = String(sql).replace(/\s+/g, ' ');
     expect(texto).toContain('UPDATE assinatura');
     expect(texto).toContain('uso_confirmado = uso_confirmado + 1');
-    expect(texto).toContain('GREATEST(uso_reservado - 1, 0)');
+    expect(texto).not.toContain('uso_reservado');
     expect(params).toEqual([TENANT]);
     expect(opts).toEqual({ signal: SIGNAL });
   });

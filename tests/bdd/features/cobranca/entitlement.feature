@@ -43,3 +43,15 @@ Feature: Gate de entitlement de Cobrança & Assinatura
     Then exatamente 1 requisição deve ter sido concedida
     And exatamente 19 requisições devem ter recebido CotaExcedidaError
     And o uso reservado do tenant "tenant-concorrencia-pg" deve ser 1
+
+  Scenario: Confirmação de uso NÃO devolve a reserva ao pool — cota mensal existe de fato (RAD-275)
+    Given uma assinatura ativa do tenant "tenant-cota-mensal" com cota 1 e uso reservado 0
+    When o sistema reserva a cota do tenant "tenant-cota-mensal"
+    And o sistema confirma o uso do tenant "tenant-cota-mensal"
+    And o sistema tenta reservar a cota do tenant "tenant-cota-mensal"
+    Then a operação deve lançar CotaExcedidaError com cota 1 e usado 1
+
+  Scenario: Trial vencido (cicloVigente.fim no passado) — reserva lança AssinaturaInativaError mesmo com cota sobrando (RAD-277)
+    Given uma assinatura em trial vencido do tenant "tenant-trial-vencido" com cota 5 e uso reservado 0
+    When o sistema tenta reservar a cota do tenant "tenant-trial-vencido"
+    Then a operação deve lançar AssinaturaInativaError

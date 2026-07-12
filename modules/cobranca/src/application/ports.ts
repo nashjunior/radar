@@ -46,11 +46,13 @@ export interface AssinaturaRepository {
   liberarReserva(tenantId: TenantId, signal: AbortSignal): Promise<void>;
 
   /**
-   * `UPDATE assinatura SET uso_confirmado = uso_confirmado + 1, uso_reservado =
-   * GREATEST(uso_reservado - 1, 0) WHERE tenant_id = $1` (RAD-247) — converte 1
-   * unidade de reserva em uso confirmado. Chamada só depois de
-   * `RegistroDeUsoRepository.registrar` retornar `true` (nunca no
-   * duplo-clique/replay do consumidor de `triagem.concluida`).
+   * `UPDATE assinatura SET uso_confirmado = uso_confirmado + 1 WHERE tenant_id =
+   * $1` (RAD-247) — marca 1 unidade de reserva como faturável. NÃO decrementa
+   * `uso_reservado` (RAD-275): a reserva só volta ao pool na falha
+   * (`liberarReserva`), nunca na confirmação — senão a cota mensal deixa de
+   * existir na prática. Chamada só depois de `RegistroDeUsoRepository.registrar`
+   * retornar `true` (nunca no duplo-clique/replay do consumidor de
+   * `triagem.concluida`).
    */
   confirmarUso(tenantId: TenantId, signal: AbortSignal): Promise<void>;
 }

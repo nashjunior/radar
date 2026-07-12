@@ -46,6 +46,7 @@ export class InMemoriaAssinaturaRepository implements AssinaturaRepository {
     const atual = this.obterOuProvisionar(tenantId);
     if (atual.estado !== 'ativa' && atual.estado !== 'trial') return false;
     if (atual.usoReservado >= atual.plano.cota.valor) return false;
+    if (atual.trialVencido(new Date())) return false; // RAD-277 — mesmo gate do adapter Postgres
     this.porTenant.set(tenantId, Assinatura.criar({ ...atual, usoReservado: atual.usoReservado + 1 }));
     return true;
   }
@@ -59,17 +60,17 @@ export class InMemoriaAssinaturaRepository implements AssinaturaRepository {
     );
   }
 
-  /** Converte 1 unidade de reserva em uso confirmado (RAD-247) — fora do escopo do gate, só para satisfazer a interface. */
+  /**
+   * Marca 1 unidade de reserva como faturável (RAD-247) — NÃO libera `usoReservado`
+   * (RAD-275): a reserva só volta ao pool na falha (`liberarReserva`), replicando a
+   * mesma correção do adapter Postgres.
+   */
   async confirmarUso(tenantId: TenantId, _signal: AbortSignal): Promise<void> {
     const atual = this.porTenant.get(tenantId);
     if (!atual) return;
     this.porTenant.set(
       tenantId,
-      Assinatura.criar({
-        ...atual,
-        usoReservado: Math.max(atual.usoReservado - 1, 0),
-        usoConfirmado: atual.usoConfirmado + 1,
-      }),
+      Assinatura.criar({ ...atual, usoConfirmado: atual.usoConfirmado + 1 }),
     );
   }
 

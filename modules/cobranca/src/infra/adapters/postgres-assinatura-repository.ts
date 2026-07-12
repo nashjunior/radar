@@ -31,6 +31,10 @@ export class PostgresAssinaturaRepository implements AssinaturaRepository {
   /**
    * `WHERE status IN ('ativa','trial') AND uso_reservado < cota_triagens_mes` —
    * trial também passa no gate (é a janela dos 14 dias sem cartão, P-107 (9)).
+   * `AND (status <> 'trial' OR periodo_fim > now())` (RAD-277): sem isso, o
+   * limite do trial era só a cota, nunca o tempo — um trial vencido sem
+   * checkout continuava triando até esgotar a cota seed. `now()` do PRÓPRIO
+   * banco (não do app) preserva a decisão sob concorrência no mesmo UPDATE.
    * `RETURNING 1` só para detectar `rows.length` — o valor em si é descartável.
    */
   async reservarCota(tenantId: TenantId, signal: AbortSignal): Promise<boolean> {
@@ -40,6 +44,7 @@ export class PostgresAssinaturaRepository implements AssinaturaRepository {
         WHERE tenant_id = $1
           AND status IN ('ativa', 'trial')
           AND uso_reservado < cota_triagens_mes
+          AND (status <> 'trial' OR periodo_fim > now())
         RETURNING 1 AS ok`,
       [tenantId],
       { signal },
@@ -59,16 +64,16 @@ export class PostgresAssinaturaRepository implements AssinaturaRepository {
   }
 
   /**
-   * Converte 1 unidade de reserva em uso confirmado (RAD-247, consumidor de
-   * `triagem.concluida`). `GREATEST` no decremento pela mesma razão de
-   * `liberarReserva`: nunca deixar `uso_reservado` negativo se este método for
-   * chamado fora de ordem em algum cenário de teste/replay não previsto.
+   * Marca 1 unidade de reserva como faturável (RAD-247, consumidor de
+   * `triagem.concluida`). NÃO decrementa `uso_reservado` (RAD-275): a reserva só
+   * volta ao pool na falha (`liberarReserva`), nunca na confirmação — senão
+   * `uso_reservado` mede concorrência em voo em vez de consumo do ciclo, e a cota
+   * mensal deixa de existir na prática (docs/13 §3, tabela Reserva × RegistroDeUso).
    */
   async confirmarUso(tenantId: TenantId, signal: AbortSignal): Promise<void> {
     await this.db.query(
       `UPDATE assinatura
-          SET uso_confirmado = uso_confirmado + 1,
-              uso_reservado  = GREATEST(uso_reservado - 1, 0)
+          SET uso_confirmado = uso_confirmado + 1
         WHERE tenant_id = $1`,
       [tenantId],
       { signal },

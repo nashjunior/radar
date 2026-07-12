@@ -18,8 +18,9 @@ export interface ConfirmarUsoInput {
 const LIMIARES_ALERTA_COTA = [100, 80] as const;
 
 /**
- * Consumidor de `triagem.concluida` (arquitetura/03 §3) — RAD-247. Converte a
- * reserva de cota em uso confirmado e grava a linha faturável de `RegistroDeUso`.
+ * Consumidor de `triagem.concluida` (arquitetura/03 §3) — RAD-247. Marca a
+ * reserva como faturável (sem liberá-la, RAD-275) e grava a linha faturável de
+ * `RegistroDeUso`.
  *
  * Idempotente por design (P-107 (4)): `RegistroDeUsoRepository.registrar` faz
  * `INSERT ... ON CONFLICT DO NOTHING` pela chave natural + período. SQS é
@@ -60,9 +61,10 @@ export class ConfirmarUsoUseCase {
   /**
    * O alerta usa a MESMA grandeza que o gate compara (`uso_reservado < cota`,
    * RAD-246) e que a UI exibe como medidor (RAD-264) — nunca `usoReservado +
-   * usoConfirmado`: as duas contam o mesmo consumo (a reserva que vira fatura
-   * decrementa `usoReservado`, RAD-247), então somar dobra a contagem já
-   * confirmada e o alerta de 80% dispara com a cota real ainda em ~40%.
+   * usoConfirmado`: `confirmarUso` não libera a reserva (RAD-275), então
+   * `usoReservado` já é o consumo do ciclo inteiro (em voo + concluídas); somar
+   * dobraria a contagem já confirmada e o alerta de 80% dispararia com a cota
+   * real ainda em ~40%.
    */
   private async avisarSeCotaCritica(assinatura: Assinatura, signal: AbortSignal): Promise<void> {
     const cota = assinatura.plano.cota.valor;
