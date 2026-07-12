@@ -30,6 +30,11 @@ output "asaas_webhook_token_secret_ref" {
   value       = aws_secretsmanager_secret.asaas_webhook_token.arn
 }
 
+output "asaas_webhook_token_anterior_secret_ref" {
+  description = "Handle do segredo transitório ASAAS_WEBHOOK_TOKEN_ANTERIOR (dupla-chave, RAD-261/RAD-262). Normalmente vazio. AWS: Secrets Manager ARN"
+  value       = aws_secretsmanager_secret.asaas_webhook_token_anterior.arn
+}
+
 output "asaas_api_key_secret_ref" {
   description = "Handle do segredo da API key do Asaas (confirmação outbound, P-107 (5)/(6)). AWS: Secrets Manager ARN"
   value       = aws_secretsmanager_secret.asaas_api_key.arn

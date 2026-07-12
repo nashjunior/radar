@@ -62,11 +62,18 @@ Pré-requisito **duro** para os dois: verificação **dupla-chave** no ACL (acei
 webhook token derruba a fila. Cadência: **90 dias** (webhook token) / **180 dias** (API key),
 e **imediata** em suspeita de vazamento ou desligamento de quem teve acesso.
 
-- **`asaas_webhook_token`** — (1) gere o novo valor e publique-o como nova *version* do segredo,
-  mantendo o anterior aceito pela app (dupla-chave); (2) `PUT /v3/webhooks/{id}` com o novo
-  `authToken`; (3) confirme entrega (logs da borda: 200 no `POST /webhooks/pagamento`);
-  (4) só então retire o token anterior da app. Se a fila já estiver interrompida, reative com
-  `interrupted: false` no mesmo `PUT` **depois** de corrigir o token — nunca antes.
+- **`asaas_webhook_token`** — a dupla-chave (RAD-261) já tem IaC dedicada: o segredo
+  `asaas_webhook_token_anterior` (`ASAAS_WEBHOOK_TOKEN_ANTERIOR` na task, RAD-262), sempre
+  presente e normalmente **vazio** — `tokenWebhookAsaasValido` trata segredo vazio como
+  "pula", nunca como match. Passo a passo: (1) publique o valor **atual** de
+  `asaas_webhook_token` como nova *version* de `asaas_webhook_token_anterior` (`aws
+  secretsmanager put-secret-value`, fora do Terraform — mesmo `ignore_changes` dos demais);
+  (2) gere o novo valor e publique-o como nova *version* de `asaas_webhook_token` — a partir
+  daqui a app aceita os dois; (3) `PUT /v3/webhooks/{id}` com o novo `authToken`; (4) confirme
+  entrega (logs da borda: 200 no `POST /webhooks/pagamento`); (5) só então esvazie
+  `asaas_webhook_token_anterior` (nova *version* com `secret_string = ""`) para fechar a
+  janela. Se a fila já estiver interrompida, reative com `interrupted: false` no mesmo `PUT`
+  **depois** de corrigir o token — nunca antes.
 - **`asaas_api_key`** — reemita no painel do Asaas (Integrações → Chaves de API), publique a nova
   version do segredo e **só então** revogue a antiga no painel (a app lê o valor no boot; a
   ordem inversa derruba as chamadas de saída, inclusive a confirmação de pagamento).

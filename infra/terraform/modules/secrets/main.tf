@@ -162,6 +162,32 @@ resource "aws_secretsmanager_secret_version" "asaas_webhook_token" {
   }
 }
 
+# Segredo TRANSITÓRIO da dupla-chave (RAD-261/RAD-262): valor anterior aceito por
+# `tokenWebhookAsaasValido` durante a janela de rotação. Ao contrário dos demais segredos
+# deste módulo, a version inicial é STRING VAZIA — não "PLACEHOLDER" — porque
+# `tokenWebhookAsaasValido` trata segredo vazio como "pula" (nunca compara), enquanto
+# qualquer string não-vazia viraria um segundo token válido por omissão. O estado normal
+# (fora da janela de rotação) é vazio; só o runbook (README, "Rotação") o popula, e só
+# nessa janela.
+resource "aws_secretsmanager_secret" "asaas_webhook_token_anterior" {
+  name        = "/${var.project}/${var.env}/asaas-webhook-token-anterior"
+  description = "Valor anterior do ASAAS_WEBHOOK_TOKEN, aceito durante a janela de rotação (dupla-chave, RAD-261)"
+  kms_key_id  = var.encryption_key_ref
+
+  recovery_window_in_days = var.env == "prod" ? 30 : 7
+
+  tags = local.tags
+}
+
+resource "aws_secretsmanager_secret_version" "asaas_webhook_token_anterior" {
+  secret_id     = aws_secretsmanager_secret.asaas_webhook_token_anterior.id
+  secret_string = ""
+
+  lifecycle {
+    ignore_changes = [secret_string]
+  }
+}
+
 resource "aws_secretsmanager_secret" "asaas_api_key" {
   name        = "/${var.project}/${var.env}/asaas-api-key"
   description = "Chave de API do Asaas (AsaasPagamentoGateway) — confirmação outbound antes de ativar entitlement (P-107 (5)/(6))"
