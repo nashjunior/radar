@@ -11,10 +11,15 @@ import type { Severidade } from '../../domain/value-objects/risco.js';
 import type { EntradaExtracaoDTO } from '../../application/dtos.js';
 import type { EstimativaDeCusto, LlmGateway, UsoLlm } from '../../application/ports.js';
 import { calcularCustoUsd } from '../../application/precificacao-llm.js';
+import {
+  CATEGORIAS,
+  FERRAMENTA_EXTRACAO,
+  MAX_TOKENS_EXTRACAO,
+  SEVERIDADES,
+} from './anthropic-extracao-schema.js';
 
-// Teto de output da extração — espelha MAX_TOKENS_EXTRACAO de anthropic-extracao-schema.ts.
-// Valor local para evitar ciclo de importação: schema importa CATEGORIAS deste módulo.
-const MAX_TOKENS_EXTRACAO = 8192;
+/** Re-exportadas para os callers que já importam daqui — fonte única é anthropic-extracao-schema.ts (RAD-254). */
+export { CATEGORIAS, FERRAMENTA_EXTRACAO, SEVERIDADES };
 
 /**
  * Requisição crua ao modelo. `system` é a instrução FIXA; `userContent` já traz o edital como DADO
@@ -55,9 +60,6 @@ export interface LlmClient {
   /** Admission control (RAD-243) — `count_tokens` da entrada, sem chamar o modelo. Grátis, RPM próprio. */
   contarTokensDeEntrada(req: LlmExtracaoRequest, signal: AbortSignal): Promise<number>;
 }
-
-/** Nome da ferramenta de saída estruturada (structured output) — camada 3. */
-export const FERRAMENTA_EXTRACAO = 'registrar_extracao';
 
 /**
  * Instrução FIXA e versionada (A16 §2.4 roda o gold set a cada mudança). É do sistema; o edital
@@ -208,10 +210,6 @@ interface SaidaExtracaoBruta {
   requisitos: RequisitoBruto[];
   riscos: RiscoBruto[];
 }
-
-/** Vocabulário canônico da validação (camada 3). Exportado para o schema da ferramenta não divergir. */
-export const CATEGORIAS: readonly string[] = ['juridica', 'fiscal', 'tecnica', 'economica'];
-export const SEVERIDADES: readonly string[] = ['baixa', 'media', 'alta'];
 
 function validarSaidaExtracao(bruto: unknown): SaidaExtracaoBruta {
   const o = objeto(bruto, 'saída');

@@ -3,7 +3,7 @@ import type { UsoLlm } from './ports.js';
 /**
  * Preços USD por MILHÃO de tokens (input/output) — fonte: catálogo verificado no veredicto de
  * arquitetura de P-20 (docs/98, Eng/Artur, RAD-227, 2026-07-11). Fonte única do contexto (como
- * `CATEGORIAS`/`SEVERIDADES` em `anthropic-llm-gateway.ts`) — atualizar aqui quando o catálogo mudar.
+ * `CATEGORIAS`/`SEVERIDADES` em `anthropic-extracao-schema.ts`) — atualizar aqui quando o catálogo mudar.
  *
  * Tokens de CACHE (P-95) ainda não são precificados à parte: hoje `paramsExtracao` não seta
  * `cache_control`, então `cacheReadInputTokens`/`cacheCreationInputTokens` chegam zerados na
