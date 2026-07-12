@@ -58,13 +58,15 @@ export class ConfirmarUsoUseCase {
   }
 
   /**
-   * `confirmarUso` só troca reservado↔confirmado — o TOTAL consumido não muda
-   * neste passo (mudou na reserva, RAD-246). Por isso o percentual é calculado a
-   * partir da `Assinatura` lida ANTES da confirmação: é o mesmo valor de depois.
+   * O alerta usa a MESMA grandeza que o gate compara (`uso_reservado < cota`,
+   * RAD-246) e que a UI exibe como medidor (RAD-264) — nunca `usoReservado +
+   * usoConfirmado`: as duas contam o mesmo consumo (a reserva que vira fatura
+   * decrementa `usoReservado`, RAD-247), então somar dobra a contagem já
+   * confirmada e o alerta de 80% dispara com a cota real ainda em ~40%.
    */
   private async avisarSeCotaCritica(assinatura: Assinatura, signal: AbortSignal): Promise<void> {
     const cota = assinatura.plano.cota.valor;
-    const usoAtual = assinatura.usoReservado + assinatura.usoConfirmado;
+    const usoAtual = assinatura.usoReservado;
     const percentual = (usoAtual / cota) * 100;
     const limiarAtingido = LIMIARES_ALERTA_COTA.find(limiar => percentual >= limiar);
     if (limiarAtingido === undefined) return;

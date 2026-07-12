@@ -178,6 +178,23 @@ export interface AuditoriaWebhookPagamentoPort {
 }
 
 /**
+ * Catálogo de planos comerciais disponíveis para contratação (docs/09 §6.1 —
+ * Starter/Pro/Consultoria, preços `[A VALIDAR]`, P-107 (a)/(b)). Resolve o
+ * `planoCodigo` recebido em `POST /api/checkout/iniciar` (RAD-264) num
+ * `PlanoComercial` completo (cota + preço) antes de abrir o checkout — o cliente
+ * nunca envia cota/preço, só o código. `null` quando o código não corresponde a
+ * nenhum plano vigente.
+ */
+export interface PlanoComercialCatalogo {
+  porCodigo(codigo: string, signal: AbortSignal): Promise<PlanoComercial | null>;
+}
+
+/** Relógio injetável — testabilidade de `diasRestantes` (RAD-264) sem `Date` real no use case. */
+export interface ClockProvider {
+  agora(): Date;
+}
+
+/**
  * Fila de processamento assíncrono do webhook (P-107 (5), compensação OBRIGATÓRIA
  * do aceite de segurança RAD-253 por não haver HMAC no raw body do Asaas): a rota
  * HTTP só autentica + traduz + enfileira — nunca chama o gateway de confirmação

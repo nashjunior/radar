@@ -15,7 +15,13 @@ import {
   RegistrarFeedbackTriagemUseCase,
   SolicitarTriagemUseCase,
 } from '@radar/triagem';
-import { LiberarReservaUseCase, ProcessarEventoDePagamentoUseCase, ReservarCotaUseCase } from '@radar/cobranca';
+import {
+  ConsultarAssinaturaUseCase,
+  IniciarCheckoutUseCase,
+  LiberarReservaUseCase,
+  ProcessarEventoDePagamentoUseCase,
+  ReservarCotaUseCase,
+} from '@radar/cobranca';
 import { FakePagamentoGateway, WebhookPagamentoWorker } from '@radar/cobranca/infra';
 import {
   ConsultarAlertasTenantUseCase,
@@ -38,6 +44,7 @@ import { criarMatchingRouter } from './routes/matching.js';
 import { criarIdentidadeRouter } from './routes/identidade.js';
 import { criarNotificacaoRouter } from './routes/notificacao.js';
 import { criarMeRouter } from './routes/me.js';
+import { criarAssinaturaRouter, criarCheckoutRouter } from './routes/cobranca.js';
 import { criarWebhookPagamentoRouter } from './routes/webhooks/pagamento.js';
 import { responderErro } from './errors.js';
 import { criarLoggerHttpSeguro, redigirParaLog } from './logging.js';
@@ -47,6 +54,8 @@ import { criarEntitlementMiddleware } from './middleware/entitlement.js';
 import { PerfilAtivoConfigAdapter } from './infra/perfil-ativo-config-adapter.js';
 import { PermissaoConfigAdapter } from './infra/permissao-config-adapter.js';
 import { assinaturaStub } from './infra/cobranca-stub.js';
+import { PlanoComercialConfigAdapter } from './infra/plano-comercial-config-adapter.js';
+import { systemClock } from './infra/system-clock.js';
 import { auditoriaWebhookStub, InMemoriaFilaDeWebhookPagamento, webhookEventoStub } from './infra/cobranca-webhook-stub.js';
 import { triagemStub, extracaoStub } from './infra/triagem-stub.js';
 import { perfilRepositoryStub, perfilIdProviderStub } from './infra/identidade-stub.js';
@@ -59,7 +68,6 @@ import {
   faixaValorStub,
   eventPublisherStub,
   metricaStub,
-  systemClock,
 } from './infra/matching-stub.js';
 
 /** Seed de tenants — obrigatório em runtime para que o endpoint responda 200. */
@@ -69,6 +77,10 @@ const perfilAtivo = PerfilAtivoConfigAdapter.fromJson(tenantSeed);
 /** Seed de atribuição de papel (P-52) — obrigatório em runtime para que RBAC autorize alguém. */
 const permissaoSeed = process.env['PERMISSAO_SEED'] ?? '{}';
 const permissaoRepository = PermissaoConfigAdapter.fromJson(permissaoSeed);
+
+/** Catálogo de planos comerciais (RAD-264) — preços `[A VALIDAR]` (docs/09 §6.1, P-107 (a)/(b)), nunca hardcoded. */
+const planosComerciaisSeed = process.env['PLANOS_COMERCIAIS_SEED'] ?? '{}';
+const planoComercialCatalogo = PlanoComercialConfigAdapter.fromJson(planosComerciaisSeed);
 
 /**
  * Segredos do webhook Asaas (Secrets Manager com rotação, P-08 — injetados como env
@@ -122,13 +134,19 @@ export function criarApp(): Hono {
   const liberarReserva = new LiberarReservaUseCase(assinaturaStub);
   const entitlement = criarEntitlementMiddleware({ reservarCota, liberarReserva });
 
+  const consultarAssinatura = new ConsultarAssinaturaUseCase(assinaturaStub, systemClock);
+
   // PagamentoGateway real (AsaasPagamentoGateway) entra quando ASAAS_API_KEY/Secrets
   // Manager forem provisionados — FakePagamentoGateway mantém a confirmação outbound
   // (P-107 (5)) exercitável em dev/demo sem depender do Asaas real estar de pé.
+  // Instância única compartilhada entre checkout e webhook: o mesmo `assinaturaExternaId`
+  // aberto por IniciarCheckoutUseCase precisa existir no fake quando o webhook processar.
+  const pagamentoGateway = new FakePagamentoGateway();
+  const iniciarCheckout = new IniciarCheckoutUseCase(planoComercialCatalogo, pagamentoGateway);
   const processarEventoDePagamento = new ProcessarEventoDePagamentoUseCase(
     assinaturaStub,
     webhookEventoStub,
-    new FakePagamentoGateway(),
+    pagamentoGateway,
     auditoriaWebhookStub,
   );
   // Compensação "processamento assíncrono" (aceite RAD-253, P-107 (5)) — a rota só
@@ -157,6 +175,8 @@ export function criarApp(): Hono {
 
   // API principal — tenant obrigatório
   app.route('/api/me', criarMeRouter({ resolverContexto }));
+  app.route('/api/me/assinatura', criarAssinaturaRouter({ consultarAssinatura }));
+  app.route('/api/checkout', criarCheckoutRouter({ iniciarCheckout }));
   app.route('/api/alertas', criarAlertasRouter({ consultarAlertas, autorizar }));
   app.route('/api/triagem', criarTriagemRouter({ consultarTriagem, solicitarTriagem, registrarFeedback: registrarFeedbackTriagem, perfilAtivo, autorizar, entitlement }));
   app.route('/api/matching', criarMatchingRouter({ definirCriterio, registrarFeedback: registrarFeedbackAlerta, consultarMetricas, perfilAtivo, autorizar }));

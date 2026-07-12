@@ -48,3 +48,11 @@ export class PagamentoGatewayIndisponivelError extends DomainError {
     super(`gateway de pagamento '${provedor}' indisponível${motivo ? `: ${motivo}` : ''}`);
   }
 }
+
+/** `planoCodigo` do checkout (POST /api/checkout/iniciar, RAD-264) não corresponde a nenhum plano comercial vigente. */
+export class PlanoComercialNaoEncontradoError extends DomainError {
+  readonly code = 'PLANO_COMERCIAL_NAO_ENCONTRADO' as const;
+  constructor(codigo: string) {
+    super(`plano comercial não encontrado: '${codigo}'`);
+  }
+}

@@ -7,6 +7,7 @@ export {
   AssinaturaNaoEncontradaError,
   CotaExcedidaError,
   PagamentoGatewayIndisponivelError,
+  PlanoComercialNaoEncontradoError,
 } from './errors/index.js';
 export { CicloDeFaturamento } from './value-objects/ciclo-de-faturamento.js';
 export { CotaMensal } from './value-objects/cota-mensal.js';

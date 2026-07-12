@@ -134,4 +134,16 @@ describe('ConfirmarUsoUseCase', () => {
     const [evento] = eventos.publicar.mock.calls[0]!;
     expect(evento.payload.percentual).toBe(100);
   });
+
+  it('não soma usoReservado + usoConfirmado (mesma grandeza do gate, RAD-264) — não dispara com 40% real', async () => {
+    // usoReservado=4, usoConfirmado=4, cota=10: soma daria 80% (bug), mas o gate
+    // (uso_reservado < cota) e a UI (RAD-264) leem só usoReservado ⇒ 40% real.
+    const assinaturas = makeAssinaturas(assinaturaCom(4, 4, 10));
+    const eventos = makeEventos();
+    const uc = new ConfirmarUsoUseCase(assinaturas, makeRegistros([true]), makeIds(), eventos);
+
+    await uc.executar(INPUT, noop);
+
+    expect(eventos.publicar).not.toHaveBeenCalled();
+  });
 });
