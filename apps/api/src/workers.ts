@@ -88,6 +88,8 @@ const loggerTriagemBatch = criarLogger('worker:triagem-batch');
 const loggerTriagemSolicitada = criarLogger('worker:triagem-solicitada');
 const loggerNotificacao = criarLogger('worker:notificacao');
 const loggerMatching = criarLogger('worker:matching');
+/** Consumidor único de `EDITAIS_INGERIDOS` (RAD-336) — serve Matching E a pré-extração em lote da Triagem; contexto neutro, não atribuído a nenhum dos dois. */
+const loggerEditalIngerido = criarLogger('worker:edital-ingerido');
 
 /** `dev | staging | prod` — dimensão fixa `ambiente` dos alarmes de RAD-304 (A18 §5). */
 const AMBIENTE = process.env['AMBIENTE'] ?? 'dev';
@@ -443,6 +445,43 @@ interface MatchingIniciado {
 }
 
 /**
+ * Despacha uma mensagem `edital.ingerido` (Published Language, docs/13 §4) para os consumidores
+ * compostos neste processo — Matching e a pré-extração em lote da Triagem (RAD-336, P-92/P-45).
+ * Extraída do handler do consumidor único de EDITAIS_INGERIDOS para ser testável sem SQS real:
+ * SQS é competing-consumers, não pub/sub, então os dois só recebem a mesma mensagem despachando
+ * dentro de um único handler — nunca com uma segunda fila/consumidor na mesma `queue_ingestao`.
+ *
+ * Cada despacho é isolado (try/catch próprio): `MatchingWorker.processar` relança erro de INFRA
+ * de propósito (NACK → redrive), e sem isolamento essa exceção pularia `triagemBatchWorker
+ * .enfileirar` para a mesma mensagem — uma indisponibilidade do Matching esvaziaria em silêncio
+ * a pré-extração em lote que esta issue corrigiu. Erro (de qualquer um) ainda propaga no fim,
+ * preservando o redrive/DLQ nativo da fila.
+ */
+export async function despacharEditalIngerido(
+  matchingComposicao: MatchingComposicao | null,
+  triagemBatchWorker: TriagemBatchWorker | null,
+  msg: EditalIngeridoMatchingMsg,
+  signal: AbortSignal,
+): Promise<void> {
+  const erros: unknown[] = [];
+  if (matchingComposicao) {
+    try {
+      await matchingComposicao.worker.processar(msg, signal);
+    } catch (err) {
+      erros.push(err);
+    }
+  }
+  if (triagemBatchWorker) {
+    try {
+      await triagemBatchWorker.enfileirar(msg, signal);
+    } catch (err) {
+      erros.push(err);
+    }
+  }
+  if (erros.length > 0) throw erros[0];
+}
+
+/**
  * Reconciliador de prazo crítico (P-114, A18 §5.1(3)/§6, RAD-331) — job periódico, nunca o
  * caminho síncrono da API. Gated por `RECONCILIADOR_PRAZO_CRITICO_ENABLED`, **default OFF**:
  * mesmo padrão de `INGESTAO_SCHEDULER_ENABLED` (`scheduler.ts`) — compor ≠ ligar, ligar em
@@ -535,14 +574,8 @@ function iniciarMatching(sqsClient: SqsQueueClient, controllers: AbortController
 
   iniciarReconciliadorPrazoCritico(composicao, controllers);
 
-  iniciarConsumidor<EditalIngeridoMatchingMsg>(
-    sqsClient,
-    'EDITAIS_INGERIDOS',
-    resolverFilaConsumo('EDITAIS_INGERIDOS'),
-    (msg, signal) => composicao.worker.processar(msg, signal),
-    loggerMatching,
-    controllers,
-  );
+  // Consumidor de EDITAIS_INGERIDOS sobe fora daqui — RAD-336: precisa despachar também para o
+  // TriagemBatchWorker (pré-extração em lote), composto mais adiante (gate ANTHROPIC_API_KEY).
 
   const drenoController = new AbortController();
   controllers.push(drenoController);
@@ -709,69 +742,77 @@ export function iniciarWorkers(): WorkersHandle | null {
   }
 
   const apiKey = process.env['ANTHROPIC_API_KEY'];
+  let worker: TriagemBatchWorker | null = null;
+  let triagemSolicitadaWorker: TriagemSolicitadaWorker | null = null;
+
   if (!apiKey) {
     loggerTriagemBatch.warn('worker.nao-iniciado', 'ANTHROPIC_API_KEY ausente — TriagemBatchWorker/TriagemSolicitadaWorker não iniciados');
-    return {
-      worker: null,
-      triagemSolicitadaWorker: null,
-      cobrancaWorker,
-      anexoDisponibilidadeWorker,
-      notificacaoWorker,
-      enviarDigestUseCase,
-      matchingComposicao,
-      teardown() {
-        for (const controller of consumidorControllers) controller.abort();
-        encerrarMatchingDb();
-        loggerCobranca.info('worker.encerrado', 'CobrancaWorker encerrado');
-      },
-    };
+  } else {
+    const anthropic = new Anthropic({ apiKey });
+
+    const sdkClient = new AnthropicSdkClient(anthropic.messages as unknown as MessagesClient);
+
+    const batchGateway = new AnthropicBatchLlmGateway(
+      anthropic.messages.batches as unknown as MessageBatchesClient,
+    );
+
+    const extrairLoteUC = new ExtrairEditaisEmLoteUseCase(
+      batchGateway,
+      extracaoStubWorkers,
+      objectStorageStub,
+      usoLedgerStub,
+    );
+
+    worker = new TriagemBatchWorker(extrairLoteUC, documentosGateway, objectStorageStub, dlqTriagemBatch);
+
+    loggerTriagemBatch.info('worker.iniciado', 'TriagemBatchWorker iniciado (ANTHROPIC_API_KEY presente)');
+
+    // RAD-259: fecha o pré-requisito de RAD-257 — antes, `triagem.solicitada` não tinha consumidor.
+    const llmGateway = new AnthropicLlmGateway(sdkClient);
+    const triarEditalUC = new TriarEditalUseCase(
+      extracaoStubWorkers,
+      perfilGatewayStub,
+      llmGateway,
+      triagemStub,
+      eventosTriagem,
+      usoLedgerStub,
+    );
+    triagemSolicitadaWorker = new TriagemSolicitadaWorker(
+      triarEditalUC,
+      documentosGateway,
+      objectStorageStub,
+      eventosTriagem,
+      dlqTriagemSolicitada,
+    );
+    loggerTriagemSolicitada.info('worker.iniciado', 'TriagemSolicitadaWorker iniciado (consumidor de triagem.solicitada → TriarEditalUseCase)');
+
+    if (sqsClient) {
+      iniciarConsumidor<TriagemSolicitadaMsg>(
+        sqsClient,
+        'TRIAGEM_SOLICITADA',
+        resolverFilaConsumo('TRIAGEM_SOLICITADA'),
+        criarHandlerTriagemSolicitada(triagemSolicitadaWorker),
+        loggerTriagemSolicitada,
+        consumidorControllers,
+      );
+    }
   }
 
-  const anthropic = new Anthropic({ apiKey });
-
-  const sdkClient = new AnthropicSdkClient(anthropic.messages as unknown as MessagesClient);
-
-  const batchGateway = new AnthropicBatchLlmGateway(
-    anthropic.messages.batches as unknown as MessageBatchesClient,
-  );
-
-  const extrairLoteUC = new ExtrairEditaisEmLoteUseCase(
-    batchGateway,
-    extracaoStubWorkers,
-    objectStorageStub,
-    usoLedgerStub,
-  );
-
-  const worker = new TriagemBatchWorker(extrairLoteUC, documentosGateway, objectStorageStub, dlqTriagemBatch);
-
-  loggerTriagemBatch.info('worker.iniciado', 'TriagemBatchWorker iniciado (ANTHROPIC_API_KEY presente)');
-
-  // RAD-259: fecha o pré-requisito de RAD-257 — antes, `triagem.solicitada` não tinha consumidor.
-  const llmGateway = new AnthropicLlmGateway(sdkClient);
-  const triarEditalUC = new TriarEditalUseCase(
-    extracaoStubWorkers,
-    perfilGatewayStub,
-    llmGateway,
-    triagemStub,
-    eventosTriagem,
-    usoLedgerStub,
-  );
-  const triagemSolicitadaWorker = new TriagemSolicitadaWorker(
-    triarEditalUC,
-    documentosGateway,
-    objectStorageStub,
-    eventosTriagem,
-    dlqTriagemSolicitada,
-  );
-  loggerTriagemSolicitada.info('worker.iniciado', 'TriagemSolicitadaWorker iniciado (consumidor de triagem.solicitada → TriarEditalUseCase)');
-
-  if (sqsClient) {
-    iniciarConsumidor<TriagemSolicitadaMsg>(
+  // RAD-336: um único consumidor de EDITAIS_INGERIDOS despacha `edital.ingerido` (Published
+  // Language, docs/13 §4) para os dois consumidores que vivem neste processo — Matching
+  // (pontuação/alerta) e a pré-extração em lote da Triagem (P-92/P-45, Lever 1 de RAD-53). SQS é
+  // competing-consumers, não pub/sub: duas filas/consumidores independentes na MESMA fila
+  // dividiriam as mensagens em vez de entregar a ambas — por isso o despacho é dentro de um único
+  // handler, não uma segunda fila. Sem Matching de pé E sem TriagemBatchWorker, não sobe (nada
+  // para despachar).
+  const triagemBatchWorker = worker;
+  if (sqsClient && (matchingComposicao || triagemBatchWorker)) {
+    iniciarConsumidor<EditalIngeridoMatchingMsg>(
       sqsClient,
-      'TRIAGEM_SOLICITADA',
-      resolverFilaConsumo('TRIAGEM_SOLICITADA'),
-      criarHandlerTriagemSolicitada(triagemSolicitadaWorker),
-      loggerTriagemSolicitada,
+      'EDITAIS_INGERIDOS',
+      resolverFilaConsumo('EDITAIS_INGERIDOS'),
+      (msg, signal) => despacharEditalIngerido(matchingComposicao, triagemBatchWorker, msg, signal),
+      loggerEditalIngerido,
       consumidorControllers,
     );
   }
@@ -787,8 +828,10 @@ export function iniciarWorkers(): WorkersHandle | null {
     teardown() {
       for (const controller of consumidorControllers) controller.abort();
       encerrarMatchingDb();
-      worker.teardown();
-      loggerTriagemBatch.info('worker.encerrado', 'TriagemBatchWorker encerrado');
+      if (worker) {
+        worker.teardown();
+        loggerTriagemBatch.info('worker.encerrado', 'TriagemBatchWorker encerrado');
+      }
       loggerCobranca.info('worker.encerrado', 'CobrancaWorker encerrado');
     },
   };

@@ -8,8 +8,10 @@
  * falha o boot"): os testes abaixo não tocam rede — sem `<NOME>_QUEUE_URL` configurada,
  * `iniciarConsumidor`/`iniciarMatching` nunca chegam a chamar `SQSClient.send`.
  */
-import { afterEach, describe, expect, it } from 'vitest';
-import { iniciarWorkers } from '../workers.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { MatchingComposicao } from '@radar/matching/infra';
+import type { TriagemBatchWorker } from '@radar/triagem/infra';
+import { despacharEditalIngerido, iniciarWorkers } from '../workers.js';
 
 const ENV_KEYS_RAD319 = [
   'QUEUE_TRANSPORT',
@@ -112,5 +114,79 @@ describe('RAD-319 — gate QUEUE_TRANSPORT', () => {
 
     expect(handle?.matchingComposicao).toBeNull();
     handle?.teardown();
+  });
+});
+
+/**
+ * RAD-336 — antes desta correção, `TriagemBatchWorker` (pré-extração em lote, P-92/Lever 1) era
+ * composto mas nunca alimentado: nenhum consumidor de `EDITAIS_INGERIDOS` chamava
+ * `worker.enfileirar`. `despacharEditalIngerido` é o handler único que agora serve os dois
+ * consumidores de `edital.ingerido` deste processo (SQS é competing-consumers, não pub/sub —
+ * não dá pra ter uma segunda fila competindo pela mesma mensagem).
+ */
+describe('RAD-336 — despacharEditalIngerido', () => {
+  const msg = {
+    editalId: 'edital-336',
+    objeto: 'Aquisição de notebooks',
+    orgaoUf: 'SP',
+    valorEstimado: 100_000,
+    dataPublicacao: '2026-01-01T00:00:00.000Z',
+    modalidadeCodigo: 6,
+    prazoProposta: null,
+  };
+  const signal = new AbortController().signal;
+
+  it('despacha para Matching e TriagemBatchWorker quando ambos estão de pé', async () => {
+    const processar = vi.fn().mockResolvedValue(undefined);
+    const enfileirar = vi.fn().mockResolvedValue(undefined);
+    const matchingComposicao = { worker: { processar } } as unknown as MatchingComposicao;
+    const triagemBatchWorker = { enfileirar } as unknown as TriagemBatchWorker;
+
+    await despacharEditalIngerido(matchingComposicao, triagemBatchWorker, msg, signal);
+
+    expect(processar).toHaveBeenCalledWith(msg, signal);
+    expect(enfileirar).toHaveBeenCalledWith(msg, signal);
+  });
+
+  it('despacha só para TriagemBatchWorker quando Matching não está de pé (sem DATABASE_URL)', async () => {
+    const enfileirar = vi.fn().mockResolvedValue(undefined);
+    const triagemBatchWorker = { enfileirar } as unknown as TriagemBatchWorker;
+
+    await despacharEditalIngerido(null, triagemBatchWorker, msg, signal);
+
+    expect(enfileirar).toHaveBeenCalledWith(msg, signal);
+  });
+
+  it('despacha só para Matching quando ANTHROPIC_API_KEY está ausente (TriagemBatchWorker null)', async () => {
+    const processar = vi.fn().mockResolvedValue(undefined);
+    const matchingComposicao = { worker: { processar } } as unknown as MatchingComposicao;
+
+    await despacharEditalIngerido(matchingComposicao, null, msg, signal);
+
+    expect(processar).toHaveBeenCalledWith(msg, signal);
+  });
+
+  it('Matching lançar erro de infra não impede o despacho pra TriagemBatchWorker (isolamento de falha)', async () => {
+    const erroInfra = new Error('Postgres indisponível');
+    const processar = vi.fn().mockRejectedValue(erroInfra);
+    const enfileirar = vi.fn().mockResolvedValue(undefined);
+    const matchingComposicao = { worker: { processar } } as unknown as MatchingComposicao;
+    const triagemBatchWorker = { enfileirar } as unknown as TriagemBatchWorker;
+
+    await expect(despacharEditalIngerido(matchingComposicao, triagemBatchWorker, msg, signal)).rejects.toBe(erroInfra);
+
+    expect(enfileirar).toHaveBeenCalledWith(msg, signal);
+  });
+
+  it('TriagemBatchWorker lançar não impede o despacho pro Matching (isolamento de falha, sentido inverso)', async () => {
+    const erroTriagem = new Error('falha inesperada na Triagem');
+    const processar = vi.fn().mockResolvedValue(undefined);
+    const enfileirar = vi.fn().mockRejectedValue(erroTriagem);
+    const matchingComposicao = { worker: { processar } } as unknown as MatchingComposicao;
+    const triagemBatchWorker = { enfileirar } as unknown as TriagemBatchWorker;
+
+    await expect(despacharEditalIngerido(matchingComposicao, triagemBatchWorker, msg, signal)).rejects.toBe(erroTriagem);
+
+    expect(processar).toHaveBeenCalledWith(msg, signal);
   });
 });
