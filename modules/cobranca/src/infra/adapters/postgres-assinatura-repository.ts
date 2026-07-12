@@ -20,6 +20,16 @@ interface Row {
 }
 
 /**
+ * [A VALIDAR] por Produto (docs/98 P-107) — placeholder conservador até o número
+ * virar decisão de negócio (RAD-290). Espelha `Assinatura.emCarencia` (dias
+ * corridos após `periodo_fim`): duplicado porque o SQL não pode chamar o método
+ * do agregado, a decisão sob concorrência é do banco (P-107 (3)).
+ */
+const CARENCIA_DIAS = 3;
+/** Espelha `Assinatura.MULTIPLICADOR_TETO_CARENCIA` (mesmo motivo de duplicação acima). */
+const MULTIPLICADOR_TETO_CARENCIA = 2;
+
+/**
  * Implementação Postgres de `AssinaturaRepository` (RAD-246). `reservarCota` e
  * `liberarReserva` são as únicas operações do gate de entitlement — cada uma um
  * único `UPDATE`, sem read-modify-write nem transação de duas etapas (P-107 (3)):
@@ -36,6 +46,25 @@ export class PostgresAssinaturaRepository implements AssinaturaRepository {
    * checkout continuava triando até esgotar a cota seed. `now()` do PRÓPRIO
    * banco (não do app) preserva a decisão sob concorrência no mesmo UPDATE.
    * `RETURNING 1` só para detectar `rows.length` — o valor em si é descartável.
+   *
+   * Invariante restaurado (RAD-290, corrige RAD-287): `periodo_inicio`,
+   * `periodo_fim` e `uso_confirmado` só mudam por `invoice.paid`
+   * (`renovarCiclo`, `ProcessarEventoDePagamentoUseCase`) — este UPDATE NUNCA os
+   * escreve. RAD-287 tentou fechar a janela entre o vencimento do ciclo e esse
+   * webhook fazendo o próprio gate rolar `periodo_fim` +30 dias corridos; isso
+   * criava uma segunda fonte de verdade sobre "quando o mês virou", dessincronizada
+   * de quem efetivamente cobra — o `invoice.paid` seguinte ancorava no
+   * `periodo_fim` já adiantado por aqui e `CicloDeFaturamento.criar` explodia
+   * (`fim <= início`), derrubando a renovação de verdade na DLQ.
+   *
+   * A janela vira **carência explícita por tempo** (2º ramo do `OR`), não
+   * rollover: `ativa` com ciclo vencido (`periodo_fim <= now()`) continua sendo
+   * concedida enquanto `now() < periodo_fim + INTERVAL 'CARENCIA_DIAS days'`, com
+   * teto duro `uso_reservado < cota_triagens_mes * 2` — acima da cota de
+   * propósito, é dívida do ciclo em carência. Nunca escreve `periodo_*` nem zera
+   * `uso_confirmado`; quando `invoice.paid` chega, `renovarCiclo` zera os
+   * contadores e ancora as datas no `proximoVencimento` do gateway — fonte única
+   * preservada, e a carência se auto-limita pelo teto e pela janela.
    */
   async reservarCota(tenantId: TenantId, signal: AbortSignal): Promise<boolean> {
     const { rows } = await this.db.query<{ ok: number }>(
@@ -43,8 +72,16 @@ export class PostgresAssinaturaRepository implements AssinaturaRepository {
           SET uso_reservado = uso_reservado + 1
         WHERE tenant_id = $1
           AND status IN ('ativa', 'trial')
-          AND uso_reservado < cota_triagens_mes
           AND (status <> 'trial' OR periodo_fim > now())
+          AND (
+            uso_reservado < cota_triagens_mes
+            OR (
+              status = 'ativa'
+              AND periodo_fim <= now()
+              AND now() < periodo_fim + INTERVAL '${CARENCIA_DIAS} days'
+              AND uso_reservado < cota_triagens_mes * ${MULTIPLICADOR_TETO_CARENCIA}
+            )
+          )
         RETURNING 1 AS ok`,
       [tenantId],
       { signal },

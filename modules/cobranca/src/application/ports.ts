@@ -26,12 +26,21 @@ export interface AssinaturaRepository {
   salvar(assinatura: Assinatura, signal: AbortSignal): Promise<void>;
 
   /**
-   * `UPDATE assinatura SET uso_reservado = uso_reservado + 1 WHERE tenant_id = $1
-   * AND status IN ('ativa','trial') AND uso_reservado < cota_triagens_mes`
-   * (P-107 (3)) — sem read-modify-write, decide sob concorrência no próprio banco.
-   * Retorna `false` quando 0 linhas afetadas (cota esgotada OU assinatura fora de
-   * {ativa,trial}) — o chamador (RAD-246) qualifica o motivo com uma leitura de
-   * apoio só para compor o corpo do erro; a decisão do gate já foi tomada aqui.
+   * UPDATE atômico único (ver SQL real em `PostgresAssinaturaRepository.reservarCota`)
+   * — `tenant_id = $1 AND status IN ('ativa','trial') AND uso_reservado <
+   * cota_triagens_mes` (P-107 (3)), sem read-modify-write, decide sob concorrência
+   * no próprio banco. Retorna `false` quando 0 linhas afetadas (cota esgotada OU
+   * assinatura fora de {ativa,trial}) — o chamador (RAD-246) qualifica o motivo com
+   * uma leitura de apoio só para compor o corpo do erro; a decisão do gate já foi
+   * tomada aqui.
+   *
+   * `ativa` com ciclo vencido entra em CARÊNCIA por tempo (RAD-290, corrige a
+   * tentativa de RAD-287 de rolar `periodo_fim` no próprio UPDATE — isso criava
+   * uma segunda fonte de verdade sobre "quando o mês virou" e quebrava o
+   * `invoice.paid` seguinte). A janela é curta e com teto duro (acima da cota,
+   * de propósito — dívida do ciclo em carência); `periodo_inicio`, `periodo_fim`
+   * e `uso_confirmado` NUNCA são escritos aqui — só `renovarCiclo` via
+   * `invoice.paid` (RAD-277) muda o relógio do ciclo.
    */
   reservarCota(tenantId: TenantId, signal: AbortSignal): Promise<boolean>;
 

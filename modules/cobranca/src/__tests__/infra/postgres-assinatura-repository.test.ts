@@ -35,6 +35,23 @@ describe('PostgresAssinaturaRepository.reservarCota — UPDATE atômico único (
 
     await expect(repo.reservarCota(TENANT, SIGNAL)).resolves.toBe(false);
   });
+
+  it('carência do ciclo `ativa` vencido é por tempo/teto — nunca escreve periodo_*/uso_confirmado (RAD-290, corrige RAD-287)', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [{ ok: 1 }] });
+    const repo = new PostgresAssinaturaRepository({ query });
+
+    await repo.reservarCota(TENANT, SIGNAL);
+
+    const [sql] = query.mock.calls[0]!;
+    const texto = String(sql).replace(/\s+/g, ' ');
+    expect(texto).toContain("status = 'ativa' AND periodo_fim <= now()");
+    expect(texto).toMatch(/now\(\)\s*<\s*periodo_fim\s*\+\s*INTERVAL '\d+ days'/);
+    expect(texto).toContain('uso_reservado < cota_triagens_mes * 2');
+    // Invariante restaurado: só `invoice.paid` (renovarCiclo) muda o relógio do ciclo.
+    expect(texto).not.toContain('periodo_fim =');
+    expect(texto).not.toContain('periodo_inicio =');
+    expect(texto).not.toContain('uso_confirmado =');
+  });
 });
 
 describe('PostgresAssinaturaRepository.liberarReserva — compensação (P-107 (c))', () => {

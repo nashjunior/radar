@@ -16,9 +16,10 @@ export interface ReservarCotaInput {
  * assíncrono), então um burst passaria a cota inteira antes de qualquer 402.
  *
  * `executar` chama `AssinaturaRepository.reservarCota` — um único UPDATE atômico
- * (`uso_reservado = uso_reservado + 1 WHERE status IN ('ativa','trial') AND
- * uso_reservado < cota_triagens_mes AND (status <> 'trial' OR periodo_fim >
- * now())`, RAD-277), sem read-modify-write. A concorrência é resolvida pelo
+ * (ver SQL real em `PostgresAssinaturaRepository.reservarCota`: `status IN
+ * ('ativa','trial') AND uso_reservado < cota_triagens_mes AND (status <> 'trial'
+ * OR periodo_fim > now())`, RAD-277, mais a carência por tempo do ciclo `ativa`
+ * vencido, RAD-290), sem read-modify-write. A concorrência é resolvida pelo
  * Postgres, não por este use case.
  *
  * 0 linhas afetadas não diz POR QUE. A leitura de apoio (`porTenantId`) abaixo só
@@ -29,7 +30,10 @@ export interface ReservarCotaInput {
  * Trial vencido (RAD-277, P-107 (9)) é a MESMA transição lazy de
  * `ConsultarAssinaturaUseCase`: `cicloVigente.fim` no passado qualifica como
  * `AssinaturaInativaError` (403), nunca `CotaExcedidaError` (402) — mesmo com
- * cota sobrando, o limite do trial é o tempo, não só a contagem.
+ * cota sobrando, o limite do trial é o tempo, não só a contagem. Já um ciclo
+ * `ativa` vencido só chega até aqui como erro depois que a carência (RAD-290)
+ * se esgota — janela OU teto duro (2x a cota); dentro da carência `concedida`
+ * já vem `true` sem passar pela leitura de apoio.
  */
 export class ReservarCotaUseCase {
   constructor(

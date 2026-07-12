@@ -15,6 +15,8 @@ const SIGNAL = new AbortController().signal;
 const CICLO = CicloDeFaturamento.criar(new Date('2026-01-01'), new Date('2026-02-01'));
 const AGORA = new Date('2026-01-15');
 const CLOCK = { agora: () => AGORA };
+/** Espelha `Assinatura.MULTIPLICADOR_TETO_CARENCIA` (RAD-290) — mesmo placeholder [A VALIDAR]. */
+const MULTIPLICADOR_TETO_CARENCIA = 2;
 
 function planoCom(cota: number, codigo = 'starter'): PlanoComercial {
   return PlanoComercial.criar({ codigo, cotaTriagensMes: cota, precoCentavos: 12900 });
@@ -56,9 +58,19 @@ class FakeAssinaturaRepository implements AssinaturaRepository {
     const atual = this.porTenant.get(tenantId);
     if (!atual) return false;
     if (atual.estado !== 'ativa' && atual.estado !== 'trial') return false;
-    if (atual.usoReservado >= atual.plano.cota.valor) return false;
     if (atual.trialVencido(AGORA)) return false; // RAD-277 — mesmo gate do adapter Postgres
+
+    // RAD-290 (corrige RAD-287) — ciclo `ativa` vencido entra em CARÊNCIA por
+    // tempo, nunca renova aqui: espelha o WHERE do UPDATE atômico real
+    // (PostgresAssinaturaRepository), NUNCA a escrita de `periodo_*`/`uso_confirmado`
+    // — isso é só `renovarCiclo` via `invoice.paid`. Reaproveita `Assinatura.emCarencia`
+    // (mesmo padrão de `trialVencido` acima) em vez de reimplementar a aritmética da janela.
+    const cota = atual.plano.cota.valor;
+    const teto = atual.emCarencia(AGORA) ? cota * MULTIPLICADOR_TETO_CARENCIA : cota;
+    if (atual.usoReservado >= teto) return false;
+
     // Mutação síncrona, sem await antes daqui — replica a semântica do UPDATE atômico.
+    // NUNCA toca cicloVigente/usoConfirmado — só invoice.paid (renovarCiclo) muda o relógio do ciclo.
     this.porTenant.set(
       tenantId,
       Assinatura.criar({
@@ -205,6 +217,94 @@ describe('ReservarCotaUseCase — gate de entitlement (P-107 (3))', () => {
 
     const assinaturaFinal = await repo.porTenantId(tenantId, SIGNAL);
     expect(assinaturaFinal?.usoReservado).toBe(1); // nunca ultrapassa a cota, mesmo sob concorrência
+  });
+});
+
+describe('ReservarCotaUseCase — carência por tempo do ciclo `ativa` vencido (RAD-290, corrige RAD-287)', () => {
+  it('dentro da carência, com a cota do ciclo vencido esgotada, ainda concede — dívida acima da cota, SEM renovar/resetar', async () => {
+    const tenantId = TenantId('tenant-ciclo-vencido-carencia');
+    const repo = new FakeAssinaturaRepository();
+    // fim 2 dias antes de AGORA (2026-01-15) — dentro da carência de 3 dias
+    const cicloVencido = CicloDeFaturamento.criar(new Date('2025-12-14'), new Date('2026-01-13'));
+    const ativaEsgotada = Assinatura.criar({
+      tenantId,
+      estado: 'ativa',
+      plano: planoCom(5),
+      cicloVigente: cicloVencido,
+      usoReservado: 5, // == cota — antes do RAD-290 isso bloqueava até o próximo invoice.paid
+      usoConfirmado: 5,
+      assinaturaExternaId: 'ext-vencido',
+    });
+    repo.definir(tenantId, ativaEsgotada);
+
+    const uc = new ReservarCotaUseCase(repo, CLOCK);
+    await expect(uc.executar({ tenantId }, SIGNAL)).resolves.toBeUndefined();
+
+    const depois = await repo.porTenantId(tenantId, SIGNAL);
+    expect(depois?.usoReservado).toBe(6); // dívida acima da cota — nunca reseta
+    expect(depois?.usoConfirmado).toBe(5); // fatura do ciclo anterior sobrevive — só invoice.paid zera
+    expect(depois?.cicloVigente.inicio).toEqual(cicloVencido.inicio); // relógio do ciclo intocado
+    expect(depois?.cicloVigente.fim).toEqual(cicloVencido.fim);
+  });
+
+  it('nega quando o teto de carência (2x a cota) já foi atingido, mesmo dentro da janela', async () => {
+    const tenantId = TenantId('tenant-teto-carencia');
+    const repo = new FakeAssinaturaRepository();
+    const cicloVencido = CicloDeFaturamento.criar(new Date('2025-12-14'), new Date('2026-01-13')); // dentro da carência
+    const noTeto = Assinatura.criar({
+      tenantId,
+      estado: 'ativa',
+      plano: planoCom(5),
+      cicloVigente: cicloVencido,
+      usoReservado: 10, // == 2x cota — teto duro
+      usoConfirmado: 5,
+      assinaturaExternaId: 'ext-teto',
+    });
+    repo.definir(tenantId, noTeto);
+
+    const uc = new ReservarCotaUseCase(repo, CLOCK);
+    await expect(uc.executar({ tenantId }, SIGNAL)).rejects.toBeInstanceOf(CotaExcedidaError);
+
+    const depois = await repo.porTenantId(tenantId, SIGNAL);
+    expect(depois?.usoReservado).toBe(10); // nada foi reservado
+  });
+
+  it('nega quando a carência expirou (fora da janela), mesmo achando que ainda tem cota', async () => {
+    const tenantId = TenantId('tenant-carencia-expirada');
+    const repo = new FakeAssinaturaRepository();
+    // fim 14 dias antes de AGORA — muito além da carência de 3 dias
+    const cicloVencido = CicloDeFaturamento.criar(new Date('2025-12-01'), new Date('2026-01-01'));
+    const semRenovacao = Assinatura.criar({
+      tenantId,
+      estado: 'ativa',
+      plano: planoCom(5),
+      cicloVigente: cicloVencido,
+      usoReservado: 5, // == cota, e a carência já não cobre mais
+      usoConfirmado: 5,
+      assinaturaExternaId: 'ext-expirado',
+    });
+    repo.definir(tenantId, semRenovacao);
+
+    const uc = new ReservarCotaUseCase(repo, CLOCK);
+    await expect(uc.executar({ tenantId }, SIGNAL)).rejects.toBeInstanceOf(CotaExcedidaError);
+  });
+
+  it('ciclo ainda vigente com cota esgotada continua negando (carência não é bypass geral)', async () => {
+    const tenantId = TenantId('tenant-cota-cheia-vigente');
+    const repo = new FakeAssinaturaRepository();
+    const ativaEsgotada = Assinatura.criar({
+      tenantId,
+      estado: 'ativa',
+      plano: planoCom(5),
+      cicloVigente: CICLO, // vigente: 2026-01-01 a 2026-02-01, AGORA = 2026-01-15
+      usoReservado: 5,
+      usoConfirmado: 5,
+      assinaturaExternaId: 'ext-vigente',
+    });
+    repo.definir(tenantId, ativaEsgotada);
+
+    const uc = new ReservarCotaUseCase(repo, CLOCK);
+    await expect(uc.executar({ tenantId }, SIGNAL)).rejects.toBeInstanceOf(CotaExcedidaError);
   });
 });
 
