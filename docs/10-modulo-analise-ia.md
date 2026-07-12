@@ -189,13 +189,13 @@ Decididas na avaliação do adaptador de LLM (arquitetura/17, §5.1; RAD-53) e *
 - **Minimização do que vai ao modelo** (P-94) — o input é a parte controlável antes da chamada; enviar só as **seções candidatas** (objeto, habilitação, prazos, valores) em vez do edital inteiro, medindo o consumo para **admission control por item** (P-20/P-38). Sujeito ao gold set, pois recortar demais arrisca o recall.
 - **Reuso do prefixo estável** (P-95) — quando o prompt tiver exemplos do gold set, o trecho fixo (instrução + esquema) pode ser cacheado entre chamadas. Hoje o prefixo é pequeno demais para compensar; fica condicionado ao gold set.
 
-O **orçamento de custo de IA** que fecha a unidade econômica continua `[A VALIDAR]` (P-20/P-38): deve ser acumulado por janela — global e por tenant/plano — e medido por ledger de uso. Por item, o controle é admission control de input/output e fallback para outliers.
+**Guardrail implementado (RAD-243).** O NÚMERO do orçamento em USD segue `[A VALIDAR]` (Negócio+Eng), mas o mecanismo já existe e roda em produção: `PoliticaOrcamento` (`modules/triagem/src/application/politica-orcamento.ts`) — orçamento acumulado por janela deslizante (global sempre; por tenant quando configurado) lido do ledger de uso (`UsoLlmLedger.gastoUsdNaJanela`, RAD-230) — mais admission control de INPUT via `count_tokens` (grátis, RPM próprio, `LlmGateway.estimarCusto`) contra um teto de sanidade (`MAX_INPUT_TOKENS_ADMISSAO = 200k`, outliers — não o orçamento de negócio). Ambos rodam ANTES da chamada paga; kill-switch (`OrcamentoDeCustoExcedidoError`)/admission (`EntradaExcedeTetoDeAdmissaoError`) custam zero se rejeitarem. Default (`POLITICA_ORCAMENTO_PADRAO`) é SEM teto — inerte até o número real ser injetado pela composição-root, mesmo padrão de `LIMIAR_CONFIANCA_PADRAO` (P-19). **GAP de medição fechado junto** (RAD-230 follow-up): recusa e truncamento (`max_tokens`) já gastam tokens antes de lançar o erro — `usoParcial` no próprio erro carrega esse custo para o ledger, mesmo sem uma extração para salvar.
 
 ## 8. Pendências
 
 - Construir o gold set rotulado (cobertura e esquema em §§5.1–5.2; rótulos a produzir e metas a validar pré-lançamento). `[A VALIDAR]`
 - Fixar os limiares de confiança por campo (§4). `[A VALIDAR]`
-- Definir o orçamento de custo de IA por janela que fecha a unidade econômica (§7). `[A VALIDAR]`
+- Definir o NÚMERO em USD do orçamento de custo de IA por janela que fecha a unidade econômica (§7) — o mecanismo (`PoliticaOrcamento`) já está implementado e pronto para receber o valor, RAD-243. `[A VALIDAR]`
 - Validar no gold set as alavancas de custo que mudam o modelo/entrada (§7.1) — modelo por dificuldade (P-93), minimização de entrada (P-94), cache de prefixo (P-95); a pré-extração em lote (P-92) preserva a inferência e não depende do gold set. `[A VALIDAR]`
 
 Rastreadas no documento **98 · Decisões e pendências**.

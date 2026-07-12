@@ -1,7 +1,6 @@
 import { SaidaLlmInvalidaError } from '../../domain/errors/index.js';
 import type { UsoLlm } from '../../application/ports.js';
 import type { LlmExtracaoRequest } from './anthropic-llm-gateway.js';
-import { CATEGORIAS, FERRAMENTA_EXTRACAO, SEVERIDADES } from './anthropic-llm-gateway.js';
 
 /**
  * Peças ESPECÍFICAS da API Anthropic compartilhadas pelos DOIS transportes — o `LlmClient` síncrono
@@ -13,6 +12,13 @@ import { CATEGORIAS, FERRAMENTA_EXTRACAO, SEVERIDADES } from './anthropic-llm-ga
  * que passa os `params` construídos aqui para `messages.create` (síncrono) ou `messages.batches.create`
  * (lote). Os `ExtracaoMessageParams` casam estruturalmente com `MessageCreateParams` do SDK.
  */
+
+/** Nome da ferramenta de saída estruturada (structured output) — camada 3. */
+export const FERRAMENTA_EXTRACAO = 'registrar_extracao';
+
+/** Vocabulário canônico: fonte única para schema e validação — o gateway re-exporta. */
+export const CATEGORIAS: readonly string[] = ['juridica', 'fiscal', 'tecnica', 'economica'];
+export const SEVERIDADES: readonly string[] = ['baixa', 'media', 'alta'];
 
 /** Teto de saída da extração. Estruturada e curta; sem streaming (o lote é assíncrono, P-45). */
 export const MAX_TOKENS_EXTRACAO = 8192;

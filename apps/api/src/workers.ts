@@ -51,6 +51,9 @@ const usoLedgerStub: UsoLlmLedger = {
   async registrar(_registro, _signal) {
     /* stub */
   },
+  async gastoUsdNaJanela(_escopo, _desde, _signal) {
+    return 0; // stub: sem DB, admission control por orçamento (RAD-243) nunca vê gasto acumulado
+  },
 };
 
 /** Stub no-op de DocumentosDoEditalPort — substituir quando Postgres da Ingestão estiver provisionado. */

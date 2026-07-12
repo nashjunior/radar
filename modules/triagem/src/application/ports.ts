@@ -46,6 +46,16 @@ export interface TriagemRepository {
  */
 export interface UsoLlmLedger {
   registrar(registro: RegistroUsoLlm, signal: AbortSignal): Promise<void>;
+  /**
+   * Soma de `custoUsd` desde `desde` (RAD-243, P-20/P-38 orçamento acumulado por janela).
+   * `tenantId: null` = escopo GLOBAL (soma todas as linhas, inclusive a pré-extração sem tenant);
+   * `tenantId` presente = só as linhas daquele tenant (índice parcial já existe, RAD-230).
+   */
+  gastoUsdNaJanela(
+    escopo: { readonly tenantId: TenantId | null },
+    desde: Date,
+    signal: AbortSignal,
+  ): Promise<number>;
 }
 
 /**
@@ -76,10 +86,10 @@ export interface ObjectStorage {
  * caching (P-95, ainda não ligado — `paramsExtracao` não seta `cache_control`, então hoje chegam
  * zerados); presentes desde já para o port não quebrar quando P-95 ligar o cache.
  *
- * GAP CONHECIDO (não coberto por esta versão): capturado apenas no caminho de SUCESSO — recusa
- * (`ExtracaoRecusadaError`) e truncamento (`SaidaLlmInvalidaError` por `max_tokens`) consomem
- * tokens mas não emitem `UsoLlm` ainda (o "gasto perdido" citado no veredicto P-20 permanece não
- * medido nesses dois casos; requer decidir o comportamento de truncamento antes, RAD-230 follow-up).
+ * GAP FECHADO (RAD-243): recusa (`ExtracaoRecusadaError`) e truncamento (`SaidaLlmInvalidaError`
+ * por `max_tokens`) lançam ANTES de devolver este `uso` normalmente — por isso carregam o mesmo
+ * consumo em `usoParcial` (`domain/errors/index.ts`), e os use cases registram esse custo no
+ * ledger a partir do erro capturado, não daqui.
  */
 export interface UsoLlm {
   readonly modelo: string;
@@ -90,12 +100,26 @@ export interface UsoLlm {
 }
 
 /**
+ * Estimativa de custo ANTES da chamada paga ao LLM (RAD-243, P-20/P-38 admission control).
+ * `inputTokens` vem de `count_tokens` (grátis, RPM próprio — não consome a cota de geração nem
+ * soma custo real). `custoEstimadoUsd` assume o PIOR CASO de output (`MAX_TOKENS_EXTRACAO`), já
+ * que o output real só é conhecido depois da chamada que esta estimativa decide se autoriza.
+ */
+export interface EstimativaDeCusto {
+  readonly modelo: string;
+  readonly inputTokens: number;
+  readonly custoEstimadoUsd: number;
+}
+
+/**
  * Fronteira com o LLM (A17 §4.1). O adapter (`AnthropicLlmGateway`) aplica a defesa de injeção
  * (A11 §2) e devolve a extração JÁ validada por schema — o que não bate é rejeitado
  * (`SaidaLlmInvalidaError`), nunca "consertado". Único ponto do contexto que fala com o modelo.
  * Devolve `uso` (RAD-230) junto da extração — o caller grava no `UsoLlmLedger`.
  */
 export interface LlmGateway {
+  /** Admission control (RAD-243) — chamar ANTES de `extrair()` para decidir admissão sem custo. */
+  estimarCusto(entrada: EntradaExtracaoDTO, signal: AbortSignal): Promise<EstimativaDeCusto>;
   extrair(
     entrada: EntradaExtracaoDTO,
     signal: AbortSignal,

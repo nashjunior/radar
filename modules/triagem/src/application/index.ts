@@ -15,6 +15,7 @@ export type {
   ArquivoRef,
   DocumentosEditalGateway,
   DocumentosRef,
+  EstimativaDeCusto,
   EventPublisher,
   ExtracaoRepository,
   LlmGateway,
@@ -27,6 +28,14 @@ export type {
   UsoLlmLedger,
 } from './ports.js';
 export { calcularCustoUsd, PRECOS_USD_POR_MILHAO_TOKENS } from './precificacao-llm.js';
+export {
+  excedeOrcamento,
+  excedeTetoDeAdmissao,
+  inicioDaJanela,
+  MAX_INPUT_TOKENS_ADMISSAO,
+  POLITICA_ORCAMENTO_PADRAO,
+} from './politica-orcamento.js';
+export type { PoliticaOrcamento } from './politica-orcamento.js';
 export {
   ExtracaoConcluida,
   TriagemAceita,

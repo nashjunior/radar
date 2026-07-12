@@ -1,4 +1,4 @@
-import type { DbClient } from '@radar/kernel';
+import type { DbClient, TenantId } from '@radar/kernel';
 import type { RegistroUsoLlm } from '../../domain/registro-uso-llm.js';
 import type { UsoLlmLedger } from '../../application/ports.js';
 
@@ -33,5 +33,26 @@ export class PostgresUsoLlmLedger implements UsoLlmLedger {
       ],
       { signal },
     );
+  }
+
+  /**
+   * Soma de `custo_usd` desde `desde` (RAD-243, orçamento acumulado por janela). `tenantId: null` =
+   * GLOBAL, soma todas as linhas (usa `idx_registro_uso_llm_global_janela`, migração 004); tenantId
+   * presente = só as linhas daquele tenant (`idx_registro_uso_llm_tenant_janela`, RAD-230).
+   */
+  async gastoUsdNaJanela(
+    escopo: { readonly tenantId: TenantId | null },
+    desde: Date,
+    signal: AbortSignal,
+  ): Promise<number> {
+    const resultado = await this.db.query<{ soma: string | null }>(
+      `SELECT SUM(custo_usd) AS soma
+         FROM registro_uso_llm
+        WHERE ocorrido_em >= $1
+          AND ($2::text IS NULL OR tenant_id = $2)`,
+      [desde, escopo.tenantId],
+      { signal },
+    );
+    return Number(resultado.rows[0]?.soma ?? 0);
   }
 }

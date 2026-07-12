@@ -78,3 +78,43 @@ describe('PostgresUsoLlmLedger.registrar — sempre INSERT, nunca upsert', () =>
     expect(params).toEqual([EDITAL, tenant, cliente, perfil, 'claude-opus-4-8', 25000, 6000, 0, 0, 0.275, registro.ocorridoEm]);
   });
 });
+
+describe('PostgresUsoLlmLedger.gastoUsdNaJanela — orçamento acumulado (RAD-243)', () => {
+  const desde = new Date('2026-07-10T00:00:00Z');
+
+  it('escopo GLOBAL (tenantId: null): filtra só por ocorrido_em, tenant_id não entra no predicado', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [{ soma: '12.5' }] });
+    const ledger = new PostgresUsoLlmLedger({ query });
+
+    const gasto = await ledger.gastoUsdNaJanela({ tenantId: null }, desde, noop);
+
+    expect(gasto).toBe(12.5);
+    const [sql, params, opts] = query.mock.calls[0]!;
+    const texto = String(sql).replace(/\s+/g, ' ');
+    expect(texto).toContain('SUM(custo_usd)');
+    expect(texto).toContain('ocorrido_em >= $1');
+    expect(params).toEqual([desde, null]);
+    expect(opts).toEqual({ signal: noop });
+  });
+
+  it('escopo POR TENANT: passa o tenantId como parâmetro do predicado', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [{ soma: '3.2' }] });
+    const ledger = new PostgresUsoLlmLedger({ query });
+    const tenant = TenantId('t1');
+
+    const gasto = await ledger.gastoUsdNaJanela({ tenantId: tenant }, desde, noop);
+
+    expect(gasto).toBe(3.2);
+    const [, params] = query.mock.calls[0]!;
+    expect(params).toEqual([desde, tenant]);
+  });
+
+  it('sem linhas na janela: soma NULL do SQL vira 0 (nunca NaN)', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [{ soma: null }] });
+    const ledger = new PostgresUsoLlmLedger({ query });
+
+    const gasto = await ledger.gastoUsdNaJanela({ tenantId: null }, desde, noop);
+
+    expect(gasto).toBe(0);
+  });
+});

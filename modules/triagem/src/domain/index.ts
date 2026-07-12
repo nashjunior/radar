@@ -13,15 +13,18 @@ export {
   CitacaoInvalidaError,
   ConfiancaInsuficienteError,
   ConfiancaInvalidaError,
+  EntradaExcedeTetoDeAdmissaoError,
   ExtracaoRecusadaError,
   LoteExtracaoIndisponivelError,
   OcrFalhouError,
+  OrcamentoDeCustoExcedidoError,
   PerfilNaoEncontradoError,
   RequisitoInvalidoError,
   SaidaLlmInvalidaError,
   TriagemNaoEncontradaError,
   UsoLlmInvalidoError,
 } from './errors/index.js';
+export type { UsoParcialLlm } from './errors/index.js';
 export { Aderencia } from './value-objects/aderencia.js';
 export { CampoExtraido } from './value-objects/campo-extraido.js';
 export { Citacao } from './value-objects/citacao.js';

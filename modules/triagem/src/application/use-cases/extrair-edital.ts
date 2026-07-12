@@ -1,11 +1,26 @@
 import type { EditalId } from '@radar/kernel';
 import { avaliarElegibilidadeExtracao } from '../../domain/elegibilidade-extracao.js';
-import { ConfiancaInsuficienteError, OcrFalhouError } from '../../domain/errors/index.js';
+import {
+  ConfiancaInsuficienteError,
+  EntradaExcedeTetoDeAdmissaoError,
+  ExtracaoRecusadaError,
+  OcrFalhouError,
+  OrcamentoDeCustoExcedidoError,
+  SaidaLlmInvalidaError,
+} from '../../domain/errors/index.js';
 import { RegistroUsoLlm } from '../../domain/registro-uso-llm.js';
 import { extracaoParaDTO } from '../dtos.js';
 import type { ExtracaoEditalDTO } from '../dtos.js';
 import { calcularCustoUsd } from '../precificacao-llm.js';
-import type { ExtracaoRepository, LlmGateway, ObjectStorage, UsoLlmLedger } from '../ports.js';
+import {
+  excedeOrcamento,
+  excedeTetoDeAdmissao,
+  inicioDaJanela,
+  MAX_INPUT_TOKENS_ADMISSAO,
+  POLITICA_ORCAMENTO_PADRAO,
+} from '../politica-orcamento.js';
+import type { PoliticaOrcamento } from '../politica-orcamento.js';
+import type { ExtracaoRepository, LlmGateway, ObjectStorage, UsoLlm, UsoLlmLedger } from '../ports.js';
 import { prepararEntradaExtracao } from '../preparar-entrada-extracao.js';
 
 export interface ExtrairEditalInput {
@@ -32,6 +47,7 @@ export class ExtrairEditalUseCase {
     private readonly extracoes: ExtracaoRepository,
     private readonly storage: ObjectStorage,
     private readonly usoLedger: UsoLlmLedger,
+    private readonly orcamento: PoliticaOrcamento = POLITICA_ORCAMENTO_PADRAO,
   ) {}
 
   async executar(input: ExtrairEditalInput, signal: AbortSignal): Promise<ExtracaoEditalDTO> {
@@ -48,14 +64,47 @@ export class ExtrairEditalUseCase {
 
     const entrada = await prepararEntradaExtracao(input, this.storage, signal);
 
-    // O adapter aplica a defesa de injeção (A11 §2) e valida a saída por schema (camada 3).
-    const { extracao, uso } = await this.llm.extrair(entrada, signal);
+    // Admission control + orçamento (RAD-243, P-20/P-38) — ANTES da chamada paga. Sem tenant: a
+    // pré-extração é catálogo GLOBAL (P-45), não há orçamento por tenant a checar aqui.
+    const estimativa = await this.llm.estimarCusto(entrada, signal);
+    if (excedeTetoDeAdmissao(estimativa.inputTokens)) {
+      throw new EntradaExcedeTetoDeAdmissaoError(estimativa.inputTokens, MAX_INPUT_TOKENS_ADMISSAO);
+    }
+    const desde = inicioDaJanela(new Date(), this.orcamento);
+    const gastoGlobal = await this.usoLedger.gastoUsdNaJanela({ tenantId: null }, desde, signal);
+    if (excedeOrcamento(estimativa.custoEstimadoUsd, gastoGlobal, this.orcamento.orcamentoGlobalUsd)) {
+      throw new OrcamentoDeCustoExcedidoError('global');
+    }
 
-    // Grava o CUSTO real assim que a chamada volta — mesmo que o gate de confiança abaixo rejeite a
-    // extração, os tokens já foram gastos (RAD-230, P-20/P-38). Sem tenant: pré-extração GLOBAL (P-45).
+    try {
+      // O adapter aplica a defesa de injeção (A11 §2) e valida a saída por schema (camada 3).
+      const { extracao, uso } = await this.llm.extrair(entrada, signal);
+
+      // Grava o CUSTO real assim que a chamada volta — mesmo que o gate de confiança abaixo rejeite
+      // a extração, os tokens já foram gastos (RAD-230, P-20/P-38). Sem tenant: pré-extração GLOBAL (P-45).
+      await this.registrarUso(input.editalId, uso, signal);
+
+      // Piso de confiança: se nenhum campo crítico saiu com citação utilizável, é leitura assistida
+      // (docs/10 §6) — nunca apresentar palpite como certeza.
+      if (extracao.confiancaGlobal().valor === 0) throw new ConfiancaInsuficienteError();
+
+      await this.extracoes.salvar(extracao, signal); // campos fracos ficam marcados "verificar"
+      return extracaoParaDTO(extracao);
+    } catch (err) {
+      // GAP fechado (RAD-243): recusa/truncamento gastam tokens antes de lançar — registra o custo
+      // real a partir do `usoParcial` anexado ao erro, mesmo sem uma extração para salvar. Não
+      // re-registra em ConfiancaInsuficienteError (já registrado acima, antes deste throw).
+      if ((err instanceof ExtracaoRecusadaError || err instanceof SaidaLlmInvalidaError) && err.usoParcial) {
+        await this.registrarUso(input.editalId, err.usoParcial, signal);
+      }
+      throw err;
+    }
+  }
+
+  private async registrarUso(editalId: EditalId, uso: UsoLlm, signal: AbortSignal): Promise<void> {
     await this.usoLedger.registrar(
       RegistroUsoLlm.criar({
-        editalId: input.editalId,
+        editalId,
         tenantId: null,
         clienteFinalId: null,
         perfilId: null,
@@ -69,12 +118,5 @@ export class ExtrairEditalUseCase {
       }),
       signal,
     );
-
-    // Piso de confiança: se nenhum campo crítico saiu com citação utilizável, é leitura assistida
-    // (docs/10 §6) — nunca apresentar palpite como certeza.
-    if (extracao.confiancaGlobal().valor === 0) throw new ConfiancaInsuficienteError();
-
-    await this.extracoes.salvar(extracao, signal); // campos fracos ficam marcados "verificar"
-    return extracaoParaDTO(extracao);
   }
 }

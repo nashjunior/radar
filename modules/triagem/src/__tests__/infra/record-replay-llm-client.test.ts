@@ -74,7 +74,7 @@ describe('RecordReplayLlmClient — seam do gold set (A17 §7 / A16)', () => {
       cacheCreationInputTokens: 0,
     };
     const extrair = vi.fn().mockResolvedValue({ input: bruto, uso: usoDelegate });
-    const delegate: LlmClient = { extrairViaFerramenta: extrair };
+    const delegate: LlmClient = { extrairViaFerramenta: extrair, contarTokensDeEntrada: vi.fn() };
     const gravado = new Map<string, unknown>();
 
     const client = new RecordReplayLlmClient(new Map(), {
@@ -93,7 +93,7 @@ describe('RecordReplayLlmClient — seam do gold set (A17 §7 / A16)', () => {
 
   it('REPLAY tem prioridade sobre o delegate: fixture presente NÃO chama o LLM real (custo zero)', async () => {
     const extrair = vi.fn();
-    const delegate: LlmClient = { extrairViaFerramenta: extrair };
+    const delegate: LlmClient = { extrairViaFerramenta: extrair, contarTokensDeEntrada: vi.fn() };
     const fixtures = new Map<string, unknown>([[chaveDe(ENTRADA), brutoGravado()]]);
 
     const client = new RecordReplayLlmClient(fixtures, { delegate });
@@ -122,5 +122,22 @@ describe('RecordReplayLlmClient — seam do gold set (A17 §7 / A16)', () => {
       cacheReadInputTokens: 0,
       cacheCreationInputTokens: 0,
     });
+  });
+
+  it('contarTokensDeEntrada (RAD-243): REPLAY (sem delegate) devolve 0 — nunca rejeita fixture por admission control', async () => {
+    const client = new RecordReplayLlmClient(new Map());
+    const tokens = await client.contarTokensDeEntrada(montarRequisicaoExtracao(ENTRADA), noop);
+    expect(tokens).toBe(0);
+  });
+
+  it('contarTokensDeEntrada (RAD-243): RECORD (com delegate) repassa ao client real', async () => {
+    const contarTokensDeEntrada = vi.fn().mockResolvedValue(42);
+    const delegate: LlmClient = { extrairViaFerramenta: vi.fn(), contarTokensDeEntrada };
+    const client = new RecordReplayLlmClient(new Map(), { delegate });
+
+    const tokens = await client.contarTokensDeEntrada(montarRequisicaoExtracao(ENTRADA), noop);
+
+    expect(tokens).toBe(42);
+    expect(contarTokensDeEntrada).toHaveBeenCalledOnce();
   });
 });

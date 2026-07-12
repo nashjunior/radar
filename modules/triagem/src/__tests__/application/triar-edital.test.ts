@@ -3,9 +3,12 @@ import { AcessoNegadoError, ClienteFinalId, EditalId, PerfilId, TenantId } from 
 import { TriarEditalUseCase } from '../../application/use-cases/triar-edital.js';
 import type { TriarEditalInput } from '../../application/use-cases/triar-edital.js';
 import { LIMIAR_CONFIANCA_PADRAO } from '../../application/politica-confianca.js';
+import { MAX_INPUT_TOKENS_ADMISSAO, POLITICA_ORCAMENTO_PADRAO } from '../../application/politica-orcamento.js';
+import type { PoliticaOrcamento } from '../../application/politica-orcamento.js';
 import type { EntradaExtracaoDTO } from '../../application/dtos.js';
 import { PerfilHabilitacao } from '../../domain/perfil-habilitacao.js';
 import type {
+  EstimativaDeCusto,
   EventPublisher,
   ExtracaoRepository,
   LlmGateway,
@@ -14,7 +17,14 @@ import type {
   UsoLlm,
   UsoLlmLedger,
 } from '../../application/ports.js';
-import { ConfiancaInsuficienteError, PerfilNaoEncontradoError } from '../../domain/errors/index.js';
+import {
+  ConfiancaInsuficienteError,
+  EntradaExcedeTetoDeAdmissaoError,
+  ExtracaoRecusadaError,
+  OrcamentoDeCustoExcedidoError,
+  PerfilNaoEncontradoError,
+  SaidaLlmInvalidaError,
+} from '../../domain/errors/index.js';
 import { ExtracaoEdital } from '../../domain/extracao-edital.js';
 import { CampoExtraido } from '../../domain/value-objects/campo-extraido.js';
 import { Citacao } from '../../domain/value-objects/citacao.js';
@@ -91,28 +101,62 @@ const PERFIL_HAB = PerfilHabilitacao.de({
   habEconomica: [],
 });
 
+const ESTIMATIVA_BARATA: EstimativaDeCusto = {
+  modelo: 'claude-sonnet-5',
+  inputTokens: 1000,
+  custoEstimadoUsd: 0.01,
+};
+
 function deps(opts: {
   existente?: ExtracaoEdital | null;
   extraida?: ExtracaoEdital;
   perfil?: PerfilHabilitacao | null;
+  estimativa?: EstimativaDeCusto;
+  gastoGlobalUsd?: number;
+  gastoTenantUsd?: number;
+  orcamento?: PoliticaOrcamento;
 }) {
   const porEdital = vi.fn().mockResolvedValue(opts.existente ?? null);
   const salvarExtracao = vi.fn().mockResolvedValue(undefined);
   const extrair = vi.fn().mockResolvedValue({ extracao: opts.extraida ?? extracao(), uso: USO_FAKE });
+  const estimarCusto = vi.fn().mockResolvedValue(opts.estimativa ?? ESTIMATIVA_BARATA);
   const porId = vi.fn().mockResolvedValue(opts.perfil === undefined ? PERFIL_HAB : opts.perfil);
   const salvarTriagem = vi.fn().mockResolvedValue(undefined);
   const publicar = vi.fn().mockResolvedValue(undefined);
   const registrar = vi.fn().mockResolvedValue(undefined);
+  const gastoUsdNaJanela = vi.fn().mockImplementation((escopo: { tenantId: unknown }) =>
+    Promise.resolve(escopo.tenantId === null ? (opts.gastoGlobalUsd ?? 0) : (opts.gastoTenantUsd ?? 0)),
+  );
 
   const extracoes: ExtracaoRepository = { porEdital, salvar: salvarExtracao };
   const perfis: PerfilGateway = { porId };
-  const llm: LlmGateway = { extrair };
+  const llm: LlmGateway = { extrair, estimarCusto };
   const triagens: TriagemRepository = { salvar: salvarTriagem, porEditalEPerfil: vi.fn() };
   const eventos: EventPublisher = { publicar };
-  const usoLedger: UsoLlmLedger = { registrar };
+  const usoLedger: UsoLlmLedger = { registrar, gastoUsdNaJanela };
 
-  const uc = new TriarEditalUseCase(extracoes, perfis, llm, triagens, eventos, usoLedger);
-  return { uc, porEdital, salvarExtracao, extrair, porId, salvarTriagem, publicar, registrar };
+  const uc = new TriarEditalUseCase(
+    extracoes,
+    perfis,
+    llm,
+    triagens,
+    eventos,
+    usoLedger,
+    opts.orcamento ?? POLITICA_ORCAMENTO_PADRAO,
+  );
+  return {
+    uc,
+    porEdital,
+    salvarExtracao,
+    extrair,
+    estimarCusto,
+    porId,
+    salvarTriagem,
+    publicar,
+    registrar,
+    gastoUsdNaJanela,
+    llm,
+  };
 }
 
 describe('TriarEditalUseCase', () => {
@@ -229,5 +273,101 @@ describe('TriarEditalUseCase', () => {
     await expect(uc.executar(INPUT, noop)).rejects.toThrow(AcessoNegadoError);
     expect(salvarTriagem).not.toHaveBeenCalled();
     expect(publicar).not.toHaveBeenCalled();
+  });
+});
+
+describe('TriarEditalUseCase — admission control + orçamento (RAD-243)', () => {
+  it('authz roda ANTES do admission control (fila envenenada não paga nem o count_tokens)', async () => {
+    const { uc, extrair, estimarCusto } = deps({
+      existente: null,
+      perfil: PerfilHabilitacao.de({
+        id: PERFIL,
+        clienteFinalId: ClienteFinalId('cliente-999'),
+        habJuridica: [],
+        habFiscal: ['CND'],
+        habTecnica: [],
+        habEconomica: [],
+      }),
+    });
+    await expect(uc.executar(INPUT, noop)).rejects.toThrow(AcessoNegadoError);
+    expect(estimarCusto).not.toHaveBeenCalled();
+    expect(extrair).not.toHaveBeenCalled();
+  });
+
+  it('cache-hit não paga admission control (extração já existe, sem chamada ao LLM)', async () => {
+    const { uc, estimarCusto } = deps({ existente: extracao() });
+    await uc.executar(INPUT, noop);
+    expect(estimarCusto).not.toHaveBeenCalled();
+  });
+
+  it('entrada excede o teto de admissão → EntradaExcedeTetoDeAdmissaoError, sem chamar o LLM', async () => {
+    const { uc, extrair } = deps({
+      existente: null,
+      estimativa: { modelo: 'claude-opus-4-8', inputTokens: MAX_INPUT_TOKENS_ADMISSAO + 1, custoEstimadoUsd: 5 },
+    });
+    await expect(uc.executar(INPUT, noop)).rejects.toThrow(EntradaExcedeTetoDeAdmissaoError);
+    expect(extrair).not.toHaveBeenCalled();
+  });
+
+  it('orçamento GLOBAL excedido → OrcamentoDeCustoExcedidoError, sem chamar o LLM', async () => {
+    const orcamento: PoliticaOrcamento = { janelaHoras: 24, orcamentoGlobalUsd: 10, orcamentoPorTenantUsd: null };
+    const { uc, extrair } = deps({
+      existente: null,
+      estimativa: { modelo: 'claude-sonnet-5', inputTokens: 1000, custoEstimadoUsd: 0.5 },
+      gastoGlobalUsd: 9.6,
+      orcamento,
+    });
+    await expect(uc.executar(INPUT, noop)).rejects.toThrow(OrcamentoDeCustoExcedidoError);
+    expect(extrair).not.toHaveBeenCalled();
+  });
+
+  it('orçamento POR TENANT excedido (mesmo com o global sobrando) → OrcamentoDeCustoExcedidoError', async () => {
+    const orcamento: PoliticaOrcamento = {
+      janelaHoras: 24,
+      orcamentoGlobalUsd: 1000, // global folgado
+      orcamentoPorTenantUsd: 1, // tenant apertado
+    };
+    const { uc, extrair, gastoUsdNaJanela } = deps({
+      existente: null,
+      estimativa: { modelo: 'claude-sonnet-5', inputTokens: 1000, custoEstimadoUsd: 0.5 },
+      gastoGlobalUsd: 0,
+      gastoTenantUsd: 0.6,
+      orcamento,
+    });
+    await expect(uc.executar(INPUT, noop)).rejects.toThrow(OrcamentoDeCustoExcedidoError);
+    expect(extrair).not.toHaveBeenCalled();
+    expect(gastoUsdNaJanela).toHaveBeenCalledWith({ tenantId: null }, expect.any(Date), noop);
+    expect(gastoUsdNaJanela).toHaveBeenCalledWith({ tenantId: TENANT }, expect.any(Date), noop);
+  });
+
+  it('orcamentoPorTenantUsd: null (default) — não checa orçamento por tenant, só o global', async () => {
+    const { uc, gastoUsdNaJanela } = deps({ existente: null }); // POLITICA_ORCAMENTO_PADRAO: orcamentoPorTenantUsd null
+    await uc.executar(INPUT, noop);
+    expect(gastoUsdNaJanela).toHaveBeenCalledTimes(1); // só a checagem global
+  });
+
+  it('GAP fechado: recusa do modelo (usoParcial) registra o custo e degrada a triagem para "recusada"', async () => {
+    const { uc, extrair, registrar, salvarTriagem } = deps({ existente: null });
+    extrair.mockRejectedValue(new ExtracaoRecusadaError(USO_FAKE));
+
+    await expect(uc.executar(INPUT, noop)).rejects.toThrow(ExtracaoRecusadaError);
+
+    expect(registrar).toHaveBeenCalledTimes(1);
+    expect(registrar.mock.calls[0]![0]).toMatchObject({
+      editalId: EDITAL,
+      tenantId: TENANT,
+      clienteFinalId: CLIENTE,
+      perfilId: PERFIL,
+      modelo: USO_FAKE.modelo,
+    });
+    expect(salvarTriagem.mock.calls[0]![0].status).toBe('recusada');
+  });
+
+  it('GAP fechado: truncamento (SaidaLlmInvalidaError com usoParcial) registra o custo antes de propagar', async () => {
+    const { uc, extrair, registrar } = deps({ existente: null });
+    extrair.mockRejectedValue(new SaidaLlmInvalidaError('resposta truncada (max_tokens)', USO_FAKE));
+
+    await expect(uc.executar(INPUT, noop)).rejects.toThrow(SaidaLlmInvalidaError);
+    expect(registrar).toHaveBeenCalledTimes(1);
   });
 });

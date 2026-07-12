@@ -27,14 +27,33 @@ interface MessageStreamLike {
   finalMessage(): Promise<MensagemFinal>;
 }
 
+/** Params mínimos de `POST /v1/messages/count_tokens` (RAD-243, admission control) — subconjunto de
+ * `ExtracaoMessageParams` (sem `max_tokens`/`tool_choice`, que o endpoint não aceita). */
+export interface ContagemTokensParams {
+  readonly model: string;
+  readonly system: string;
+  readonly messages: ExtracaoMessageParams['messages'];
+  readonly tools: ExtracaoMessageParams['tools'];
+}
+
+/** Resposta de `count_tokens` — casa com `MessageTokensCount` do SDK. */
+export interface ContagemTokens {
+  readonly input_tokens: number;
+}
+
 /**
  * Client mínimo de mensagens (STREAMING), provider-agnóstico — o SDK concreto (`@anthropic-ai/sdk`) é
  * ligado no composition root (P-74); `client.messages` casa estruturalmente com esta interface. Só o
  * contrato mínimo aparece aqui, como nos demais adapters (Batches/Sqs/Postgres/S3). O `AbortSignal`
  * (P-78) vai em `opts.signal` → chega ao `.stream({ signal })`.
+ *
+ * `countTokens` (RAD-243, P-20/P-38 admission control) é endpoint GRÁTIS (billing) e com RPM PRÓPRIO,
+ * separado do rate limit de `stream`/`create` — chamá-lo antes da extração não consome a cota de
+ * geração nem soma custo (fonte: docs.claude.com/.../token-counting, "Token counting is free to use").
  */
 export interface MessagesClient {
   stream(params: ExtracaoStreamParams, opts: { signal: AbortSignal }): MessageStreamLike;
+  countTokens(params: ContagemTokensParams, opts: { signal: AbortSignal }): Promise<ContagemTokens>;
 }
 
 /** Log mínimo p/ registrar recusas SEM PII (só metadados de política). Default: `console`. */
@@ -93,25 +112,36 @@ export class AnthropicSdkClient implements LlmClient {
     const mensagem = await this.messages.stream(params, { signal }).finalMessage();
 
     // Lever 6 — refusal ANTES de ler content: em recusa o content vem vazio/parcial; nunca fabricar.
-    // GAP conhecido (RAD-230): `mensagem.usage` já reflete tokens gastos aqui, mas a recusa lança
-    // ANTES de devolver `uso` ao caller — o "gasto perdido" segue não medido neste caso (P-20 veredicto).
+    // GAP fechado (RAD-243): `mensagem.usage` já reflete tokens gastos aqui — anexa `usoParcial` ao
+    // erro para o caller registrar o custo real no ledger mesmo a extração tendo sido recusada.
     if (mensagem.stop_reason === 'refusal') {
       this.logger.warn('[triagem] extração recusada pelo modelo (stop_reason=refusal)', {
         modelo: req.modelo,
         categoria: mensagem.stop_details?.category ?? null, // categoria da política — SEM PII
         tipo: mensagem.stop_details?.type ?? null,
       });
-      throw new ExtracaoRecusadaError();
+      throw new ExtracaoRecusadaError(usoDeMensagem(mensagem, req.modelo));
     }
 
     // Truncamento por max_tokens → tool_use possivelmente incompleto: saída não-confiável, não fabrica.
-    // Mesmo GAP do refusal acima: tokens gastos, `uso` não devolvido neste caminho (RAD-230 follow-up).
+    // GAP fechado (RAD-243): mesmo tratamento do refusal acima — `usoParcial` carrega o custo já gasto.
     if (mensagem.stop_reason === 'max_tokens') {
-      throw new SaidaLlmInvalidaError('resposta truncada (max_tokens)');
+      throw new SaidaLlmInvalidaError('resposta truncada (max_tokens)', usoDeMensagem(mensagem, req.modelo));
     }
 
     // Ausência do tool_use forçado também é rejeitada (camada 3, dentro de extrairToolInput).
     return { input: extrairToolInput(mensagem, req.ferramenta), uso: usoDeMensagem(mensagem, req.modelo) };
+  }
+
+  /**
+   * Admission control (RAD-243, P-20/P-38) — `count_tokens` da MESMA requisição que `extrairViaFerramenta`
+   * enviaria (mesmo `system`/`messages`/`tools`, sem `max_tokens`/`tool_choice`, que o endpoint não aceita),
+   * ANTES de pagar pela geração. Grátis e com RPM próprio (ver docstring de `MessagesClient`).
+   */
+  async contarTokensDeEntrada(req: LlmExtracaoRequest, signal: AbortSignal): Promise<number> {
+    const { model, system, messages, tools } = paramsExtracao(req);
+    const contagem = await this.messages.countTokens({ model, system, messages, tools }, { signal });
+    return contagem.input_tokens;
   }
 }
 

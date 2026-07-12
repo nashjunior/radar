@@ -166,4 +166,13 @@ export class ClaudeCliLlmClient implements LlmClient {
       throw new Error(`claude CLI retornou JSON malformado: ${match[0].slice(0, 400)}`);
     }
   }
+
+  /**
+   * O CLI não expõe `count_tokens` (RAD-243) — mesmo raciocínio do `uso` zerado acima: 0 é
+   * DESCONHECIDO, não "sem tokens". Harness de dev sem ANTHROPIC_API_KEY, fora do caminho de
+   * produção (admission control real roda em `AnthropicSdkClient`).
+   */
+  contarTokensDeEntrada(_req: LlmExtracaoRequest, _signal: AbortSignal): Promise<number> {
+    return Promise.resolve(0);
+  }
 }

@@ -53,12 +53,19 @@ const USO_FAKE = {
   cacheCreationInputTokens: 0,
 };
 
-function fakeClient(resposta: unknown): { client: LlmClient; requests: LlmExtracaoRequest[] } {
+function fakeClient(
+  resposta: unknown,
+  inputTokens = 1000,
+): { client: LlmClient; requests: LlmExtracaoRequest[] } {
   const requests: LlmExtracaoRequest[] = [];
   const client: LlmClient = {
     extrairViaFerramenta: async (req) => {
       requests.push(req);
       return { input: resposta, uso: USO_FAKE };
+    },
+    contarTokensDeEntrada: async (req) => {
+      requests.push(req);
+      return inputTokens;
     },
   };
   return { client, requests };
@@ -114,5 +121,36 @@ describe('AnthropicLlmGateway — defesa de injeção (A11 §2)', () => {
     expect(extracao.requisitos[0]!.citacao).not.toBeNull();
     expect(extracao.paginas).toBe(12);
     expect(extracao.confiancaGlobal().valor).toBeCloseTo(0.7); // min(0.9, 0.8, 0.7)
+  });
+});
+
+describe('AnthropicLlmGateway.estimarCusto — admission control (RAD-243)', () => {
+  it('conta tokens de entrada via count_tokens (sem chamar extrairViaFerramenta)', async () => {
+    let chamouExtrair = false;
+    const client: LlmClient = {
+      extrairViaFerramenta: async () => {
+        chamouExtrair = true;
+        return { input: brutoValido(), uso: USO_FAKE };
+      },
+      contarTokensDeEntrada: async () => 12_345,
+    };
+    const estimativa = await new AnthropicLlmGateway(client).estimarCusto(ENTRADA, noop);
+
+    expect(estimativa.inputTokens).toBe(12_345);
+    expect(chamouExtrair).toBe(false); // admission control não paga pela geração
+  });
+
+  it('custo estimado usa o PIOR CASO de output (MAX_TOKENS_EXTRACAO), não o output real', async () => {
+    const client: LlmClient = {
+      extrairViaFerramenta: async () => ({ input: brutoValido(), uso: USO_FAKE }),
+      contarTokensDeEntrada: async () => 1_000_000, // 1M tokens força o tier Opus (escolherModelo)
+    };
+    const estimativa = await new AnthropicLlmGateway(client).estimarCusto(
+      { ...ENTRADA, texto: 'x'.repeat(70_000) }, // > 60_000 chars → escolherModelo() escolhe Opus
+      noop,
+    );
+
+    expect(estimativa.modelo).toBe('claude-opus-4-8');
+    expect(estimativa.custoEstimadoUsd).toBeGreaterThan(0);
   });
 });

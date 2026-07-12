@@ -2,10 +2,14 @@ import { AcessoNegadoError } from '@radar/kernel';
 import type { ClienteFinalId, EditalId, PerfilId, TenantId } from '@radar/kernel';
 import {
   ConfiancaInsuficienteError,
+  EntradaExcedeTetoDeAdmissaoError,
   ExtracaoRecusadaError,
   OcrFalhouError,
+  OrcamentoDeCustoExcedidoError,
   PerfilNaoEncontradoError,
+  SaidaLlmInvalidaError,
 } from '../../domain/errors/index.js';
+import type { PerfilHabilitacao } from '../../domain/perfil-habilitacao.js';
 import { RegistroUsoLlm } from '../../domain/registro-uso-llm.js';
 import { Triagem } from '../../domain/triagem.js';
 import { triagemParaDTO } from '../dtos.js';
@@ -13,12 +17,21 @@ import type { EntradaExtracaoDTO, TriagemDTO } from '../dtos.js';
 import { LIMIAR_CONFIANCA_PADRAO } from '../politica-confianca.js';
 import { TriagemConcluida } from '../events.js';
 import { calcularCustoUsd } from '../precificacao-llm.js';
+import {
+  excedeOrcamento,
+  excedeTetoDeAdmissao,
+  inicioDaJanela,
+  MAX_INPUT_TOKENS_ADMISSAO,
+  POLITICA_ORCAMENTO_PADRAO,
+} from '../politica-orcamento.js';
+import type { PoliticaOrcamento } from '../politica-orcamento.js';
 import type {
   EventPublisher,
   ExtracaoRepository,
   LlmGateway,
   PerfilGateway,
   TriagemRepository,
+  UsoLlm,
   UsoLlmLedger,
 } from '../ports.js';
 
@@ -44,6 +57,7 @@ export class TriarEditalUseCase {
     private readonly triagens: TriagemRepository,
     private readonly eventos: EventPublisher,
     private readonly usoLedger: UsoLlmLedger,
+    private readonly orcamento: PoliticaOrcamento = POLITICA_ORCAMENTO_PADRAO,
   ) {}
 
   async executar(input: TriarEditalInput, signal: AbortSignal): Promise<TriagemDTO> {
@@ -59,6 +73,25 @@ export class TriarEditalUseCase {
     // 2. Extração CACHEADA por edital (P-45). Cache-miss → 1 chamada de LLM (A10 §4.5).
     let extracao = await this.extracoes.porEdital(input.editalId, signal);
     if (extracao === null) {
+      // Admission control + orçamento (RAD-243, P-20/P-38) — ANTES da chamada paga. Único caller
+      // com tenant conhecido aqui: checa orçamento GLOBAL sempre e POR TENANT quando configurado
+      // (`orcamentoPorTenantUsd`) — a pré-extração global (ExtrairEditalUseCase) só tem o global.
+      const estimativa = await this.llm.estimarCusto(input.conteudo, signal);
+      if (excedeTetoDeAdmissao(estimativa.inputTokens)) {
+        throw new EntradaExcedeTetoDeAdmissaoError(estimativa.inputTokens, MAX_INPUT_TOKENS_ADMISSAO);
+      }
+      const desde = inicioDaJanela(new Date(), this.orcamento);
+      const gastoGlobal = await this.usoLedger.gastoUsdNaJanela({ tenantId: null }, desde, signal);
+      if (excedeOrcamento(estimativa.custoEstimadoUsd, gastoGlobal, this.orcamento.orcamentoGlobalUsd)) {
+        throw new OrcamentoDeCustoExcedidoError('global');
+      }
+      if (this.orcamento.orcamentoPorTenantUsd !== null) {
+        const gastoTenant = await this.usoLedger.gastoUsdNaJanela({ tenantId: input.tenantId }, desde, signal);
+        if (excedeOrcamento(estimativa.custoEstimadoUsd, gastoTenant, this.orcamento.orcamentoPorTenantUsd)) {
+          throw new OrcamentoDeCustoExcedidoError('tenant');
+        }
+      }
+
       // OCR falhou ou modelo recusou → persiste estado degradado antes de re-lançar (RAD-79).
       try {
         const resultado = await this.llm.extrair(input.conteudo, signal);
@@ -66,23 +99,13 @@ export class TriarEditalUseCase {
         // ÚNICO caller com tenant conhecido no momento da chamada (cache-miss dentro de uma triagem
         // solicitada por um cliente) — `ExtrairEditalUseCase`/`ExtrairEditaisEmLoteUseCase` são
         // pré-extração GLOBAL (P-45), sem tenant a atribuir (docs/98 P-20 veredicto RAD-227).
-        await this.usoLedger.registrar(
-          RegistroUsoLlm.criar({
-            editalId: input.editalId,
-            tenantId: input.tenantId,
-            clienteFinalId: perfil.clienteFinalId,
-            perfilId: input.perfilId,
-            modelo: resultado.uso.modelo,
-            inputTokens: resultado.uso.inputTokens,
-            outputTokens: resultado.uso.outputTokens,
-            cacheReadInputTokens: resultado.uso.cacheReadInputTokens,
-            cacheCreationInputTokens: resultado.uso.cacheCreationInputTokens,
-            custoUsd: calcularCustoUsd(resultado.uso),
-            ocorridoEm: new Date(),
-          }),
-          signal,
-        );
+        await this.registrarUso(input, perfil, resultado.uso, signal);
       } catch (err) {
+        // GAP fechado (RAD-243): recusa/truncamento gastam tokens antes de lançar — registra o
+        // custo real a partir do `usoParcial` anexado ao erro, além do estado degradado abaixo.
+        if ((err instanceof ExtracaoRecusadaError || err instanceof SaidaLlmInvalidaError) && err.usoParcial) {
+          await this.registrarUso(input, perfil, err.usoParcial, signal);
+        }
         let degradada: Triagem;
         if (err instanceof OcrFalhouError) {
           degradada = Triagem.falhaOcr(input.editalId, input.perfilId, input.tenantId, perfil.clienteFinalId);
@@ -129,5 +152,29 @@ export class TriarEditalUseCase {
     );
 
     return triagemParaDTO(triagem); // a UI exibe com citação em um clique; usuário decide (HITL)
+  }
+
+  private async registrarUso(
+    input: TriarEditalInput,
+    perfil: PerfilHabilitacao,
+    uso: UsoLlm,
+    signal: AbortSignal,
+  ): Promise<void> {
+    await this.usoLedger.registrar(
+      RegistroUsoLlm.criar({
+        editalId: input.editalId,
+        tenantId: input.tenantId,
+        clienteFinalId: perfil.clienteFinalId,
+        perfilId: input.perfilId,
+        modelo: uso.modelo,
+        inputTokens: uso.inputTokens,
+        outputTokens: uso.outputTokens,
+        cacheReadInputTokens: uso.cacheReadInputTokens,
+        cacheCreationInputTokens: uso.cacheCreationInputTokens,
+        custoUsd: calcularCustoUsd(uso),
+        ocorridoEm: new Date(),
+      }),
+      signal,
+    );
   }
 }

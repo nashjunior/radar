@@ -87,4 +87,14 @@ export class RecordReplayLlmClient implements LlmClient {
     }
     throw new FixtureDeGoldSetAusenteError(chave);
   }
+
+  /**
+   * REPLAY (sem `delegate`) não paga por `count_tokens` real (RAD-243) — devolve 0, para o admission
+   * control nunca rejeitar um caso do gold set por um teto que não se aplica a fixtures reproduzidas.
+   * RECORD (com `delegate`) repassa ao client real — o mesmo padrão de `extrairViaFerramenta` acima.
+   */
+  async contarTokensDeEntrada(req: LlmExtracaoRequest, signal: AbortSignal): Promise<number> {
+    const { delegate } = this.opts;
+    return delegate !== undefined ? delegate.contarTokensDeEntrada(req, signal) : 0;
+  }
 }

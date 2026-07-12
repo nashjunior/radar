@@ -9,7 +9,12 @@ import type { CategoriaHabilitacao } from '../../domain/value-objects/requisito.
 import { Risco } from '../../domain/value-objects/risco.js';
 import type { Severidade } from '../../domain/value-objects/risco.js';
 import type { EntradaExtracaoDTO } from '../../application/dtos.js';
-import type { LlmGateway, UsoLlm } from '../../application/ports.js';
+import type { EstimativaDeCusto, LlmGateway, UsoLlm } from '../../application/ports.js';
+import { calcularCustoUsd } from '../../application/precificacao-llm.js';
+
+// Teto de output da extração — espelha MAX_TOKENS_EXTRACAO de anthropic-extracao-schema.ts.
+// Valor local para evitar ciclo de importação: schema importa CATEGORIAS deste módulo.
+const MAX_TOKENS_EXTRACAO = 8192;
 
 /**
  * Requisição crua ao modelo. `system` é a instrução FIXA; `userContent` já traz o edital como DADO
@@ -47,6 +52,8 @@ export interface ResultadoExtracaoClient {
  */
 export interface LlmClient {
   extrairViaFerramenta(req: LlmExtracaoRequest, signal: AbortSignal): Promise<ResultadoExtracaoClient>;
+  /** Admission control (RAD-243) — `count_tokens` da entrada, sem chamar o modelo. Grátis, RPM próprio. */
+  contarTokensDeEntrada(req: LlmExtracaoRequest, signal: AbortSignal): Promise<number>;
 }
 
 /** Nome da ferramenta de saída estruturada (structured output) — camada 3. */
@@ -78,6 +85,24 @@ export const INSTRUCAO_EXTRACAO = [
  */
 export class AnthropicLlmGateway implements LlmGateway {
   constructor(private readonly client: LlmClient) {}
+
+  /**
+   * Admission control + orçamento (RAD-243, P-20/P-38) — `count_tokens` da entrada (grátis) e o custo
+   * do PIOR CASO de output (`MAX_TOKENS_EXTRACAO`, já que o output real só é conhecido depois da
+   * chamada paga). O caller (use case) decide admissão com `admiteChamada()` ANTES de `extrair()`.
+   */
+  async estimarCusto(entrada: EntradaExtracaoDTO, signal: AbortSignal): Promise<EstimativaDeCusto> {
+    const req = montarRequisicaoExtracao(entrada);
+    const inputTokens = await this.client.contarTokensDeEntrada(req, signal);
+    const custoEstimadoUsd = calcularCustoUsd({
+      modelo: req.modelo,
+      inputTokens,
+      outputTokens: MAX_TOKENS_EXTRACAO,
+      cacheReadInputTokens: 0,
+      cacheCreationInputTokens: 0,
+    });
+    return { modelo: req.modelo, inputTokens, custoEstimadoUsd };
+  }
 
   async extrair(
     entrada: EntradaExtracaoDTO,

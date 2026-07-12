@@ -50,12 +50,37 @@ export class OcrFalhouError extends DomainError {
   }
 }
 
-/** Saída do LLM não bate no schema (A11 §2, camada 3). A saída do modelo é NÃO-confiável. Borda: 502. */
+/**
+ * Saída do LLM não bate no schema (A11 §2, camada 3) — cobre também o truncamento por `max_tokens`
+ * (RAD-243): tool_use incompleto não é confiável, nunca "consertado". `usoParcial` (RAD-243 GAP)
+ * é preenchido só no caminho de truncamento — ali os tokens já foram gastos antes do lançamento;
+ * as demais rejeições de schema (camada 3, após retorno bem-sucedido do client) não o preenchem —
+ * fora do escopo desta issue (não citado no GAP original), registrado como lacuna conhecida.
+ * A saída do modelo é NÃO-confiável. Borda: 502.
+ */
 export class SaidaLlmInvalidaError extends DomainError {
   readonly code = 'SAIDA_LLM_INVALIDA' as const;
-  constructor(motivo: string) {
+  constructor(
+    motivo: string,
+    readonly usoParcial?: UsoParcialLlm,
+  ) {
     super(`saída do LLM rejeitada pelo schema: ${motivo}`);
   }
+}
+
+/**
+ * Consumo de tokens JÁ GASTO no momento em que um erro de extração é lançado (RAD-243, GAP de
+ * RAD-230/P-20/P-38): recusa e truncamento lançam de dentro de `AnthropicSdkClient` ANTES de
+ * devolver `uso` ao caller normalmente — sem isto o custo real desses dois caminhos não entra no
+ * ledger. Forma estrutural idêntica a `UsoLlm` (`application/ports.ts`) — sem import cross-layer:
+ * o domínio não depende da application (A10 §8).
+ */
+export interface UsoParcialLlm {
+  readonly modelo: string;
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+  readonly cacheReadInputTokens: number;
+  readonly cacheCreationInputTokens: number;
 }
 
 /**
@@ -66,7 +91,7 @@ export class SaidaLlmInvalidaError extends DomainError {
  */
 export class ExtracaoRecusadaError extends DomainError {
   readonly code = 'EXTRACAO_RECUSADA' as const;
-  constructor() {
+  constructor(readonly usoParcial?: UsoParcialLlm) {
     super('modelo recusou a extração — marcar "requer leitura manual"');
   }
 }
@@ -104,5 +129,37 @@ export class UsoLlmInvalidoError extends DomainError {
   readonly code = 'USO_LLM_INVALIDO' as const;
   constructor(motivo: string) {
     super(`registro de uso de LLM inválido: ${motivo}`);
+  }
+}
+
+/**
+ * Admission control (RAD-243, P-20/P-38): a entrada mede, via `count_tokens` (grátis, RPM próprio —
+ * sem custo de billing), mais tokens que o teto de sanidade contra outliers (OCR corrompido, texto
+ * degenerado) — ANTES de chamar o modelo, zero custo gasto. Não é o orçamento de negócio (esse é
+ * `OrcamentoDeCustoExcedidoError`): este teto é técnico, não financeiro. Borda: 422 (mesma família
+ * de "não processar", como `OcrFalhouError`).
+ */
+export class EntradaExcedeTetoDeAdmissaoError extends DomainError {
+  readonly code = 'ENTRADA_EXCEDE_TETO_DE_ADMISSAO' as const;
+  constructor(
+    readonly inputTokens: number,
+    readonly teto: number,
+  ) {
+    super(`entrada com ${inputTokens} tokens de input excede o teto de admissão (${teto}) — provável outlier`);
+  }
+}
+
+/**
+ * Kill-switch de orçamento acumulado por janela (RAD-243, P-20/P-38, veredicto RAD-227): o gasto
+ * já realizado na janela + o custo ESTIMADO desta chamada (pior caso de output) excederia o teto
+ * (global ou por tenant). Lançado ANTES de chamar o modelo — zero custo adicional gasto. O NÚMERO
+ * do orçamento é `[A VALIDAR]` (Negócio+Eng, docs/98 P-20); o mecanismo não espera por ele
+ * (`PoliticaOrcamento` injetável, default sem teto — `politica-orcamento.ts`). Borda: 429
+ * (mesma semântica de "tente depois" do rate-limit — não é erro do chamador).
+ */
+export class OrcamentoDeCustoExcedidoError extends DomainError {
+  readonly code = 'ORCAMENTO_DE_CUSTO_EXCEDIDO' as const;
+  constructor(readonly escopo: 'global' | 'tenant') {
+    super(`orçamento de custo de IA excedido (${escopo}) — kill-switch acionado (P-20/P-38)`);
   }
 }

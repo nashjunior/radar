@@ -102,6 +102,7 @@ describe('RecordReplayLlmClient — RECORD accumulation', () => {
     let delegateCall = 0;
     const delegate: LlmClient = {
       extrairViaFerramenta: vi.fn().mockImplementation(() => brutos[delegateCall++]),
+      contarTokensDeEntrada: vi.fn(),
     };
     const gravado = new Map<string, unknown>();
 
@@ -121,7 +122,10 @@ describe('RecordReplayLlmClient — RECORD accumulation', () => {
   it('RECORD: onRecord recebe a chave exata derivada pelo ChaveCaso', async () => {
     const chaveFixa = 'minha-chave-custom';
     const bruto = { resultado: 'ok' };
-    const delegate: LlmClient = { extrairViaFerramenta: vi.fn().mockResolvedValue(bruto) };
+    const delegate: LlmClient = {
+      extrairViaFerramenta: vi.fn().mockResolvedValue(bruto),
+      contarTokensDeEntrada: vi.fn(),
+    };
     let capturedChave: string | undefined;
 
     const client = new RecordReplayLlmClient(new Map(), {
@@ -141,7 +145,7 @@ describe('RecordReplayLlmClient — RECORD accumulation', () => {
     const fixtures = new Map<string, unknown>([[chave, FIXTURE_BRUTA]]);
 
     const client = new RecordReplayLlmClient(fixtures, {
-      delegate: { extrairViaFerramenta: vi.fn() },
+      delegate: { extrairViaFerramenta: vi.fn(), contarTokensDeEntrada: vi.fn() },
       onRecord,
     });
 
@@ -154,7 +158,7 @@ describe('RecordReplayLlmClient — AbortSignal (P-78)', () => {
   it('propaga AbortSignal ao delegate em modo RECORD', async () => {
     const controller = new AbortController();
     const extrairViaFerramenta = vi.fn().mockResolvedValue(FIXTURE_BRUTA);
-    const delegate: LlmClient = { extrairViaFerramenta };
+    const delegate: LlmClient = { extrairViaFerramenta, contarTokensDeEntrada: vi.fn() };
 
     const client = new RecordReplayLlmClient(new Map(), { delegate });
     await client.extrairViaFerramenta(req(), controller.signal);
@@ -167,7 +171,7 @@ describe('RecordReplayLlmClient — AbortSignal (P-78)', () => {
     controller.abort();
     const chave = chavePorConteudo(req());
     const fixtures = new Map<string, unknown>([[chave, FIXTURE_BRUTA]]);
-    const delegate: LlmClient = { extrairViaFerramenta: vi.fn() };
+    const delegate: LlmClient = { extrairViaFerramenta: vi.fn(), contarTokensDeEntrada: vi.fn() };
 
     const client = new RecordReplayLlmClient(fixtures, { delegate });
     const { input } = await client.extrairViaFerramenta(req(), controller.signal);

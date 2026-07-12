@@ -181,9 +181,12 @@ describe('Gate A07 · AB1/P-51 — matriz de autorização por objeto', () => {
       cacheReadInputTokens: 0,
       cacheCreationInputTokens: 0,
     };
-    const llm = { extrair: vi.fn().mockResolvedValue({ extracao: extracao(), uso }) };
+    const llm = {
+      extrair: vi.fn().mockResolvedValue({ extracao: extracao(), uso }),
+      estimarCusto: vi.fn(),
+    };
     const triagens = { salvar: vi.fn(), porEditalEPerfil: vi.fn() };
-    const usoLedger = { registrar: vi.fn() };
+    const usoLedger = { registrar: vi.fn(), gastoUsdNaJanela: vi.fn() };
     const uc = new TriarEditalUseCase(
       { porEdital: vi.fn().mockResolvedValue(null), salvar: vi.fn() },
       { porId: vi.fn().mockResolvedValue(perfilTriagem(CLIENTE_B)) },

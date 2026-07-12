@@ -40,7 +40,10 @@ interface Captura {
   chamadas: number;
 }
 
-function fakeMessages(resposta: MensagemFinal): { client: MessagesClient; cap: Captura } {
+function fakeMessages(
+  resposta: MensagemFinal,
+  inputTokensContagem = 0,
+): { client: MessagesClient; cap: Captura } {
   const cap: Captura = { chamadas: 0 };
   const client: MessagesClient = {
     stream(params, opts) {
@@ -49,6 +52,7 @@ function fakeMessages(resposta: MensagemFinal): { client: MessagesClient; cap: C
       cap.chamadas += 1;
       return { finalMessage: async () => resposta };
     },
+    countTokens: async () => ({ input_tokens: inputTokensContagem }),
   };
   return { client, cap };
 }
@@ -125,6 +129,25 @@ describe('AnthropicSdkClient — levers 6+5a (RAD-55)', () => {
     expect(JSON.stringify(meta)).not.toContain('notebooks');
   });
 
+  it('GAP fechado (RAD-243): refusal anexa usoParcial ao erro — usage.tokens já gastos não somem', async () => {
+    const { client } = fakeMessages(
+      msg({ stop_reason: 'refusal', stop_details: { type: 'refusal', category: 'cyber' }, content: [] }),
+    );
+    expect.assertions(2);
+    try {
+      await new AnthropicSdkClient(client).extrairViaFerramenta(req(), noop);
+    } catch (erro) {
+      expect(erro).toBeInstanceOf(ExtracaoRecusadaError);
+      expect((erro as ExtracaoRecusadaError).usoParcial).toEqual({
+        modelo: 'claude-sonnet-5',
+        inputTokens: 1000,
+        outputTokens: 200,
+        cacheReadInputTokens: 0,
+        cacheCreationInputTokens: 0,
+      });
+    }
+  });
+
   it('lever 6: max_tokens (truncado) → SaidaLlmInvalidaError, não devolve parcial', async () => {
     const { client } = fakeMessages(msg({ stop_reason: 'max_tokens', content: [] }));
     await expect(
@@ -132,10 +155,51 @@ describe('AnthropicSdkClient — levers 6+5a (RAD-55)', () => {
     ).rejects.toBeInstanceOf(SaidaLlmInvalidaError);
   });
 
+  it('GAP fechado (RAD-243): truncamento (max_tokens) anexa usoParcial ao erro', async () => {
+    const { client } = fakeMessages(msg({ stop_reason: 'max_tokens', content: [] }));
+    expect.assertions(2);
+    try {
+      await new AnthropicSdkClient(client).extrairViaFerramenta(req(), noop);
+    } catch (erro) {
+      expect(erro).toBeInstanceOf(SaidaLlmInvalidaError);
+      expect((erro as SaidaLlmInvalidaError).usoParcial).toEqual({
+        modelo: 'claude-sonnet-5',
+        inputTokens: 1000,
+        outputTokens: 200,
+        cacheReadInputTokens: 0,
+        cacheCreationInputTokens: 0,
+      });
+    }
+  });
+
   it('resposta sem o tool_use forçado → SaidaLlmInvalidaError (camada 3)', async () => {
     const { client } = fakeMessages(msg({ stop_reason: 'end_turn', content: [{ type: 'text' }] }));
     await expect(
       new AnthropicSdkClient(client).extrairViaFerramenta(req(), noop),
     ).rejects.toBeInstanceOf(SaidaLlmInvalidaError);
+  });
+});
+
+describe('AnthropicSdkClient.contarTokensDeEntrada — admission control (RAD-243)', () => {
+  it('devolve input_tokens de messages.countTokens, sem chamar .stream (zero custo)', async () => {
+    const { client, cap } = fakeMessages(msg(), 4_242);
+    const tokens = await new AnthropicSdkClient(client).contarTokensDeEntrada(req(), noop);
+
+    expect(tokens).toBe(4_242);
+    expect(cap.chamadas).toBe(0); // não chamou .stream() — count_tokens não gera
+  });
+
+  it('propaga o AbortSignal (P-78) ao countTokens', async () => {
+    const signal = new AbortController().signal;
+    let signalRecebido: AbortSignal | undefined;
+    const client: MessagesClient = {
+      stream: () => ({ finalMessage: async () => msg() }),
+      countTokens: async (_params, opts) => {
+        signalRecebido = opts.signal;
+        return { input_tokens: 1 };
+      },
+    };
+    await new AnthropicSdkClient(client).contarTokensDeEntrada(req(), signal);
+    expect(signalRecebido).toBe(signal);
   });
 });

@@ -17,6 +17,7 @@ import { PostgresTriagemRepository, PostgresExtracaoRepository } from '@radar/tr
 import type {
   DomainEvent,
   EntradaExtracaoDTO,
+  EstimativaDeCusto,
   EventPublisher,
   LlmGateway,
   PerfilGateway,
@@ -39,10 +40,15 @@ const USO_STUB: UsoLlm = {
   cacheCreationInputTokens: 0,
 };
 
+const ESTIMATIVA_STUB: EstimativaDeCusto = { modelo: 'stub', inputTokens: 0, custoEstimadoUsd: 0 };
+
 class StubLlmGateway implements LlmGateway {
   callCount = 0;
   private next: ExtracaoEdital | null = null;
   preparar(e: ExtracaoEdital): void { this.next = e; }
+  async estimarCusto(_entrada: EntradaExtracaoDTO, _signal: AbortSignal): Promise<EstimativaDeCusto> {
+    return ESTIMATIVA_STUB; // BDD não exercita admission control real (RAD-243) — orçamento default é sem teto
+  }
   async extrair(
     _entrada: EntradaExtracaoDTO,
     _signal: AbortSignal,
@@ -56,6 +62,9 @@ class StubLlmGateway implements LlmGateway {
 const usoLedgerStub: UsoLlmLedger = {
   async registrar(_registro, _signal) {
     /* stub — BDD não exercita o ledger de custo (RAD-230) */
+  },
+  async gastoUsdNaJanela(_escopo, _desde, _signal) {
+    return 0; // BDD roda com POLITICA_ORCAMENTO_PADRAO (sem teto) — kill-switch nunca aciona
   },
 };
 

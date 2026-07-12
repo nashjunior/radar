@@ -72,7 +72,7 @@ function deps(resultados: ResultadoLote[], existentePorId: Record<string, Extrac
   const extracoes: ExtracaoRepository = { porEdital, salvar };
   const storage: ObjectStorage = { obterTextoAnexo };
   const llmLote: LlmLoteGateway = { extrairLote };
-  const usoLedger: UsoLlmLedger = { registrar };
+  const usoLedger: UsoLlmLedger = { registrar, gastoUsdNaJanela: vi.fn() };
   return { extracoes, storage, llmLote, usoLedger, porEdital, salvar, obterTextoAnexo, extrairLote, registrar };
 }
 
