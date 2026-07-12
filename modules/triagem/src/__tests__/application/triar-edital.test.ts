@@ -18,9 +18,11 @@ import type {
   UsoLlmLedger,
 } from '../../application/ports.js';
 import {
+  AguardandoAnexoError,
   ConfiancaInsuficienteError,
   EntradaExcedeTetoDeAdmissaoError,
   ExtracaoRecusadaError,
+  OcrFalhouError,
   OrcamentoDeCustoExcedidoError,
   PerfilNaoEncontradoError,
   SaidaLlmInvalidaError,
@@ -81,6 +83,7 @@ const INPUT: TriarEditalInput = {
   clienteFinalId: CLIENTE,
   tenantId: TENANT,
   conteudo: CONTEUDO,
+  anexosDisponiveis: true,
   limiarConfianca: 0.5,
 };
 
@@ -114,6 +117,7 @@ function deps(opts: {
   estimativa?: EstimativaDeCusto;
   gastoGlobalUsd?: number;
   gastoTenantUsd?: number;
+  gastoCoorteTrialUsd?: number;
   orcamento?: PoliticaOrcamento;
 }) {
   const porEdital = vi.fn().mockResolvedValue(opts.existente ?? null);
@@ -124,14 +128,19 @@ function deps(opts: {
   const salvarTriagem = vi.fn().mockResolvedValue(undefined);
   const publicar = vi.fn().mockResolvedValue(undefined);
   const registrar = vi.fn().mockResolvedValue(undefined);
-  const gastoUsdNaJanela = vi.fn().mockImplementation((escopo: { tenantId: unknown }) =>
-    Promise.resolve(escopo.tenantId === null ? (opts.gastoGlobalUsd ?? 0) : (opts.gastoTenantUsd ?? 0)),
-  );
+  const gastoUsdNaJanela = vi.fn().mockImplementation((escopo: { tenantId?: unknown; coorte?: unknown }) => {
+    if (escopo.coorte === 'trial') return Promise.resolve(opts.gastoCoorteTrialUsd ?? 0);
+    return Promise.resolve(escopo.tenantId === null ? (opts.gastoGlobalUsd ?? 0) : (opts.gastoTenantUsd ?? 0));
+  });
 
   const extracoes: ExtracaoRepository = { porEdital, salvar: salvarExtracao };
   const perfis: PerfilGateway = { porId };
   const llm: LlmGateway = { extrair, estimarCusto };
-  const triagens: TriagemRepository = { salvar: salvarTriagem, porEditalEPerfil: vi.fn() };
+  const triagens: TriagemRepository = {
+    salvar: salvarTriagem,
+    porEditalEPerfil: vi.fn(),
+    listarProcessandoPorEdital: vi.fn().mockResolvedValue([]),
+  };
   const eventos: EventPublisher = { publicar };
   const usoLedger: UsoLlmLedger = { registrar, gastoUsdNaJanela };
 
@@ -175,6 +184,7 @@ describe('TriarEditalUseCase', () => {
     expect(evento.type).toBe('triagem.concluida');
     expect(evento.payload.riscos).toEqual(['não atende: Registro CREA']); // string[] no evento
     expect(evento.payload.clienteFinalId).toBe(CLIENTE);
+    expect(evento.payload.solicitadaEm).toBeUndefined(); // INPUT não informou (A18 §5 — opcional/aditivo)
 
     // RAD-230: único caller com tenant/perfil conhecidos no momento da chamada ao LLM.
     expect(registrar).toHaveBeenCalledTimes(1);
@@ -226,6 +236,7 @@ describe('TriarEditalUseCase', () => {
       clienteFinalId: CLIENTE,
       tenantId: TENANT,
       conteudo: CONTEUDO,
+      anexosDisponiveis: true,
     }; // sem limiarConfianca (agora opcional)
 
     // logo ABAIXO do default → degrada para leitura assistida (incompleta), publica triagem.falhou
@@ -347,7 +358,12 @@ describe('TriarEditalUseCase — admission control + orçamento (RAD-243)', () =
   });
 
   it('orçamento GLOBAL excedido → OrcamentoDeCustoExcedidoError, sem chamar o LLM, publica triagem.falhou', async () => {
-    const orcamento: PoliticaOrcamento = { janelaHoras: 24, orcamentoGlobalUsd: 10, orcamentoPorTenantUsd: null };
+    const orcamento: PoliticaOrcamento = {
+      janelaHoras: 24,
+      orcamentoGlobalUsd: 10,
+      orcamentoPorTenantUsd: null,
+      orcamentoCoorteTrialUsd: null,
+    };
     const { uc, extrair, publicar } = deps({
       existente: null,
       estimativa: { modelo: 'claude-sonnet-5', inputTokens: 1000, custoEstimadoUsd: 0.5 },
@@ -367,6 +383,7 @@ describe('TriarEditalUseCase — admission control + orçamento (RAD-243)', () =
       janelaHoras: 24,
       orcamentoGlobalUsd: 1000, // global folgado
       orcamentoPorTenantUsd: 1, // tenant apertado
+      orcamentoCoorteTrialUsd: null,
     };
     const { uc, extrair, gastoUsdNaJanela } = deps({
       existente: null,
@@ -422,6 +439,66 @@ describe('TriarEditalUseCase — admission control + orçamento (RAD-243)', () =
   });
 });
 
+describe('TriarEditalUseCase — bulkhead do coorte trial (RAD-271, P-109 L1)', () => {
+  const ORCAMENTO_COORTE_APERTADO: PoliticaOrcamento = {
+    janelaHoras: 24,
+    orcamentoGlobalUsd: 1000, // global folgado — o pagante nunca esbarra no teto do trial
+    orcamentoPorTenantUsd: null,
+    orcamentoCoorteTrialUsd: 1,
+  };
+
+  it('coorteTrial: true + orçamento do coorte esgotado → OrcamentoDeCustoExcedidoError("trial"), sem chamar o LLM', async () => {
+    const { uc, extrair, publicar, gastoUsdNaJanela } = deps({
+      existente: null,
+      estimativa: { modelo: 'claude-sonnet-5', inputTokens: 1000, custoEstimadoUsd: 0.5 },
+      gastoGlobalUsd: 0,
+      gastoCoorteTrialUsd: 0.6,
+      orcamento: ORCAMENTO_COORTE_APERTADO,
+    });
+    await expect(uc.executar({ ...INPUT, coorteTrial: true }, noop)).rejects.toThrow(
+      OrcamentoDeCustoExcedidoError,
+    );
+    expect(extrair).not.toHaveBeenCalled();
+    expect(gastoUsdNaJanela).toHaveBeenCalledWith({ coorte: 'trial' }, expect.any(Date), noop);
+    expect(publicar.mock.calls[0]![0]).toMatchObject({
+      type: 'triagem.falhou',
+      payload: { motivo: 'ORCAMENTO_DE_CUSTO_EXCEDIDO' },
+    });
+  });
+
+  it('invariante do bulkhead: coorte trial esgotado NÃO barra tenant pagante (coorteTrial: false/omitido)', async () => {
+    const { uc, extrair, gastoUsdNaJanela } = deps({
+      existente: null,
+      estimativa: { modelo: 'claude-sonnet-5', inputTokens: 1000, custoEstimadoUsd: 0.5 },
+      gastoGlobalUsd: 0,
+      gastoCoorteTrialUsd: 999, // coorte trial completamente esgotado
+      orcamento: ORCAMENTO_COORTE_APERTADO,
+    });
+    // INPUT sem coorteTrial (tenant pagante) — passa mesmo com o coorte trial estourado.
+    await expect(uc.executar(INPUT, noop)).resolves.toBeDefined();
+    expect(extrair).toHaveBeenCalledOnce();
+    expect(gastoUsdNaJanela).not.toHaveBeenCalledWith({ coorte: 'trial' }, expect.any(Date), noop);
+  });
+
+  it('coorteTrial: true, mas orcamentoCoorteTrialUsd null (default) — não checa o coorte, só global/tenant', async () => {
+    const { uc, gastoUsdNaJanela } = deps({ existente: null }); // POLITICA_ORCAMENTO_PADRAO: orcamentoCoorteTrialUsd null
+    await uc.executar({ ...INPUT, coorteTrial: true }, noop);
+    expect(gastoUsdNaJanela).not.toHaveBeenCalledWith({ coorte: 'trial' }, expect.any(Date), noop);
+  });
+
+  it('cache-miss com coorteTrial: true tageia o RegistroUsoLlm gravado no ledger', async () => {
+    const { uc, registrar } = deps({ existente: null });
+    await uc.executar({ ...INPUT, coorteTrial: true }, noop);
+    expect(registrar.mock.calls[0]![0]).toMatchObject({ coorteTrial: true });
+  });
+
+  it('cache-miss sem coorteTrial (omitido) tageia coorteTrial: false no ledger (nunca undefined)', async () => {
+    const { uc, registrar } = deps({ existente: null });
+    await uc.executar(INPUT, noop);
+    expect(registrar.mock.calls[0]![0]).toMatchObject({ coorteTrial: false });
+  });
+});
+
 describe('TriarEditalUseCase — triagem.falhou (RAD-255, P-107 (c))', () => {
   it('erro que não é DomainError (ex.: cancelamento via AbortSignal) publica motivo genérico seguro', async () => {
     const { uc, extrair, publicar } = deps({ existente: null });
@@ -464,5 +541,46 @@ describe('TriarEditalUseCase — triagem.falhou (RAD-255, P-107 (c))', () => {
     expect(publicar).toHaveBeenCalledOnce(); // não lançou AbortError ao tentar publicar
     const [, signalDaPublicacao] = publicar.mock.calls[0]!;
     expect(signalDaPublicacao.aborted).toBe(false); // signal PRÓPRIO, não o abortado
+  });
+});
+
+describe('TriarEditalUseCase — loop de disponibilidade do anexo (P-110/RAD-281)', () => {
+  it('anexosDisponiveis: false → AguardandoAnexoError, NÃO chama o LLM, NÃO persiste triagem, NÃO publica triagem.falhou', async () => {
+    const { uc, extrair, estimarCusto, salvarTriagem, publicar } = deps({ existente: null });
+
+    await expect(
+      uc.executar({ ...INPUT, anexosDisponiveis: false }, noop),
+    ).rejects.toThrow(AguardandoAnexoError);
+
+    expect(estimarCusto).not.toHaveBeenCalled();
+    expect(extrair).not.toHaveBeenCalled();
+    expect(salvarTriagem).not.toHaveBeenCalled();
+    // Distinto de toda falha real (RAD-255): aqui a reserva de cota FICA ativa — quem decide o
+    // desfecho final é ReenfileirarTriagensPendentesUseCase, não este catch genérico.
+    expect(publicar).not.toHaveBeenCalled();
+  });
+
+  it('anexosDisponiveis: true, cache-hit → ignora a disponibilidade (extração já existe, sem necessidade do texto)', async () => {
+    const { uc, extrair } = deps({ existente: extracao() });
+    await uc.executar({ ...INPUT, anexosDisponiveis: false }, noop);
+    expect(extrair).not.toHaveBeenCalled();
+  });
+
+  it('anexosDisponiveis: true, mas texto vazio após extração real → OcrFalhouError (falha de OCR de verdade), persiste falha_ocr e publica triagem.falhou', async () => {
+    const { uc, extrair, estimarCusto, salvarTriagem, publicar } = deps({ existente: null });
+    const conteudoSemTexto = { ...CONTEUDO, texto: '', temTextoSelecionavel: false };
+
+    await expect(
+      uc.executar({ ...INPUT, anexosDisponiveis: true, conteudo: conteudoSemTexto }, noop),
+    ).rejects.toThrow(OcrFalhouError);
+
+    expect(estimarCusto).not.toHaveBeenCalled();
+    expect(extrair).not.toHaveBeenCalled(); // sem base textual, nunca chama o LLM (custo zero)
+    expect(salvarTriagem).toHaveBeenCalledOnce();
+    expect(salvarTriagem.mock.calls[0]![0].status).toBe('falha_ocr');
+    expect(publicar.mock.calls[0]![0]).toMatchObject({
+      type: 'triagem.falhou',
+      payload: { motivo: 'OCR_FALHOU' },
+    });
   });
 });

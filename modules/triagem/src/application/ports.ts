@@ -36,6 +36,12 @@ export interface TriagemRepository {
     perfilId: PerfilId,
     signal: AbortSignal,
   ): Promise<Triagem | null>;
+  /**
+   * Todas as triagens em `processando` de um edital, cruzando tenant/perfil (P-110/RAD-281):
+   * `ReenfileirarTriagensPendentesUseCase` usa isto para saber QUEM estava esperando o anexo sair
+   * da quarentena, ao consumir `anexo.aprovado`/`anexo.rejeitado` da Ingestão.
+   */
+  listarProcessandoPorEdital(editalId: EditalId, signal: AbortSignal): Promise<Triagem[]>;
 }
 
 /**

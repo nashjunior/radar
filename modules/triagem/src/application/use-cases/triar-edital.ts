@@ -1,6 +1,7 @@
 import { AcessoNegadoError, DomainError } from '@radar/kernel';
 import type { ClienteFinalId, EditalId, PerfilId, TenantId } from '@radar/kernel';
 import {
+  AguardandoAnexoError,
   ConfiancaInsuficienteError,
   EntradaExcedeTetoDeAdmissaoError,
   ExtracaoRecusadaError,
@@ -9,6 +10,7 @@ import {
   PerfilNaoEncontradoError,
   SaidaLlmInvalidaError,
 } from '../../domain/errors/index.js';
+import { avaliarElegibilidadeExtracao } from '../../domain/elegibilidade-extracao.js';
 import type { PerfilHabilitacao } from '../../domain/perfil-habilitacao.js';
 import { RegistroUsoLlm } from '../../domain/registro-uso-llm.js';
 import { Triagem } from '../../domain/triagem.js';
@@ -41,7 +43,25 @@ export interface TriarEditalInput {
   clienteFinalId: ClienteFinalId;
   tenantId: TenantId; // resolvido na borda / payload de `triagem.solicitada` (P-25: `global` no MVP)
   conteudo: EntradaExtracaoDTO; // hidratado pelo worker a partir do Catálogo/ObjectStorage
+  /**
+   * O ACL da Ingestão (`DocumentosEditalGateway`) devolveu ao menos um documento já `limpo` deste
+   * edital (P-104/AB14, P-110/RAD-281). `false` quando o anexo ainda está em quarentena — distinto
+   * de "texto ilegível após extração real": só o segundo é falha de OCR terminal. Hidratado pelo
+   * worker (`TriagemSolicitadaWorker`) a partir do MESMO `DocumentosRef` usado para montar `conteudo`.
+   */
+  anexosDisponiveis: boolean;
   limiarConfianca?: number; // política de confiança (docs/10 §4, P-19); default LIMIAR_CONFIANCA_PADRAO
+  /**
+   * Assinatura do tenant em `trial` no momento da solicitação (RAD-271, P-109 L1) — resolvido no
+   * BFF (consulta a Cobrança no gate de cota) e carregado pelo payload de `triagem.solicitada`;
+   * esta use case nunca importa `modules/cobranca` (docs/13 §5, ACL). Governa o bulkhead de
+   * orçamento do coorte trial (`PoliticaOrcamento.orcamentoCoorteTrialUsd`) e a tag gravada no
+   * `UsoLlmLedger`. Default `false`: caller que não resolveu o coorte trata como não-trial (nunca
+   * bloqueia o pagante por omissão).
+   */
+  coorteTrial?: boolean;
+  /** `occurredAt` de `triagem.solicitada`, carregado pelo payload do worker (A18 §5). */
+  solicitadaEm?: Date;
 }
 
 /**
@@ -66,6 +86,12 @@ export class TriarEditalUseCase {
     try {
       return await this.executarOuLancar(input, signal);
     } catch (err) {
+      // P-110/RAD-281: anexo ainda em quarentena NÃO é falha — é "aguardar". Nunca publica
+      // `triagem.falhou` aqui (a reserva de cota de P-107 (c) continua ativa) e a `Triagem`
+      // permanece `processando`; `ReenfileirarTriagensPendentesUseCase` decide o desfecho final
+      // quando a Ingestão publicar `anexo.aprovado`/`anexo.rejeitado`.
+      if (err instanceof AguardandoAnexoError) throw err;
+
       // RAD-255 (P-107 (c)): todo caminho de falha/timeout/cancelamento publica `triagem.falhou`
       // para que Cobrança libere a reserva de cota — sem isto a cota vaza (docs/13 §3). `motivo`
       // é o `code` estável de `DomainError`; nunca a mensagem/stack (pode carregar detalhe interno).
@@ -96,9 +122,33 @@ export class TriarEditalUseCase {
     if (perfil === null) throw new PerfilNaoEncontradoError(input.perfilId);
     if (perfil.clienteFinalId !== input.clienteFinalId) throw new AcessoNegadoError();
 
+    const coorteTrial = input.coorteTrial ?? false;
+
     // 2. Extração CACHEADA por edital (P-45). Cache-miss → 1 chamada de LLM (A10 §4.5).
     let extracao = await this.extracoes.porEdital(input.editalId, signal);
     if (extracao === null) {
+      // P-110/RAD-281: sem cache-hit, o anexo ainda em quarentena NÃO é falha de OCR — é "ainda não
+      // chegou". Checar ANTES do admission control (nenhum custo, nem count_tokens grátis, gasto à
+      // toa numa entrada que sabemos vazia). Distinto de `sem_texto` abaixo: aqui não houve extração
+      // real, então nunca vira `falha_ocr` — a `Triagem` fica como está (`processando`).
+      if (!input.anexosDisponiveis) {
+        throw new AguardandoAnexoError();
+      }
+      // Documento disponível mas sem texto selecionável mesmo após a extração real da Ingestão
+      // (docs/10 §6) — aqui SIM é falha de OCR terminal, distinta do caso acima.
+      const elegibilidade = avaliarElegibilidadeExtracao(
+        null,
+        input.conteudo.texto,
+        input.conteudo.temTextoSelecionavel,
+      );
+      if (elegibilidade.tipo === 'sem_texto') {
+        await this.triagens.salvar(
+          Triagem.falhaOcr(input.editalId, input.perfilId, input.tenantId, perfil.clienteFinalId),
+          signal,
+        );
+        throw new OcrFalhouError();
+      }
+
       // Admission control + orçamento (RAD-243, P-20/P-38) — ANTES da chamada paga. Único caller
       // com tenant conhecido aqui: checa orçamento GLOBAL sempre e POR TENANT quando configurado
       // (`orcamentoPorTenantUsd`) — a pré-extração global (ExtrairEditalUseCase) só tem o global.
@@ -115,6 +165,14 @@ export class TriarEditalUseCase {
         const gastoTenant = await this.usoLedger.gastoUsdNaJanela({ tenantId: input.tenantId }, desde, signal);
         if (excedeOrcamento(estimativa.custoEstimadoUsd, gastoTenant, this.orcamento.orcamentoPorTenantUsd)) {
           throw new OrcamentoDeCustoExcedidoError('tenant');
+        }
+      }
+      // Bulkhead do coorte trial (RAD-271, P-109 L1): só tenants em trial pagam este teto — o
+      // pagante nunca esbarra aqui, mesmo com o coorte trial inteiro esgotado (isolamento do global).
+      if (coorteTrial && this.orcamento.orcamentoCoorteTrialUsd !== null) {
+        const gastoTrial = await this.usoLedger.gastoUsdNaJanela({ coorte: 'trial' }, desde, signal);
+        if (excedeOrcamento(estimativa.custoEstimadoUsd, gastoTrial, this.orcamento.orcamentoCoorteTrialUsd)) {
+          throw new OrcamentoDeCustoExcedidoError('trial');
         }
       }
 
@@ -173,6 +231,7 @@ export class TriarEditalUseCase {
         aderencia: triagem.aderencia!.valor,
         recomendacao: triagem.recomendacao!,
         riscos: triagem.riscos.map((r) => r.descricao),
+        ...(input.solicitadaEm ? { solicitadaEm: input.solicitadaEm } : {}),
       }),
       signal,
     );
@@ -197,6 +256,7 @@ export class TriarEditalUseCase {
         outputTokens: uso.outputTokens,
         cacheReadInputTokens: uso.cacheReadInputTokens,
         cacheCreationInputTokens: uso.cacheCreationInputTokens,
+        coorteTrial: input.coorteTrial ?? false,
         custoUsd: calcularCustoUsd(uso),
         ocorridoEm: new Date(),
       }),

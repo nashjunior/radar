@@ -51,6 +51,23 @@ export class OcrFalhouError extends DomainError {
 }
 
 /**
+ * O anexo do edital ainda não saiu da quarentena (P-104/AB14) — distinto de `OcrFalhouError`: aqui
+ * não houve extração real ainda, então NÃO é falha de OCR (P-110/RAD-281). Lançado só dentro de
+ * `TriarEditalUseCase`, que trata este erro como "aguardar", não como falha terminal: nunca publica
+ * `triagem.falhou` (a reserva de cota de P-107 (c) continua ativa) e a `Triagem` permanece
+ * `processando` — `ReenfileirarTriagensPendentesUseCase` reenfileira quando a Ingestão liberar o
+ * anexo (evento `anexo.aprovado`) ou falha explicitamente se nenhum anexo puder ficar limpo (evento
+ * `anexo.rejeitado` com `restamPendentes: false`). Nunca alcança a borda HTTP (engolido pelo worker
+ * de `triagem.solicitada`), mas mantém `code` estável pela mesma convenção do catálogo.
+ */
+export class AguardandoAnexoError extends DomainError {
+  readonly code = 'TRIAGEM_AGUARDANDO_ANEXO' as const;
+  constructor() {
+    super('anexo do edital ainda em quarentena — aguardando disponibilidade, não é falha de OCR');
+  }
+}
+
+/**
  * Saída do LLM não bate no schema (A11 §2, camada 3) — cobre também o truncamento por `max_tokens`
  * (RAD-243): tool_use incompleto não é confiável, nunca "consertado". `usoParcial` (RAD-243 GAP)
  * é preenchido só no caminho de truncamento — ali os tokens já foram gastos antes do lançamento;
@@ -152,14 +169,16 @@ export class EntradaExcedeTetoDeAdmissaoError extends DomainError {
 /**
  * Kill-switch de orçamento acumulado por janela (RAD-243, P-20/P-38, veredicto RAD-227): o gasto
  * já realizado na janela + o custo ESTIMADO desta chamada (pior caso de output) excederia o teto
- * (global ou por tenant). Lançado ANTES de chamar o modelo — zero custo adicional gasto. O NÚMERO
- * do orçamento é `[A VALIDAR]` (Negócio+Eng, docs/98 P-20); o mecanismo não espera por ele
- * (`PoliticaOrcamento` injetável, default sem teto — `politica-orcamento.ts`). Borda: 429
- * (mesma semântica de "tente depois" do rate-limit — não é erro do chamador).
+ * (global, por tenant, ou do coorte trial — RAD-271, P-109 L1). Lançado ANTES de chamar o modelo —
+ * zero custo adicional gasto. O NÚMERO do orçamento é `[A VALIDAR]` (Negócio+Eng, docs/98 P-20); o
+ * mecanismo não espera por ele (`PoliticaOrcamento` injetável, default sem teto —
+ * `politica-orcamento.ts`). Borda: 429 (mesma semântica de "tente depois" do rate-limit — não é
+ * erro do chamador). `escopo: 'trial'` barra SÓ tenants em trial — o pagante nunca é barrado por
+ * consumo do coorte trial (bulkhead, A04 §6).
  */
 export class OrcamentoDeCustoExcedidoError extends DomainError {
   readonly code = 'ORCAMENTO_DE_CUSTO_EXCEDIDO' as const;
-  constructor(readonly escopo: 'global' | 'tenant') {
+  constructor(readonly escopo: 'global' | 'tenant' | 'trial') {
     super(`orçamento de custo de IA excedido (${escopo}) — kill-switch acionado (P-20/P-38)`);
   }
 }

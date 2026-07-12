@@ -13,6 +13,8 @@ export interface TriagemSolicitadaMsg {
   perfilId: string;
   /** Assinatura em `trial` no momento da solicitação (RAD-271, P-109 L1) — ver `TriagemSolicitada`. */
   coorteTrial: boolean;
+  /** `occurredAt` (ISO-8601) do envelope da mensagem `triagem.solicitada` (A18 §5). Opcional — aditivo. */
+  solicitadaEm?: string;
 }
 
 interface DlqClient {
@@ -43,7 +45,7 @@ export class TriagemSolicitadaWorker {
    * case já publicou `triagem.falhou` (RAD-255), então a mensagem está tratada.
    */
   async processar(msg: TriagemSolicitadaMsg, signal: AbortSignal): Promise<void> {
-    const conteudo = await this.hidratar(msg, signal);
+    const { conteudo, anexosDisponiveis } = await this.hidratar(msg, signal);
 
     try {
       await this.triarEditalUC.executar(
@@ -53,12 +55,17 @@ export class TriagemSolicitadaWorker {
           perfilId: PerfilId(msg.perfilId),
           editalId: EditalId(msg.editalId),
           conteudo,
+          anexosDisponiveis,
           coorteTrial: msg.coorteTrial,
+          ...(msg.solicitadaEm ? { solicitadaEm: new Date(msg.solicitadaEm) } : {}),
         },
         signal,
       );
     } catch {
-      // Já compensado dentro de TriarEditalUseCase.executar (RAD-255) — nada a fazer aqui.
+      // Engolido para os dois desfechos: já compensado dentro de TriarEditalUseCase.executar
+      // (RAD-255, triagem.falhou) OU ainda aguardando o anexo sair da quarentena (P-110/RAD-281,
+      // AguardandoAnexoError — a Triagem fica em `processando`; ReenfileirarTriagensPendentesUseCase
+      // reenfileira esta MESMA mensagem quando a Ingestão liberar o anexo).
     }
   }
 
@@ -84,7 +91,10 @@ export class TriagemSolicitadaWorker {
     await this.dlq.encaminhar(msg, err);
   }
 
-  private async hidratar(msg: TriagemSolicitadaMsg, signal: AbortSignal): Promise<EntradaExtracaoDTO> {
+  private async hidratar(
+    msg: TriagemSolicitadaMsg,
+    signal: AbortSignal,
+  ): Promise<{ conteudo: EntradaExtracaoDTO; anexosDisponiveis: boolean }> {
     const editalId = EditalId(msg.editalId);
     const docs = await this.documentosGateway.obterRefs(editalId, signal);
     const { principal, demais } = selecionarDocumentoPrincipal(docs.arquivos);
@@ -96,11 +106,16 @@ export class TriagemSolicitadaWorker {
     }
 
     return {
-      editalId: msg.editalId,
-      texto: textoPrincipal,
-      temTextoSelecionavel: textoPrincipal.trim().length > 0,
-      anexos,
-      paginas: principal?.paginas ?? 0, // sem documento principal, nº de páginas é desconhecido
+      conteudo: {
+        editalId: msg.editalId,
+        texto: textoPrincipal,
+        temTextoSelecionavel: textoPrincipal.trim().length > 0,
+        anexos,
+        paginas: principal?.paginas ?? 0, // sem documento principal, nº de páginas é desconhecido
+      },
+      // P-110/RAD-281: distingue "anexo ainda em quarentena" (docs.arquivos vazio) de "texto vazio
+      // após extração real" — só o `TriarEditalUseCase` decide o desfecho de cada caso.
+      anexosDisponiveis: docs.arquivos.length > 0,
     };
   }
 }

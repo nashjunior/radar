@@ -63,6 +63,17 @@ export class PostgresTriagemRepository implements TriagemRepository {
     const row = rows[0];
     return row ? rowToTriagem(row) : null;
   }
+
+  async listarProcessandoPorEdital(editalId: EditalId, signal: AbortSignal): Promise<Triagem[]> {
+    const { rows } = await this.db.query<Row>(
+      `SELECT tenant_id, cliente_final_id, edital_id, perfil_id, status, aderencia, recomendacao, riscos
+         FROM triagem
+        WHERE edital_id = $1 AND status = 'processando'`,
+      [editalId],
+      { signal },
+    );
+    return rows.map(rowToTriagem);
+  }
 }
 
 interface CitacaoJson {

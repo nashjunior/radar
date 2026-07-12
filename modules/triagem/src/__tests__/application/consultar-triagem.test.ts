@@ -100,6 +100,7 @@ function repos(triagem: Triagem | null, extracao: ExtracaoEdital | null): {
     triagens: {
       porEditalEPerfil: vi.fn().mockResolvedValue(triagem),
       salvar: vi.fn(),
+      listarProcessandoPorEdital: vi.fn().mockResolvedValue([]),
     },
     extracoes: {
       porEdital: vi.fn().mockResolvedValue(extracao),

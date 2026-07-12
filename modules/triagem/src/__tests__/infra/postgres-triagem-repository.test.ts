@@ -54,3 +54,28 @@ describe('PostgresTriagemRepository.porEditalEPerfil — escopo por tenant/clien
     expect(await repo.porEditalEPerfil(TENANT, CLIENTE, EDITAL, PERFIL, noop)).toBeNull();
   });
 });
+
+/** P-110/RAD-281 — reenfileiramento cruza tenant/perfil, então filtra só por edital_id + status. */
+describe('PostgresTriagemRepository.listarProcessandoPorEdital', () => {
+  it('filtra por edital_id e status = processando, propaga o signal', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [row({ status: 'processando', aderencia: null, recomendacao: null })] });
+    const repo = new PostgresTriagemRepository({ query });
+
+    const triagens = await repo.listarProcessandoPorEdital(EDITAL, noop);
+
+    const [sql, params, opts] = query.mock.calls[0]!;
+    const where = String(sql).replace(/\s+/g, ' ');
+    expect(where).toContain("WHERE edital_id = $1 AND status = 'processando'");
+    expect(params).toEqual([EDITAL]);
+    expect(opts).toEqual({ signal: noop });
+    expect(triagens).toHaveLength(1);
+    expect(triagens[0]).toBeInstanceOf(Triagem);
+  });
+
+  it('edital sem triagem processando → array vazio', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [] });
+    const repo = new PostgresTriagemRepository({ query });
+
+    expect(await repo.listarProcessandoPorEdital(EDITAL, noop)).toEqual([]);
+  });
+});

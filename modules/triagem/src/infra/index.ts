@@ -75,6 +75,8 @@ export type {
 } from './queue/triagem-batch-worker.js';
 export { TriagemSolicitadaWorker } from './queue/triagem-solicitada-worker.js';
 export type { TriagemSolicitadaMsg } from './queue/triagem-solicitada-worker.js';
+export { AnexoDisponibilidadeWorker } from './queue/anexo-disponibilidade-worker.js';
+export type { AnexoResolvidoMsg } from './queue/anexo-disponibilidade-worker.js';
 // Red-team de injeção de prompt (P-72 / A11 §4). Corpus + harness reusados pelo runner de eval
 // `tests/eval` (@radar/eval, P-85/RAD-157) — mesmo caminho boundary-clean do RecordReplayLlmClient.
 export {

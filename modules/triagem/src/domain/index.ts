@@ -10,6 +10,7 @@ export { RegistroUsoLlm } from './registro-uso-llm.js';
 export type { CriarRegistroUsoLlmProps } from './registro-uso-llm.js';
 export {
   AderenciaInvalidaError,
+  AguardandoAnexoError,
   CitacaoInvalidaError,
   ConfiancaInsuficienteError,
   ConfiancaInvalidaError,

@@ -32,6 +32,7 @@ function repos(triagem: Triagem | null) {
   const triagens: TriagemRepository = {
     porEditalEPerfil: vi.fn().mockResolvedValue(triagem),
     salvar: vi.fn(),
+    listarProcessandoPorEdital: vi.fn().mockResolvedValue([]),
   };
   const eventos: EventPublisher = { publicar };
   return { triagens, eventos, publicar };

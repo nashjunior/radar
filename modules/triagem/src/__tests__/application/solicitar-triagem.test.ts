@@ -17,6 +17,7 @@ const INPUT: SolicitarTriagemInput = {
   perfilId: PERFIL,
   clienteFinalId: CLIENTE,
   tenantId: TENANT,
+  coorteTrial: false,
 };
 
 const PERFIL_HAB = PerfilHabilitacao.de({
@@ -36,6 +37,7 @@ function deps(perfil: PerfilHabilitacao | null) {
   const triagens: TriagemRepository = {
     porEditalEPerfil: vi.fn().mockResolvedValue(null),
     salvar: vi.fn().mockResolvedValue(undefined),
+    listarProcessandoPorEdital: vi.fn().mockResolvedValue([]),
   };
   return { perfis, triagens, eventos, porId, publicar };
 }
@@ -54,8 +56,20 @@ describe('SolicitarTriagemUseCase', () => {
       perfilId: PERFIL,
       usuarioId: CLIENTE,
       tenantId: 'global', // MVP single-tenant (P-25)
+      coorteTrial: false,
     });
     expect(signal).toBe(noop);
+  });
+
+  it('repassa coorteTrial: true (RAD-271) — o BFF já resolveu a assinatura no gate de cota', async () => {
+    const { perfis, triagens, eventos, publicar } = deps(PERFIL_HAB);
+    await new SolicitarTriagemUseCase(perfis, triagens, eventos).executar(
+      { ...INPUT, coorteTrial: true },
+      noop,
+    );
+
+    const [evento] = publicar.mock.calls[0]!;
+    expect(evento.payload).toMatchObject({ coorteTrial: true });
   });
 
   it('nega e NÃO enfileira quando o perfil não existe (não vaza existência — A17 §5.3)', async () => {

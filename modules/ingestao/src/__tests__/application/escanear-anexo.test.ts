@@ -226,6 +226,40 @@ describe('EscanearAnexoUseCase', () => {
     expect(objectStorage.obter).toHaveBeenCalledWith(DB_STORAGE_KEY, noop);
   });
 
+  // P-110/RAD-281 · loop de disponibilidade do anexo: o consumidor da Triagem usa `restamPendentes`
+  // para saber se deve esperar mais scans ou se este foi o último anexo do edital a resolver.
+  it('restamPendentes: true quando outro anexo do MESMO edital ainda está pendente de scan', async () => {
+    const anexo1 = criarAnexo('pendente', 1);
+    const anexo2 = criarAnexo('pendente', 2);
+    const repo = criarRepo([anexo1, anexo2]);
+    const scanner: AnexoScanner = { escanear: vi.fn().mockResolvedValue('limpo') };
+    const publisher = criarPublisher();
+    const objectStorage = criarObjectStorage();
+    const extrator = criarExtrator();
+    const uc = new EscanearAnexoUseCase(scanner, repo, publisher, objectStorage, extrator);
+
+    await uc.executar({ editalId: EDITAL_ID, sequencialDocumento: 1, storageKey: STORAGE_KEY }, noop);
+
+    const [evento] = (publisher.publicar as ReturnType<typeof vi.fn>).mock.calls[0] as [AnexoAprovado];
+    expect(evento.payload.restamPendentes).toBe(true);
+  });
+
+  it('restamPendentes: false quando este é o ÚLTIMO anexo do edital a resolver', async () => {
+    const anexo1 = criarAnexo('pendente', 1);
+    const anexo2 = criarAnexo('rejeitado', 2); // já resolvido — não conta como pendente
+    const repo = criarRepo([anexo1, anexo2]);
+    const scanner: AnexoScanner = { escanear: vi.fn().mockResolvedValue('limpo') };
+    const publisher = criarPublisher();
+    const objectStorage = criarObjectStorage();
+    const extrator = criarExtrator();
+    const uc = new EscanearAnexoUseCase(scanner, repo, publisher, objectStorage, extrator);
+
+    await uc.executar({ editalId: EDITAL_ID, sequencialDocumento: 1, storageKey: STORAGE_KEY }, noop);
+
+    const [evento] = (publisher.publicar as ReturnType<typeof vi.fn>).mock.calls[0] as [AnexoAprovado];
+    expect(evento.payload.restamPendentes).toBe(false);
+  });
+
   // RAD-291 · dois anexos com título duplicado (sequencialDocumento distinto):
   // escanear um não deve tocar nem promover o estado do outro.
   it('distingue anexos de título duplicado por sequencialDocumento — não promove o outro', async () => {

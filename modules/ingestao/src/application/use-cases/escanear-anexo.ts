@@ -72,12 +72,24 @@ export class EscanearAnexoUseCase {
       signal,
     );
 
+    // P-110/RAD-281: outro anexo do MESMO edital ainda sem resultado de scan — o consumidor da
+    // Triagem usa isto para saber se deve esperar mais ou se este foi o último a resolver. Relê
+    // DEPOIS do próprio `atualizarEstado` (nunca reusa o snapshot `todos` do topo da função): dois
+    // anexos do mesmo edital podem ser escaneados em paralelo, e reusar o snapshot antigo faria os
+    // dois se verem mutuamente como `pendente` mesmo quando ambos já resolveram — travando a
+    // triagem em `processando` para sempre (nenhum evento reportaria `restamPendentes: false`).
+    const atual = await this.anexoRepo.listarPorEdital(input.editalId, signal);
+    const restamPendentes = atual.some(
+      (a) => a.sequencialDocumento !== anexo.sequencialDocumento && a.estadoConfianca === 'pendente',
+    );
+
     if (resultado === 'limpo') {
       await this.eventPublisher.publicar(
         new AnexoAprovado({
           editalId: input.editalId,
           sequencialDocumento: anexo.sequencialDocumento,
           nomeAnexo: anexo.nome,
+          restamPendentes,
         }),
         signal,
       );
@@ -87,6 +99,7 @@ export class EscanearAnexoUseCase {
           editalId: input.editalId,
           sequencialDocumento: anexo.sequencialDocumento,
           nomeAnexo: anexo.nome,
+          restamPendentes,
         }),
         signal,
       );

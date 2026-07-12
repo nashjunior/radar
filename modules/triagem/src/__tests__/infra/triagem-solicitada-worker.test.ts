@@ -4,7 +4,7 @@ import { TriagemSolicitadaWorker } from '../../infra/queue/triagem-solicitada-wo
 import type { TriagemSolicitadaMsg } from '../../infra/queue/triagem-solicitada-worker.js';
 import type { DocumentosEditalGateway, DocumentosRef, EventPublisher, ObjectStorage } from '../../application/ports.js';
 import type { TriarEditalUseCase } from '../../application/use-cases/triar-edital.js';
-import { PerfilNaoEncontradoError } from '../../domain/errors/index.js';
+import { AguardandoAnexoError, PerfilNaoEncontradoError } from '../../domain/errors/index.js';
 
 const signal = new AbortController().signal;
 
@@ -86,6 +86,7 @@ describe('TriagemSolicitadaWorker', () => {
             anexos: ['texto-k2', 'texto-k3'],
             paginas: 7, // paginas real do documento principal (RAD-280) — não mais hardcoded
           },
+          anexosDisponiveis: true,
           coorteTrial: false,
         },
         signal,
@@ -101,7 +102,25 @@ describe('TriagemSolicitadaWorker', () => {
       expect(input.coorteTrial).toBe(true);
     });
 
-    it('edital sem documentos: hidrata com texto vazio (a política de conteúdo insuficiente é do use case)', async () => {
+    it('repassa solicitadaEm do envelope de triagem.solicitada como Date ao input (A18 §5)', async () => {
+      const { worker, triarEditalUC } = buildWorker({ storageKeys: [] });
+
+      await worker.processar({ ...MSG, solicitadaEm: '2026-07-10T12:00:00.000Z' }, signal);
+
+      const [input] = (triarEditalUC.executar as ReturnType<typeof vi.fn>).mock.calls[0]!;
+      expect(input.solicitadaEm).toEqual(new Date('2026-07-10T12:00:00.000Z'));
+    });
+
+    it('sem solicitadaEm na mensagem (campo aditivo/opcional), input não carrega o campo', async () => {
+      const { worker, triarEditalUC } = buildWorker({ storageKeys: [] });
+
+      await worker.processar(MSG, signal);
+
+      const [input] = (triarEditalUC.executar as ReturnType<typeof vi.fn>).mock.calls[0]!;
+      expect(input.solicitadaEm).toBeUndefined();
+    });
+
+    it('edital sem documentos: hidrata com texto vazio e anexosDisponiveis: false (P-110/RAD-281 — TriarEditalUseCase decide o desfecho, não é falha de OCR)', async () => {
       const { worker, triarEditalUC } = buildWorker({ storageKeys: [] });
 
       await worker.processar(MSG, signal);
@@ -114,6 +133,7 @@ describe('TriagemSolicitadaWorker', () => {
         anexos: [],
         paginas: 0, // sem documento principal, nº de páginas é desconhecido (não é mais piso de 1)
       });
+      expect(input.anexosDisponiveis).toBe(false);
     });
 
     it('seleciona o principal por tipoDocumentoId mesmo com o Edital fora da posição 0 (array como o real, P-110)', async () => {
@@ -167,6 +187,15 @@ describe('TriagemSolicitadaWorker', () => {
     it('erro dentro de TriarEditalUseCase.executar é engolido — já compensado por triagem.falhou (RAD-255)', async () => {
       const { worker } = buildWorker({
         triarExecutar: vi.fn().mockRejectedValue(new PerfilNaoEncontradoError('perfil-1')),
+      });
+
+      await expect(worker.processar(MSG, signal)).resolves.toBeUndefined();
+    });
+
+    it('AguardandoAnexoError (anexo ainda em quarentena) também é engolido — sem DLQ, sem falha (P-110/RAD-281)', async () => {
+      const { worker } = buildWorker({
+        storageKeys: [],
+        triarExecutar: vi.fn().mockRejectedValue(new AguardandoAnexoError()),
       });
 
       await expect(worker.processar(MSG, signal)).resolves.toBeUndefined();

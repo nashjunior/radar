@@ -25,6 +25,9 @@ export const triagemStub: TriagemRepository = {
   async salvar(_triagem, _signal) {
     /* sem persistência no stub */
   },
+  async listarProcessandoPorEdital(_editalId: EditalId, _signal: AbortSignal) {
+    return [];
+  },
 };
 
 export const extracaoStub: ExtracaoRepository = {

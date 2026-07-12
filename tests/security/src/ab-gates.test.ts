@@ -44,6 +44,7 @@ import {
   GerenciarPerfilHabilitacaoUseCase,
   PerfilHabilitacao as PerfilIdentidade,
   ResolverContextoAutorizacaoUseCase,
+  SemOrganizacaoError,
   UsuarioId as UsuarioIdIdentidade,
   podeExecutar,
 } from '@radar/identidade';
@@ -185,7 +186,7 @@ describe('Gate A07 · AB1/P-51 — matriz de autorização por objeto', () => {
       extrair: vi.fn().mockResolvedValue({ extracao: extracao(), uso }),
       estimarCusto: vi.fn().mockResolvedValue({ modelo: 'claude-sonnet-5', inputTokens: 0, custoEstimadoUsd: 0 }),
     };
-    const triagens = { salvar: vi.fn(), porEditalEPerfil: vi.fn() };
+    const triagens = { salvar: vi.fn(), porEditalEPerfil: vi.fn(), listarProcessandoPorEdital: vi.fn() };
     const usoLedger = { registrar: vi.fn(), gastoUsdNaJanela: vi.fn().mockResolvedValue(0) };
     const uc = new TriarEditalUseCase(
       { porEdital: vi.fn().mockResolvedValue(null), salvar: vi.fn() },
@@ -202,6 +203,7 @@ describe('Gate A07 · AB1/P-51 — matriz de autorização por objeto', () => {
       clienteFinalId: CLIENTE_A,
       tenantId: TENANT_A,
       conteudo: { editalId: EDITAL, texto: 'edital', temTextoSelecionavel: true, anexos: [], paginas: 1 },
+      anexosDisponiveis: true,
     }, signal)).rejects.toThrow(AcessoNegadoError);
     expect(llm.extrair).not.toHaveBeenCalled();
     expect(triagens.salvar).not.toHaveBeenCalled();
@@ -209,7 +211,7 @@ describe('Gate A07 · AB1/P-51 — matriz de autorização por objeto', () => {
 
   it('TRIAGEM disparar: SolicitarTriagemUseCase nega perfil de outro cliente e não enfileira', async () => {
     const eventos = { publicar: vi.fn() };
-    const triagens = { salvar: vi.fn(), porEditalEPerfil: vi.fn().mockResolvedValue(null) };
+    const triagens = { salvar: vi.fn(), porEditalEPerfil: vi.fn().mockResolvedValue(null), listarProcessandoPorEdital: vi.fn() };
     const uc = new SolicitarTriagemUseCase(
       { porId: vi.fn().mockResolvedValue(perfilTriagem(CLIENTE_B)) },
       triagens,
@@ -229,7 +231,11 @@ describe('Gate A07 · AB1/P-51 — matriz de autorização por objeto', () => {
   it('TRIAGEM ler: ConsultarTriagemUseCase recheca objeto retornado e nega tenant/cliente cruzado', async () => {
     const extracoes = { porEdital: vi.fn().mockResolvedValue(extracao()), salvar: vi.fn() };
     const uc = new ConsultarTriagemUseCase(
-      { porEditalEPerfil: vi.fn().mockResolvedValue(Triagem.pendente(EDITAL, PERFIL, TENANT_B, CLIENTE_B)), salvar: vi.fn() },
+      {
+        porEditalEPerfil: vi.fn().mockResolvedValue(Triagem.pendente(EDITAL, PERFIL, TENANT_B, CLIENTE_B)),
+        salvar: vi.fn(),
+        listarProcessandoPorEdital: vi.fn(),
+      },
       extracoes,
     );
 
@@ -245,7 +251,11 @@ describe('Gate A07 · AB1/P-51 — matriz de autorização por objeto', () => {
   it('TRIAGEM feedback/decisão: RegistrarFeedbackTriagemUseCase nega objeto de outro tenant', async () => {
     const eventos = { publicar: vi.fn() };
     const uc = new RegistrarFeedbackTriagemUseCase(
-      { porEditalEPerfil: vi.fn().mockResolvedValue(Triagem.pendente(EDITAL, PERFIL, TENANT_B, CLIENTE_B)), salvar: vi.fn() },
+      {
+        porEditalEPerfil: vi.fn().mockResolvedValue(Triagem.pendente(EDITAL, PERFIL, TENANT_B, CLIENTE_B)),
+        salvar: vi.fn(),
+        listarProcessandoPorEdital: vi.fn(),
+      },
       eventos,
     );
 
@@ -559,6 +569,10 @@ describe('Gate A07 · AB2 — RBAC por papel (P-52, docs/05 §4, RAD-212)', () =
         opts.signal.throwIfAborted();
         return mapa.get(usuarioId) ?? null;
       },
+      async criar(atribuicao, signal) {
+        signal.throwIfAborted();
+        mapa.set(atribuicao.usuarioId as string, atribuicao);
+      },
     };
   }
 
@@ -581,16 +595,16 @@ describe('Gate A07 · AB2 — RBAC por papel (P-52, docs/05 §4, RAD-212)', () =
     ).rejects.toThrow(AcessoNegadoError);
   });
 
-  it('token válido sem papel nega: ResolverContextoAutorizacaoUseCase sem atribuição no PermissaoRepository', async () => {
+  it('token válido sem papel nega: ResolverContextoAutorizacaoUseCase sem atribuição no PermissaoRepository (RAD-285: SemOrganizacaoError, não AcessoNegadoError cego)', async () => {
     const permissoes = permissaoRepositoryFake([]);
     const uc = new ResolverContextoAutorizacaoUseCase(permissoes);
 
     await expect(
-      uc.executar({ usuarioId: USUARIO_OPERADOR, tenantId: TENANT_A }, signal),
-    ).rejects.toThrow(AcessoNegadoError);
+      uc.executar({ usuarioId: USUARIO_OPERADOR, tenantClaim: TENANT_A }, signal),
+    ).rejects.toThrow(SemOrganizacaoError);
   });
 
-  it('token de tenant divergente nega: atribuição de outro tenant não vale para o claim verificado', async () => {
+  it('token de tenant divergente nega: atribuição de outro tenant não vale para o claim verificado (quando a claim está presente)', async () => {
     const atribuicaoOutroTenant = AtribuicaoPapel.criar({
       usuarioId: USUARIO_OPERADOR,
       tenantId: TENANT_B,
@@ -601,7 +615,7 @@ describe('Gate A07 · AB2 — RBAC por papel (P-52, docs/05 §4, RAD-212)', () =
     const uc = new ResolverContextoAutorizacaoUseCase(permissoes);
 
     await expect(
-      uc.executar({ usuarioId: USUARIO_OPERADOR, tenantId: TENANT_A }, signal),
+      uc.executar({ usuarioId: USUARIO_OPERADOR, tenantClaim: TENANT_A }, signal),
     ).rejects.toThrow(AcessoNegadoError);
   });
 

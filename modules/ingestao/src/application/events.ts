@@ -85,6 +85,8 @@ export class EditalIngerido implements DomainEvent {
       readonly valorEstimado: number | null;
       /** Data de publicação original no PNCP. */
       readonly dataPublicacao: Date;
+      /** Prazo final para envio de propostas. null quando o edital não informa (RAD-303, A18 §5.1). */
+      readonly prazoProposta: Date | null;
       /** Proveniência do edital: origem, base legal e data de coleta (RAD-115). */
       readonly proveniencia?: {
         readonly fonte: string;
@@ -119,7 +121,11 @@ export class AnexoQuarentenado implements DomainEvent {
   }
 }
 
-/** Publicado quando o scan AV aprova o anexo como limpo (P-104, AB14). */
+/**
+ * Publicado quando o scan AV aprova o anexo como limpo (P-104, AB14).
+ * Consumido pela Triagem (P-110/RAD-281) para reenfileirar `triagem.solicitada` que ficou presa
+ * em `processando` esperando o anexo sair da quarentena — fecha o loop de disponibilidade.
+ */
 export class AnexoAprovado implements DomainEvent {
   readonly type = 'anexo.aprovado' as const;
   readonly occurredAt: Date;
@@ -130,13 +136,20 @@ export class AnexoAprovado implements DomainEvent {
       /** Identidade real do anexo (RAD-291) — `nomeAnexo` é só display/auditoria. */
       readonly sequencialDocumento: number;
       readonly nomeAnexo: string;
+      /** Outro anexo do MESMO edital ainda sem resultado de scan (P-110/RAD-281). */
+      readonly restamPendentes: boolean;
     },
   ) {
     this.occurredAt = new Date();
   }
 }
 
-/** Publicado quando o scan AV detecta ameaça e isola o anexo (P-104, AB14). */
+/**
+ * Publicado quando o scan AV detecta ameaça e isola o anexo (P-104, AB14).
+ * Mesmo consumidor de `AnexoAprovado` (P-110/RAD-281): quando este é o ÚLTIMO anexo do edital a
+ * resolver (`restamPendentes: false`) e nenhum ficou `limpo`, a Triagem sabe que o documento NUNCA
+ * vai ficar disponível — falha terminal explícita em vez de `processando` para sempre.
+ */
 export class AnexoRejeitado implements DomainEvent {
   readonly type = 'anexo.rejeitado' as const;
   readonly occurredAt: Date;
@@ -147,6 +160,8 @@ export class AnexoRejeitado implements DomainEvent {
       /** Identidade real do anexo (RAD-291) — `nomeAnexo` é só display/auditoria. */
       readonly sequencialDocumento: number;
       readonly nomeAnexo: string;
+      /** Outro anexo do MESMO edital ainda sem resultado de scan (P-110/RAD-281). */
+      readonly restamPendentes: boolean;
     },
   ) {
     this.occurredAt = new Date();
