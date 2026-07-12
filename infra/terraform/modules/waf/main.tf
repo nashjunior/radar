@@ -3,8 +3,9 @@
 # Primitiva PRÓPRIA, não parte da borda: a mesma ACL pode ser associada a um balanceador
 # hoje e a um CDN/gateway amanhã — quem associa é o stack (composição), via `web_acl_ref`.
 # Fecha a metade "WAF + rate-limit" de P-55; a outra metade (headers/CORS/CSRF/schema) já
-# está no código (`apps/api/src/security.ts`, RAD-160).
-# Refs: arquitetura/08 §5; docs/98 P-55; RAD-199
+# está no código (`apps/api/src/security.ts`, RAD-160). Também carrega a allowlist de IP do
+# webhook do Asaas (P-107(a)), compensação de borda por não haver HMAC no raw body.
+# Refs: arquitetura/08 §5; docs/98 P-55, P-107(a); RAD-199, RAD-253, RAD-258
 
 terraform {
   required_providers {
@@ -109,11 +110,167 @@ resource "aws_wafv2_web_acl" "this" {
     }
   }
 
+  # Allowlist de IP escopada SÓ ao path do webhook do Asaas — nunca `/api/*` nem `/health`.
+  # Compensação obrigatória do aceite de segurança P-107(a) (RAD-253/RAD-258): o Asaas
+  # autentica webhook por token estático, não por HMAC no raw body, então o invariante
+  # "webhook autenticado" só fecha com uma camada de borda além da validação em
+  # `apps/api/src/routes/webhooks/pagamento.ts`. Bloqueia POST fora da lista oficial; dentro
+  # do path, cai no default ALLOW e segue para a app (token estático + fail-closed).
+  rule {
+    name     = "asaas-webhook-ip-allowlist"
+    priority = 4
+
+    action {
+      block {}
+    }
+
+    statement {
+      and_statement {
+        statement {
+          byte_match_statement {
+            field_to_match {
+              uri_path {}
+            }
+            positional_constraint = "STARTS_WITH"
+            search_string         = var.asaas_webhook_path
+            text_transformation {
+              priority = 0
+              type     = "NONE"
+            }
+          }
+        }
+
+        statement {
+          not_statement {
+            statement {
+              ip_set_reference_statement {
+                arn = aws_wafv2_ip_set.asaas_webhook.arn
+              }
+            }
+          }
+        }
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${var.project}-${var.env}-asaas-webhook-allowlist"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  # Rate-limit PRÓPRIO do webhook (RAD-252, P-107 (5)) — escopado ao path via
+  # `scope_down_statement`, INDEPENDENTE do `rate-limit-por-ip` geral (regra 3, API inteira):
+  # é tráfego servidor-a-servidor de poucos IPs (a allowlist da regra acima), não navegador —
+  # teto próprio, mais apertado que o bulkhead genérico.
+  rule {
+    name     = "asaas-webhook-rate-limit"
+    priority = 5
+
+    action {
+      block {}
+    }
+
+    statement {
+      rate_based_statement {
+        limit              = var.asaas_webhook_rate_limit
+        aggregate_key_type = "IP"
+
+        scope_down_statement {
+          byte_match_statement {
+            field_to_match {
+              uri_path {}
+            }
+            positional_constraint = "STARTS_WITH"
+            search_string         = var.asaas_webhook_path
+            text_transformation {
+              priority = 0
+              type     = "NONE"
+            }
+          }
+        }
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${var.project}-${var.env}-asaas-webhook-rate"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  # Corpo pequeno (RAD-252, P-107 (5)) — notificação de webhook é JSON server-to-server, sem
+  # anexo/upload; corpo acima do teto é anomalia de payload, não notificação legítima do
+  # Asaas. `oversize_handling = MATCH`: corpo maior que a janela de inspeção da WAFv2 conta
+  # como excesso também (é, por definição, maior que o teto configurado abaixo dela).
+  rule {
+    name     = "asaas-webhook-corpo-pequeno"
+    priority = 6
+
+    action {
+      block {}
+    }
+
+    statement {
+      and_statement {
+        statement {
+          byte_match_statement {
+            field_to_match {
+              uri_path {}
+            }
+            positional_constraint = "STARTS_WITH"
+            search_string         = var.asaas_webhook_path
+            text_transformation {
+              priority = 0
+              type     = "NONE"
+            }
+          }
+        }
+
+        statement {
+          size_constraint_statement {
+            comparison_operator = "GT"
+            size                = var.asaas_webhook_max_body_bytes
+
+            field_to_match {
+              body {
+                oversize_handling = "MATCH"
+              }
+            }
+
+            text_transformation {
+              priority = 0
+              type     = "NONE"
+            }
+          }
+        }
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${var.project}-${var.env}-asaas-webhook-body-size"
+      sampled_requests_enabled   = true
+    }
+  }
+
   visibility_config {
     cloudwatch_metrics_enabled = true
     metric_name                = "${var.project}-${var.env}-waf"
     sampled_requests_enabled   = true
   }
+
+  tags = local.tags
+}
+
+# IPs oficiais do Asaas para o `ip_set_reference_statement` acima. Recurso separado (não
+# inline) porque `ip_set_reference_statement` exige o ARN de um `aws_wafv2_ip_set` — não
+# aceita lista de CIDR direto na regra.
+resource "aws_wafv2_ip_set" "asaas_webhook" {
+  name               = "${var.project}-${var.env}-asaas-webhook-ips"
+  scope              = "REGIONAL"
+  ip_address_version = "IPV4"
+  addresses          = var.asaas_webhook_ip_allowlist
 
   tags = local.tags
 }

@@ -215,7 +215,11 @@ module "compute" {
 
   database_url_secret_ref     = module.secrets.database_url_secret_ref
   field_crypto_key_secret_ref = module.secrets.field_crypto_key_secret_ref
-  extra_secret_refs           = { ANTHROPIC_API_KEY = module.secrets.llm_api_key_secret_ref }
+  extra_secret_refs = {
+    ANTHROPIC_API_KEY   = module.secrets.llm_api_key_secret_ref
+    ASAAS_WEBHOOK_TOKEN = module.secrets.asaas_webhook_token_secret_ref
+    ASAAS_API_KEY       = module.secrets.asaas_api_key_secret_ref
+  }
 
   pooler_firewall_group_ref = module.db_proxy.firewall_group_ref
   encryption_key_ref        = var.kms_key_arn

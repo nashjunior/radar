@@ -347,13 +347,22 @@ resource "aws_vpc_security_group_egress_rule" "tasks_pooler" {
 # um egress firewall de rede ficou como hardening futuro sem gate hoje, docs/98 P-58). Fechar
 # aqui sozinho quebraria ECR/Secrets/CloudWatch/PNCP/LLM sem uma allowlist de rede decidida.
 # Achado esperado do Trivy (AWS-0104) — ver .trivyignore.yaml.
+#
+# Mesma postura cobre a confirmação outbound ao Asaas (P-107 (5), RAD-252/RAD-253): a task
+# chama de volta `api.asaas.com`/`sandbox.asaas.com` (443) para confirmar pagamento ANTES de
+# ativar entitlement — é o que impede um evento de webhook forjado/repetido de conceder
+# acesso (aceite RAD-239). Domínio fixo, não URL vinda de dado não confiável (diferente do
+# `SsrfGuard` da Ingestão, que valida host de anexo do PNCP): não é um destino NOVO que exija
+# allowlist de rede própria — já trafega pela mesma regra 443/0.0.0.0/0 acima, sem abrir nem
+# apertar nada aqui. Restringir por domínio exigiria AWS Network Firewall, que P-58 já
+# registrou como hardening futuro sem gate hoje — não decidido nesta issue.
 resource "aws_vpc_security_group_egress_rule" "tasks_https" {
   security_group_id = aws_security_group.tasks.id
   ip_protocol       = "tcp"
   from_port         = 443
   to_port           = 443
   cidr_ipv4         = "0.0.0.0/0"
-  description       = "HTTPS de saida: ECR/Secrets/CloudWatch/PNCP/LLM (apertar com P-58)"
+  description       = "HTTPS de saida: ECR/Secrets/CloudWatch/PNCP/LLM/Asaas (apertar com P-58)"
 }
 
 resource "aws_ecs_service" "api" {

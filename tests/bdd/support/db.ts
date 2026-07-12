@@ -61,6 +61,6 @@ export async function teardownDb(fixture: DbFixture): Promise<void> {
 export async function truncateAll(pool: pg.Pool): Promise<void> {
   await pool.query(
     `TRUNCATE editais, proveniencias, criterio_monitoramento, alerta,
-              triagem, extracao_edital RESTART IDENTITY CASCADE`,
+              triagem, extracao_edital, assinatura, registro_uso RESTART IDENTITY CASCADE`,
   );
 }
