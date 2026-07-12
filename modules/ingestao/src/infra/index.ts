@@ -2,6 +2,7 @@ export { CircuitBreaker } from './adapters/circuit-breaker.js';
 export type { CircuitBreakerConfig } from './adapters/circuit-breaker.js';
 export { CryptoIdProvider } from './adapters/crypto-id-provider.js';
 export { DocumentosDoEditalAdapter } from './adapters/documentos-do-edital-adapter.js';
+export { MultiFormatoExtratorDeTexto } from './adapters/extracao-de-texto/multi-formato-extrator-de-texto.js';
 export { PncpHttpGateway } from './adapters/pncp-http-gateway.js';
 export { PostgresAnexoEditalRepository } from './adapters/postgres-anexo-edital-repository.js';
 export { PostgresEditalRepository } from './adapters/postgres-edital-repository.js';

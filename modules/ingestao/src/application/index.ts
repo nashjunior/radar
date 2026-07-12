@@ -19,11 +19,13 @@ export type {
   DocumentosDoEditalPort,
   EditalRepository,
   EventPublisher,
+  ExtratorDeTexto,
   IdProvider,
   ObjectStorage,
   PncpGateway,
   PncpIdentificadorCompra,
   ProvenienciaRepository,
+  ResultadoExtracao,
 } from './ports.js';
 export {
   AtualizarFaseEditalUseCase,

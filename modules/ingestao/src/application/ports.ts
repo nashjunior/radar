@@ -197,3 +197,25 @@ export interface AnexoEditalRepository {
 export interface DocumentosDoEditalPort {
   obterDocumentos(editalId: EditalId, signal: AbortSignal): Promise<AnexosDTO>;
 }
+
+/**
+ * Resultado da extração de texto de um anexo (arq/02 §6.2–§6.3, P-110/RAD-279).
+ * `paginas` alimenta a citação (`p. N`) exibida como prova do campo extraído na
+ * triagem — nunca hardcoded; `temTextoSelecionavel: false` sinaliza PDF escaneado
+ * (sem OCR no MVP, docs/10 §6) e a triagem degrada em vez de alucinar.
+ */
+export interface ResultadoExtracao {
+  texto: string;
+  paginas: number;
+  temTextoSelecionavel: boolean;
+}
+
+/**
+ * Extrai texto de um anexo já aprovado pelo scan (`limpo` — P-104/AB14, fail-closed).
+ * Multi-formato: PDF, DOCX e ZIP contendo os dois (arq/02 §6.2) — um extrator
+ * só-PDF perderia o edital em 15% dos casos reais (amostra RAD-274). A lib de
+ * parsing concreta só aparece no adapter de infra (P-74).
+ */
+export interface ExtratorDeTexto {
+  extrair(bytes: Uint8Array, mime: string, signal: AbortSignal): Promise<ResultadoExtracao>;
+}

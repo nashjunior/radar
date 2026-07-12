@@ -5,6 +5,8 @@ export {
   AnexoIndisponivelError,
   AnexoNaoLimpoError,
   EditalNaoEncontradoError,
+  ExtracaoFormatoNaoReconhecidoError,
+  ExtracaoZipInseguroError,
   FonteIndisponivelError,
   ObjetoNaoEncontradoError,
   SchemaDriftError,
@@ -12,6 +14,10 @@ export {
 export { Cnpj } from './value-objects/cnpj.js';
 export type { EstadoConfiancaAnexo } from './value-objects/estado-confianca-anexo.js';
 export { ESTADO_INICIAL_ANEXO } from './value-objects/estado-confianca-anexo.js';
+export {
+  AnexoFormatoNaoSuportadoError,
+  ExtensaoAnexo,
+} from './value-objects/extensao-anexo.js';
 export { Modalidade } from './value-objects/modalidade.js';
 export { NumeroControlePncp } from './value-objects/numero-controle-pncp.js';
 export { Proveniencia } from './value-objects/proveniencia.js';

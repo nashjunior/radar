@@ -22,10 +22,13 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.731.0",
-    "@radar/kernel": "workspace:*"
+    "@radar/kernel": "workspace:*",
+    "jszip": "^3.10.1",
+    "pdfjs-dist": "^5.4.296"
   },
   "devDependencies": {
     "@types/node": "^22.10.7",
+    "pdf-lib": "^1.17.1",
     "typescript": "^5.7.2",
     "vitest": "^3.0.0"
   }

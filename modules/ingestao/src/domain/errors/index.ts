@@ -95,3 +95,27 @@ export class BreakerAbertoError extends DomainError {
     );
   }
 }
+
+/**
+ * Bytes não correspondem a um PDF/DOCX válido, ou um ZIP não contém nenhum
+ * documento reconhecido dentro dele (arq/02 §6.2, P-110/RAD-279).
+ */
+export class ExtracaoFormatoNaoReconhecidoError extends DomainError {
+  readonly code = 'EXTRACAO_FORMATO_NAO_RECONHECIDO' as const;
+  constructor(detalhe: string) {
+    super(`extração de texto: formato não reconhecido (${detalhe})`);
+  }
+}
+
+/**
+ * ZIP reprovado nas guardas de segurança antes de qualquer descompactação de
+ * conteúdo — zip slip (caminho de entrada inseguro) ou zip bomb (nº de entradas,
+ * razão de compressão, tamanho descompactado ou profundidade de aninhamento
+ * acima do teto). Fail-closed: nunca extrai de um ZIP reprovado (arq/02 §6.2).
+ */
+export class ExtracaoZipInseguroError extends DomainError {
+  readonly code = 'EXTRACAO_ZIP_INSEGURO' as const;
+  constructor(motivo: string) {
+    super(`extração de texto: zip reprovado na guarda de segurança (${motivo})`);
+  }
+}
