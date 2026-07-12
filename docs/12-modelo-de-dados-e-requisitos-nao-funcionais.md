@@ -32,6 +32,9 @@ erDiagram
     TENANT ||--o{ ATRIBUICAO_PAPEL : escopa
     USUARIO ||--o{ ATRIBUICAO_PAPEL : recebe
     ATRIBUICAO_PAPEL }o--|| PAPEL : confere
+    TENANT ||--|| ASSINATURA : contrata
+    ASSINATURA ||--o{ REGISTRO_USO : acumula
+    TRIAGEM ||--o| REGISTRO_USO : contabiliza
 
     EDITAL {
         uuid id
@@ -129,6 +132,26 @@ erDiagram
         string papel FK
         json clienteFinalIds
     }
+    ASSINATURA {
+        uuid tenantId PK
+        string plano
+        string status
+        int cotaTriagensMes
+        int usoReservado
+        int usoConfirmado
+        date periodoInicio
+        date periodoFim
+        string gatewayAssinaturaId
+    }
+    REGISTRO_USO {
+        uuid id
+        uuid tenantId FK
+        uuid clienteFinalId FK
+        uuid editalId FK
+        uuid perfilId FK
+        string periodo
+        datetime confirmadoEm
+    }
 ```
 
 ## 2. Atributos de primeira classe (não são detalhe)
@@ -137,7 +160,7 @@ erDiagram
 - **Fase dirigida por dados** — `faseAtual` vem dos dados do edital, nunca de uma ordem fixa em código, por causa da inversão julgamento→habilitação e suas exceções (documento 04, §4).
 - **Proveniência** em todo edital — fonte, timestamp e base legal (documento 03, §2); essencial para auditoria e direitos do titular (documento 02, §4).
 - **Auditoria append-only** — `AUDIT_LOG` é **imutável e somente-anexação**: registra quem (`usuarioId`), quando (`quando`), o quê (`recurso`, `acao`), sob qual **base legal** (`baseLegal`) e em qual **escopo** (`tenantId`; `clienteFinalId` no *Next*), materializando a auditabilidade 100% (§3) e o princípio 4 de segurança (documento 05, §3). Tentativa de `UPDATE`/`DELETE` é negada no nível de dados e ela mesma auditada; gravação é **fail-closed** (P-61; arquitetura/07 AB13).
-- **Escopo de cliente nas entidades geradas pelo usuário** (`CRITERIO_MONITORAMENTO`, `ALERTA`, `TRIAGEM`, `CASO`, `PERFIL_HABILITACAO`, `NOTIFICACAO`, `PREFERENCIA_NOTIFICACAO`) via `tenantId`/`clienteFinalId` — isolamento estrutural (documento 05, §3). O **catálogo público** (`EDITAL`, `EXTRACAO_EDITAL`, `RESULTADO`, `MODALIDADE`, `ORGAO`) é **global/compartilhado** — não leva `tenantId`, e é isso que viabiliza o cache de extração e evita duplicar edital por tenant. `[A VALIDAR — clienteFinalId ativado no Next]`
+- **Escopo de cliente nas entidades geradas pelo usuário** (`CRITERIO_MONITORAMENTO`, `ALERTA`, `TRIAGEM`, `CASO`, `PERFIL_HABILITACAO`, `NOTIFICACAO`, `PREFERENCIA_NOTIFICACAO`, `ASSINATURA`, `REGISTRO_USO`) via `tenantId`/`clienteFinalId` — isolamento estrutural (documento 05, §3). O **catálogo público** (`EDITAL`, `EXTRACAO_EDITAL`, `RESULTADO`, `MODALIDADE`, `ORGAO`) é **global/compartilhado** — não leva `tenantId`, e é isso que viabiliza o cache de extração e evita duplicar edital por tenant. `[A VALIDAR — clienteFinalId ativado no Next]`
 - **Valores parametrizáveis e datados** — faixas que mudam por decreto (documento 02, §2) vivem em tabela de referência versionada, não no edital nem no código.
 - **Representação de valor monetário** — os campos em dinheiro (`valorEstimado`, `valorUnitarioEstimado`, `valorMin`, `valorMax`) são `decimal` no **armazenamento** (coluna `numeric` do Postgres), e a exatidão é preservada na escrita pelo VO `ValorMonetario` (`representacaoDecimal`, string decimal). Em **transporte e comparação** (DTOs, eventos, matching de faixa) a representação é `number` (float64) **deliberadamente**: são valores de **referência/estimativa** (lidos do PNCP/IA, limiares de decreto), comparados com tolerância e nunca somados a um total vinculante — logo não há aritmética de livro-razão que exija decimal fim-a-fim. Promover a um VO `Dinheiro` no `@radar/kernel` só se surgir essa aritmética (documento 98, **P-102**). Distinto de `confianca`/`aderencia`, que são `decimal` no sentido de **razão 0..1**, não dinheiro.
 - **Extração separada da aderência** — `EXTRACAO_EDITAL` (fatos do edital: objeto, requisitos, prazos, citações) é **1 por edital e cacheável**; `TRIAGEM` (aderência da empresa) é **1 por edital × perfil**, pois depende do perfil de habilitação. Unir as duas quebraria o cache (custo) ou a correção (documento 10, §7).
@@ -145,6 +168,7 @@ erDiagram
 - **Anexo com estado de confiança (trust-gating)** — `ANEXO_EDITAL` carrega um `estadoConfianca` (`pendente` → `limpo`/`rejeitado`): o anexo entra em **quarentena** e só é consumível após scan AV assíncrono; a porta de consumo **recusa não-`limpo`** e resolve por objeto de domínio, não por chave de storage crua do cliente. O eixo **confiança** é ortogonal à **temperatura** de retenção (arquitetura/06; P-30). Controle **somado**, não substitui SSRF (P-58) nem injeção (arquitetura/11); documento 05, §4; arquitetura/07 AB14; **P-104**.
 - **Cripto de campo na classe crítica** — em `CRITERIO_MONITORAMENTO`, a faixa de valor-alvo (`valorMin`/`valorMax`) é **estratégia comercial do cliente** (classe crítica, documento 05, §9): além do isolamento por `tenantId`/`clienteFinalId`, é **cifrada em nível de aplicação em repouso** (colunas cifradas, chave em KMS por trás de *port*). A cripto **soma-se** à autorização por objeto, nunca a substitui (**P-59**; arquitetura/07).
 - **Triagem com ciclo de vida** — `TRIAGEM.status` distingue estados **não-concluídos** (a triagem roda em worker assíncrono disparado por `triagem.solicitada`) da triagem concluída; `aderencia`/`recomendacao` só existem quando **concluída** (nulas antes). Reflete o caminho assíncrono de arquitetura/03, §§1,3 e arquitetura/17.
+- **Entitlement: a reserva é o gate, o evento é a fatura** — `ASSINATURA` é o **agregado raiz** de Cobrança & Assinatura (documento 13, §3), chaveado pelo `tenantId` (um plano por tenant no MVP; cobrança por cliente-final é *Next*, P-25). Dois invariantes de dados sustentam o modelo e **nenhum dos dois existe sem tabela**: (a) **reserva atômica** — o consumo de cota é decidido na borda por um único `UPDATE ... WHERE usoReservado < cotaTriagensMes RETURNING`, **antes** de publicar `triagem.solicitada`; sem os campos `cotaTriagensMes`/`usoReservado` no mesmo agregado não há como decidir sob concorrência sem race; (b) **idempotência do faturamento** — `REGISTRO_USO` é **único** por `(tenantId, clienteFinalId, editalId, perfilId, periodo)`, porque o consumidor de `triagem.concluida` recebe *at-least-once* do SQS e o `DomainEvent` não carrega `eventId` — é a **chave natural** que impede faturar a mesma triagem duas vezes (documento 13, §4; arquitetura/03, §3). `triagem.concluida` alimenta a **fatura**, nunca o **gate**. **A reserva não é uma linha de `REGISTRO_USO`** — é o contador `usoReservado` **na própria `ASSINATURA`**. `REGISTRO_USO` só nasce **confirmado**, do consumo de `triagem.concluida` (`INSERT … ON CONFLICT DO NOTHING`): pré-inserir a linha na reserva quebraria a própria idempotência, porque o `DO NOTHING` jamais a promoveria a confirmada e a fatura sairia vazia. Na **falha/timeout/cancelamento**, a reserva é **liberada** — decrementa `usoReservado`, sem gerar registro (decidido por Negócio/Priscila, 2026-07-12, RAD-232; **P-107 (c)**). Isso torna a **compensação da reserva no caminho de falha — DLQ inclusive — obrigatória**: sem ela a cota vaza e o gate barra um tenant que não consumiu nada. O `gatewayAssinaturaId` é **identificador opaco** — o gateway vê plano, valor e quantidade agregada, nunca `editalId`, `perfilId` ou aderência (documento 05, §9).
 - **Autorização em duas camadas — RBAC somado à posse do objeto** — o acesso do usuário passa por **dois controles cumulativos**, nenhum substitui o outro e a **ausência de papel nega por padrão**: (a) **RBAC** — a matriz declarativa `podeExecutar(papel, recurso, acao)` (documento 05, §4) responde *"este papel pode tentar esta ação"*; (b) **autorização por objeto** (`tenantId`/`clienteFinalId`, **P-51**/AB1) responde *"este usuário tem posse deste objeto"*. `ATRIBUICAO_PAPEL` é **agregado raiz próprio** de Identidade & Organização (não parte de `TENANT`; o `tenantId` é **referência** de *Shared Kernel* — documento 13, §5 —, não continência) — sua identidade é o **`sub` verificado do IdP** (Cognito), lida em **toda requisição** por `ResolverContextoAutorizacaoUseCase` via `PermissaoRepository` (documento 13, §3; documento 14, §6). Três invariantes: **papel não vem do token** (o JWT carrega só `sub` + `custom:tenantId` verificados; papel e escopo `clienteFinalIds[]` são **dado de domínio**, e o `tenantId` da atribuição tem de **bater** com o claim); **RBAC mora na borda** (middleware de `apps/api` — Matching/Triagem/Notificação **não conhecem `PAPEL`**; o que atravessa para dentro é `clienteFinalIds[]`, já linguagem do domínio); **negação é auditável** (`403` sem vazar existência do objeto, documento 05, §3). `USUARIO` **não é agregado** deste contexto — seu ciclo de vida é do IdP (P-98); o que o contexto possui do usuário é a atribuição de papel e o escopo de `clienteFinalId`. **Conceitual, não físico:** a atribuição é hoje **semeada/provisionada** (config/seed, sem tabela Postgres) e a matriz é **declarativa**; a administração (CRUD de usuários/papéis) é escopo posterior (**P-52**).
 
 ## 3. Requisitos não-funcionais (NFRs / SLAs)
@@ -174,5 +198,6 @@ Este modelo é o substrato comum: os **fluxos** (documento 03) movem estas entid
 - Modelo de autorização (RBAC) incorporado ao §1/§2 — `PAPEL`, `ATRIBUICAO_PAPEL` (agregado raiz próprio, identidade = `sub` do IdP) e o controle em duas camadas (RBAC somado à posse do objeto, P-51); espelha documento 13 §3 e documento 14 §6. `Resolvido (P-52, 2026-07-11)`
 - NFRs de arquitetura fixados (§3): latência de triagem p95 ≤ 3 min, disponibilidade ≥ 99,5% no caminho crítico, escalabilidade dimensionada por P-31; retenção agora aponta para a matriz de 05 §5 (P-05/P-44 resolvidas). Custo de IA (P-20) segue com seu dono. `Resolvido (P-24, 2026-07-05)`
 - Definir o esquema de eventos de instrumentação (documento 08, §6) sobre estas entidades. `[A VALIDAR]`
+- `ASSINATURA` e `REGISTRO_USO` incorporados ao §1/§2 para dar substrato aos dois invariantes de entitlement (reserva atômica e chave natural de idempotência) declarados no bounded context Cobrança & Assinatura (documento 13, §3). Reserva na falha **decidida** (libera; P-107 c) e política de excedente **decidida** (opt-in com cap; seu *ligamento* depende do ledger de uso — RAD-230/P-20/P-38). Segue aberto o **vendor do gateway** (default Asaas, sob aceite de Segurança) e seus fees/DPA/residência. `[A VALIDAR — P-107 (a)]`
 
 Rastreadas no documento **98 · Decisões e pendências**.

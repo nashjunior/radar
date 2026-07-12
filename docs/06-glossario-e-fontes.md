@@ -38,6 +38,22 @@
 
 **Proveniência** — Metadado que registra origem, data e base legal de um dado.
 
+**Assinatura** — Contrato recorrente do Tenant com o Radar: plano comercial, ciclo, status e cota. É agregado **nosso** (docs 13, §3), distinto do objeto que o gateway de pagamento mantém do seu lado. Não confundir com a assinatura eletrônica de propostas nos portais — que está **fora de escopo** (docs 01, §6).
+
+**Plano (comercial)** — Nível de contratação do SaaS (preço + cota + limites). Termo **sobrecarregado**: em contexto de licitação, "plano" é o **PCA** (acima). Nos documentos de billing, escreva sempre *plano comercial* ou *plano de assinatura*.
+
+**Cota de triagens** — Quantidade de triagens que o plano comercial dá ao Tenant no ciclo. É a métrica de valor do produto (docs 09, §6.1) e a unidade que o gate de entitlement protege. ⚠️ **Colisão:** não confundir com a *cota do provedor* de nuvem (arq/09, P-68) nem com a **cota reservada ME/EPP** da Lei 14.133/2021 (art. 48) — esta última é linguagem do domínio de licitações e, se entrar, entra em Matching/Triagem, nunca em Cobrança (docs 13, §3).
+
+**Reserva de cota** — Débito **síncrono** de 1 unidade da cota, feito na borda **antes** de aceitar a triagem (a triagem é assíncrona; esperar o resultado para contar deixaria um *burst* estourar a cota). Reserva é **gate**, não fatura: se a triagem falha, a reserva é liberada e nada é cobrado (docs 98, P-107).
+
+**Uso confirmado (faturável)** — Reserva que virou linha de fatura ao chegar o evento `triagem.concluida`. Reserva ≠ uso confirmado: só o segundo é cobrável. A linha (`RegistroDeUso`) **só nasce confirmada** — a reserva vive num contador da `Assinatura`, não numa linha de uso.
+
+**RegistroDeUso × RegistroUsoLlm** — ⚠️ **Colisão de contextos.** `RegistroDeUso` (**Cobrança**) é a **unidade faturável**: uma triagem concluída, sempre atribuível a um Tenant. `RegistroUsoLlm`/`UsoLlmLedger` (**Triagem**, já em código — RAD-230/P-20/P-38) é o **custo de uma chamada de LLM**, com `tenantId` **anulável** de propósito, porque a pré-extração do catálogo global (P-92) não é atribuível a tenant. Um serve para **cobrar do cliente**, o outro para **medir o nosso custo**; não se somam nem se reconciliam. Onde P-107 (alínea b) fala em *"ledger de uso"*, é o **de LLM**.
+
+**Ciclo (de faturamento)** — Janela mensal em que a cota vale e o uso é somado; fecha na renovação.
+
+**Carência** — Prazo em que a Assinatura segue **ativa** apesar de pagamento falho, enquanto rodam as retentativas (*dunning*), antes de suspender. É política **nossa**, no agregado — não do gateway (docs 13, §3).
+
 ## Fontes consultadas
 
 Legislação e órgãos oficiais:
@@ -74,5 +90,12 @@ Nuvem e sub-operador do LLM (Amazon Bedrock — P-54/P-66):
 - Amazon Bedrock — Batch inference (S3/JSONL, `CreateModelInvocationJob`): https://docs.aws.amazon.com/bedrock/latest/userguide/batch-inference.html
 - Amazon Bedrock — Data protection (retenção configurável, zero-retention por policy): https://docs.aws.amazon.com/bedrock/latest/userguide/data-protection.html
 - Amazon Bedrock — Cross-region inference (roteamento geográfico da inferência / residência): https://docs.aws.amazon.com/bedrock/latest/userguide/cross-region-inference.html
+
+Gateway de pagamento (Asaas — P-107(a)):
+
+- Asaas — IPs oficiais (allowlist da borda do webhook): https://docs.asaas.com/docs/ips-oficiais-do-asaas
+- Asaas — Atualizar webhook existente (`PUT /v3/webhooks/{id}`; `authToken` de 32–255 caracteres é definido por nós, logo reemissível por API): https://docs.asaas.com/reference/atualizar-webhook-existente
+- Asaas — Gerenciamento das chaves de API de subcontas (criação/revogação programática existe **só** para subcontas pela conta-pai, com whitelist de IP e habilitação manual de 2h; a chave da conta principal só sai/entra pelo painel): https://docs.asaas.com/docs/gerenciamento-de-chaves-de-api-de-subcontas
+- Asaas — Fila de sincronização do webhook: 15 falhas consecutivas interrompem a fila; eventos ficam retidos e os mais antigos são descartados após 14 dias; reativação pelo painel ou por `interrupted: false` na API: https://docs.asaas.com/docs/como-reativar-fila-interrompida
 
 > As fontes secundárias (blogs jurídicos, portais especializados) foram usadas para contexto e interpretação. Toda decisão de conformidade deve se ancorar nos textos legais oficiais e em parecer jurídico próprio. Itens marcados `[A VALIDAR]` ao longo da documentação dependem dessa validação.

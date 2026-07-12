@@ -49,7 +49,9 @@ Os módulos 1 e 2 formam o núcleo mínimo de valor; 3 e 4 são incrementos natu
 
 ## 6. Fora de escopo (nesta fase)
 
-Para manter foco na concepção, ficam explicitamente **fora** do escopo inicial: emissão ou assinatura de propostas diretamente nos portais governamentais em nome do usuário (automação de submissão); aconselhamento jurídico (o produto informa, não substitui advogado); e integração de pagamento/faturamento de contratos. Esses pontos podem entrar em roadmap futuro, mas trazem risco legal e de segurança elevado e não devem ser assumidos como dados. `[A VALIDAR]`
+Para manter foco na concepção, ficam explicitamente **fora** do escopo inicial: emissão ou assinatura de propostas diretamente nos portais governamentais em nome do usuário (automação de submissão); aconselhamento jurídico (o produto informa, não substitui advogado); e integração de pagamento/faturamento **dos contratos públicos** (o dinheiro que o órgão paga ao fornecedor, pós-adjudicação). Esses pontos podem entrar em roadmap futuro, mas trazem risco legal e de segurança elevado e não devem ser assumidos como dados. `[A VALIDAR]`
+
+Precisão (P-107): essa última exclusão **não** alcança a **cobrança do próprio SaaS** — o plano recorrente com cota de triagens que o cliente paga a nós (doc 09, §6.1). São coisas distintas: faturar contrato público é integração com o ciclo financeiro do órgão (fora); cobrar a assinatura é o nosso modelo de receita, registrado como bounded context **Cobrança & Assinatura** (doc 13, §§2–4) e endereçado no gate de GTM.
 
 ## 7. Métricas de sucesso (candidatas)
 

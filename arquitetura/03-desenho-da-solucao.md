@@ -47,8 +47,9 @@ sequenceDiagram
 | **Ingestão** | Coletar do PNCP, minimizar, normalizar, publicar evento (A02) | Não decide relevância nem lê o edital |
 | **Matching** | Cruzar edital × critérios, pontuar aderência, gerar alerta (docs/11) | Não notifica nem analisa conteúdo |
 | **Notificação** | Entregar alerta imediato/digest por criticidade (docs/11, §4) | Não decide o que é relevante |
-| **Triagem/IA** | Extrair com citação, calcular aderência, sugerir go/no-go (docs/10) | **Não decide** — decisão é do usuário |
-| **API/App** | AuthN/AuthZ, orquestrar, servir a UI, registrar auditoria | Não fala direto com o LLM fora do worker |
+| **Triagem/IA** | Extrair com citação, calcular aderência, sugerir go/no-go (docs/10) | **Não decide** — decisão é do usuário; **não faz gate de cota** (não conhece Assinatura — o Core não depende de um Generic downstream, docs/13 §4) |
+| **API/App** | AuthN/AuthZ, orquestrar, servir a UI, registrar auditoria; **gate de entitlement** (reserva síncrona de cota) nas rotas que consomem triagem | Não fala direto com o LLM fora do worker |
+| **Cobrança & Assinatura** | Manter `Assinatura` (plano, cota, status), reservar/confirmar uso, consumir `triagem.concluida` para faturar, receber o webhook do gateway (docs/13 §3, P-107) | Não guarda cartão (checkout hospedado/tokenizado) nem sabe o que é um edital |
 
 ## 3. Contratos de eventos (fila)
 
@@ -58,11 +59,16 @@ Payloads mínimos — a fila é o contrato entre módulos:
 |--------|----------------------|-------------------|
 | `edital.ingerido` | Ingestão → Matching | `numeroControlePNCP`, `tenantScope` (global no MVP), atributos normalizados |
 | `alerta.gerado` | Matching → Notificação | `alertaId`, `tenantId`, `clienteFinalId`, `criterioId`, `editalId`, `aderencia` |
-| `triagem.solicitada` | API → Triagem/IA | `tenantId`, `usuarioId`, `editalId` |
-| `triagem.concluida` | Triagem/IA → API | `editalId`, `campos` + `citacoes` + `confianca`, `recomendacao`, `riscos` |
+| `triagem.solicitada` | API → Triagem/IA | `tenantId`, `clienteFinalId`, `editalId`, `perfilId` (publicado **depois** da reserva de cota — docs/13 §3) |
+| `triagem.concluida` | Triagem/IA → API · Cobrança | `tenantId`, `clienteFinalId`, `editalId`, `perfilId`, `confianca`, `aderencia`, `recomendacao`, `riscos` |
+| `triagem.falhou` | Triagem/IA → Cobrança | `tenantId`, `clienteFinalId`, `editalId`, `perfilId`, `motivo` |
 | `feedback.alerta` | API → Matching | `alertaId`, `relevante:bool` |
 
 Toda mensagem carrega `tenantId` mesmo no MVP single-tenant (A01, §6).
+
+> **`triagem.concluida` carrega a chave natural da Triagem, não o conteúdo do laudo.** *(Ajuste 2026-07-11, RAD-239: alinha o contrato ao evento realmente publicado — `modules/triagem/src/application/events.ts`.)* O payload traz `(tenantId, clienteFinalId, editalId, perfilId)` + veredicto (`aderencia`, `confianca`, `recomendacao`, `riscos`); **não** traz `campos`/`citacoes` — o laudo completo fica na `Triagem` e se lê pela API, não pelo evento. Essa quádrupla **é** a chave de idempotência do consumidor de **Cobrança** (SQS é *at-least-once* e o publisher pode republicar): dedupe por chave natural, não por `eventId` (docs/13 §3, nota de linguagem; docs/98 P-107). Mudar esses 4 campos quebra a idempotência da fatura — é contrato, não detalhe.
+
+> **`triagem.falhou` é o compensador da reserva de cota, não um evento de erro genérico.** *(RAD-255, P-107 (c).)* Emitido por `TriarEditalUseCase` em todo caminho de falha/timeout/cancelamento — a reserva síncrona feita na borda antes de `triagem.solicitada` (§3 acima) só é liberada por Cobrança (`LiberarReservaUseCase`, RAD-247) se este evento chegar; sem ele a cota vaza e o gate passa a barrar um tenant que não consumiu nada. Carrega a **mesma quádrupla** `(tenantId, clienteFinalId, editalId, perfilId)` de `triagem.concluida` — sempre a do pedido original (`TriarEditalInput`), mesmo quando a falha é de autorização (perfil de outro cliente) e não há `Triagem` persistida para lê-la. `motivo` é o `code` estável de `DomainError` (ex.: `CONFIANCA_INSUFICIENTE`, `OCR_FALHOU`) ou `erro_inesperado` como fallback seguro — nunca mensagem, stack ou detalhe interno. *(RAD-259: fechado.)* O worker que consome `triagem.solicitada` → `TriarEditalUseCase` (`TriagemSolicitadaWorker`, composto em `apps/api/src/workers.ts`) tem handler de DLQ dedicado — ao esgotar retries de INFRA (crash antes de `executar()` rodar, ex. hidratação), publica `triagem.falhou` com a chave natural da mensagem original antes de descartá-la, fechando o `try/catch` de `TriarEditalUseCase` para o caso em que ele nunca chega a rodar.
 
 > **`alerta.gerado` carrega o escopo, não o destinatário.** O Matching conhece o `clienteFinalId` (dono do `CRITERIO_MONITORAMENTO`), não o usuário nem o e-mail — resolver contato é responsabilidade da **Notificação** (Cliente-Fornecedor, leitura de Identidade/preferência; MVP 1 usuário por `clienteFinal`, P-25). Por isso o evento **não** carrega `usuarioId` nem `emailDestinatario`: colocá-los forçaria o produtor a conhecer o destinatário — violação de fronteira (docs/13, §5). *(Ajuste 2026-07-05: alinha o contrato ao que o Matching de fato produz e retira o e-mail do evento — ver [15](15-matching-e-alerta.md), [14](14-notificacao.md).)*
 
@@ -79,6 +85,9 @@ erDiagram
     PERFIL_HABILITACAO ||--o{ TRIAGEM : compara
     EDITAL ||--|| PROVENIENCIA : registra
     CLIENTE_FINAL ||--o{ CRITERIO_MONITORAMENTO : define
+    TENANT ||--|| ASSINATURA : contrata
+    ASSINATURA ||--o{ REGISTRO_USO : mede
+    TRIAGEM ||--o| REGISTRO_USO : confirma
     EDITAL {
         uuid id
         string numeroControlePncp UK
@@ -110,9 +119,30 @@ erDiagram
         json riscos
         string recomendacao
     }
+    ASSINATURA {
+        uuid tenantId PK
+        string plano
+        string status
+        int cotaTriagensMes
+        int usoReservado
+        int usoConfirmado
+        string periodo
+        string gatewayAssinaturaId UK
+    }
+    REGISTRO_USO {
+        uuid id
+        uuid tenantId FK
+        uuid clienteFinalId FK
+        uuid editalId FK
+        uuid perfilId FK
+        string periodo
+        datetime confirmadoEm
+    }
 ```
 
 Índices que sustentam os NFRs: `numeroControlePncp` **único** (idempotência, A02); `dataPublicacao` e `modalidadeCodigo` (matching e reconciliação); `(editalId, perfilId)` **único** em `TRIAGEM` (uma aderência por empresa); `clienteFinalId` nas tabelas de dado de cliente — `ALERTA`, `TRIAGEM`, `CRITERIO_MONITORAMENTO` (isolamento). O **catálogo é global**: `EDITAL`, `EXTRACAO_EDITAL` e `RESULTADO` **não** levam `tenantId` (públicos e compartilhados — base do cache). Valores que mudam por decreto (docs/02, §2) ficam em **tabela de referência versionada e datada**.
+
+**Cobrança — os dois índices que sustentam o entitlement** (P-107; decidido no RAD-232, ratificado por Negócio em 2026-07-11). `ASSINATURA` guarda `cotaTriagensMes`, `usoReservado` e `usoConfirmado` **na mesma linha**, porque o gate é uma **reserva atômica** na borda — `UPDATE assinatura SET uso_reservado = uso_reservado + 1 WHERE tenant_id = $1 AND status = 'ativa' AND uso_reservado < cota_triagens_mes RETURNING 1` (zero linhas ⇒ **402**, antes de gastar LLM). Espalhar cota e uso por tabelas diferentes reintroduz a race que a reserva existe para fechar. `REGISTRO_USO` leva **`UNIQUE (tenant_id, cliente_final_id, edital_id, perfil_id, periodo)`**: a chave natural é o que impede faturar duas vezes a mesma triagem, já que o SQS entrega *at-least-once* e o `DomainEvent` não carrega `eventId` (§3). **A reserva vive no contador `usoReservado` da `ASSINATURA`, não como linha em `REGISTRO_USO`**: a linha só nasce **confirmada**, quando o consumidor de Cobrança recebe `triagem.concluida` (`INSERT … ON CONFLICT DO NOTHING`, incrementando `usoConfirmado`) — o evento é a fonte da **fatura**, nunca do **gate** (docs/13, §4). Pré-inserir a linha na reserva anularia a idempotência: o `DO NOTHING` nunca a promoveria a confirmada. Triagem que **falha, expira ou é cancelada libera a reserva** (decrementa `usoReservado`) e **não gera registro** — logo o caminho de falha, **DLQ inclusive**, precisa **compensar a reserva**, senão a cota vaza. Ambas as tabelas levam `tenantId`: são dado de cliente, não catálogo.
 
 ## 5. Matching (docs/11) no MVP
 
