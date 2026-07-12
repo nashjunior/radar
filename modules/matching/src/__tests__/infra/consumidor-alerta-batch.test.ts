@@ -15,6 +15,8 @@ function fazerPayload(i: number): AlertaParaGravarPayload {
     criterioId: CriterioId(`criterio-${i}`),
     editalId: EditalId('edital-001'),
     aderencia: 0.8,
+    editalPublicadoEm: new Date('2026-07-10T12:00:00.000Z'),
+    prazoCritico: false,
   };
 }
 
@@ -145,6 +147,62 @@ describe('ConsumidorAlertaBatch', () => {
       expect(alerta.tenantId).toBe(payload.tenantId);
       expect(alerta.clienteFinalId).toBe(payload.clienteFinalId);
       expect(alerta.aderencia.valor).toBe(payload.aderencia);
+    });
+  });
+
+  describe('editalPublicadoEm (A18 §5 — origem do SLO de frescor)', () => {
+    it('repassa editalPublicadoEm do payload drenado para o AlertaGerado publicado', async () => {
+      const fila = new FilaAlertaMemoria();
+      const payload = fazerPayload(1);
+      await fila.enfileirar(payload, noop);
+
+      const repo = mockAlertaRepo();
+      const eventos = mockEventPublisher();
+      const consumidor = new ConsumidorAlertaBatch(fila, repo, eventos);
+      await consumidor.processarLote(noop);
+
+      const [evento] = (eventos.publicar as ReturnType<typeof vi.fn>).mock.calls[0] as [
+        { payload: { editalPublicadoEm: Date } },
+      ];
+      expect(evento.payload.editalPublicadoEm).toBe(payload.editalPublicadoEm);
+    });
+  });
+
+  describe('imediato (P-81, A18 §5.1) — aderência alta OU prazo crítico', () => {
+    it('reconstrói o Alerta com prazoCritico do payload e publica imediato=true quando prazoCritico=true', async () => {
+      const fila = new FilaAlertaMemoria();
+      const payload = { ...fazerPayload(1), prazoCritico: true };
+      await fila.enfileirar(payload, noop);
+
+      const repo = mockAlertaRepo();
+      const eventos = mockEventPublisher();
+      const consumidor = new ConsumidorAlertaBatch(fila, repo, eventos);
+      await consumidor.processarLote(noop);
+
+      const [alertas] = (repo.salvarEmLote as ReturnType<typeof vi.fn>).mock.calls[0] as [Alerta[]];
+      expect(alertas[0]!.prazoCritico.critico).toBe(true);
+      expect(alertas[0]!.imediato).toBe(true);
+
+      const [evento] = (eventos.publicar as ReturnType<typeof vi.fn>).mock.calls[0] as [
+        { payload: { imediato: boolean } },
+      ];
+      expect(evento.payload.imediato).toBe(true);
+    });
+
+    it('publica imediato=false quando prazoCritico=false e aderência não é alta', async () => {
+      const fila = new FilaAlertaMemoria();
+      const payload = { ...fazerPayload(1), aderencia: 0.5, prazoCritico: false };
+      await fila.enfileirar(payload, noop);
+
+      const repo = mockAlertaRepo();
+      const eventos = mockEventPublisher();
+      const consumidor = new ConsumidorAlertaBatch(fila, repo, eventos);
+      await consumidor.processarLote(noop);
+
+      const [evento] = (eventos.publicar as ReturnType<typeof vi.fn>).mock.calls[0] as [
+        { payload: { imediato: boolean } },
+      ];
+      expect(evento.payload.imediato).toBe(false);
     });
   });
 });

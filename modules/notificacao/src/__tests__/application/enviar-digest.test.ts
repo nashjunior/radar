@@ -42,7 +42,6 @@ function makeAlerta(id: string, aderencia: number): AlertaResumoDTO {
     uf: 'SP',
     prazoProposta: new Date('2024-06-01T00:00:00Z'),
     aderencia,
-    diasAtePrazo: 30,
     criterioId: CriterioId(`criterio-${id}`),
     criterioNome: `Critério ${id}`,
   };

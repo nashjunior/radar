@@ -26,8 +26,8 @@ O matching melhora com feedback (documento 03, §3), mas o usuário novo não te
 
 ```mermaid
 flowchart TD
-    A[Novo usuário] --> B[Onboarding guiado:<br/>ramo/CNAE, região,<br/>faixa de valor, palavras-chave]
-    B --> C[Sugerir critérios a partir de<br/>editais recentes do segmento]
+    A[Novo usuário] --> B[Onboarding guiado:<br/>segmento como rótulo, região,<br/>faixa de valor, palavras-chave]
+    B --> C[Segmento pré-popula<br/>1–2 palavras-chave]
     C --> D[Período de calibração:<br/>pedir feedback nos 1ºs alertas]
     D --> E{Precisão atinge<br/>o alvo?}
     E -->|Não| D
@@ -35,6 +35,49 @@ flowchart TD
 ```
 
 Ideia-chave: no início, o produto **pede mais** (feedback) e **assume mais** (sugere critérios), convergindo para pedir menos conforme aprende.
+
+### 3.1 O segmento é rótulo, nunca filtro — CNAE não existe no edital
+
+**Decisão (arquitetura, 2026-07-12):** o onboarding **nunca escreve `ramoCnae`**. O PNCP não publica CNAE da *contratação* — o CNAE que existe lá é o do **fornecedor**, não o da compra. Como o edital chega ao matching sempre sem CNAE, todo critério com `ramoCnae` preenchido casa com **zero** editais: preencher o campo **silencia a conta**, e o usuário não é avisado.
+
+Consequências, que valem como restrição de contrato:
+
+- A pergunta "qual o seu ramo/segmento?" sobrevive **apenas como rótulo de produto que pré-popula palavras-chave**. Ela não vira filtro estrutural, não é persistida no critério e não tem campo no modelo.
+- Um critério exige **ao menos um filtro efetivo** — palavras-chave, **ou** UF, **ou** faixa de valor. Nenhum dos três casa com tudo e vira firehose. (O invariante antigo, *"ao menos ramo/CNAE ou palavras-chave"*, aceitava um critério só-CNAE: garantidamente mudo.)
+- **`ramoCnae` e `regiaoUf` são escalares, não listas.** Um multi-select de UF na tela ⇒ o front cria **N critérios**, não um.
+
+### 3.2 Sugestão por segmento: listas curtas, score proporcional
+
+O score de palavras-chave é **proporcional** — `encontrados / termos.length` — e não tudo-ou-nada. Com o corte de alta aderência em **0,80** (documento 98, P-81), isso passa a significar "**≥ 80% dos termos batem**", o que é uma barra legível e mantém a postura de recall alto de §2.
+
+Isso governa o formato das sugestões: **1–2 palavras-chave genéricas por segmento**, nunca listas longas. Uma sugestão de 5–6 termos exigiria que o `objetoCompra` contivesse quase todos para superar o limiar — na prática, **sugerir mais palavras reduz o alcance**. Um usuário onboardado *sem* nenhuma palavra-chave fica no score neutro de 0,5: recebe alerta, mas nunca de alta aderência, logo nunca crítico por aderência no digest (só por prazo).
+
+**Decisão de Produto (2026-07-12, P-23).** Os seis segmentos do ICP e as palavras-chave que o onboarding pré-popula:
+
+| Segmento exibido no onboarding | Palavras-chave pré-populadas |
+|---|---|
+| TI e software | `software`, `sistema` |
+| Equipamentos de informática | `computador`, `notebook` |
+| Limpeza e conservação | `limpeza`, `conservação` |
+| Segurança e vigilância | `vigilância`, `segurança` |
+| Saúde e insumos hospitalares | `medicamento`, `hospitalar` |
+| Obras e manutenção predial | `obra`, `reforma` |
+
+Regras de uso, todas decorrentes de §3.1:
+
+- O segmento é **atalho visual de onboarding**, não dado de domínio: nada dele é persistido. O que fica salvo é só o critério efetivo — palavras-chave, UF e faixa de valor.
+- As palavras-chave entram **editáveis** antes de salvar; o usuário não fica preso à sugestão.
+- **UF:** pré-selecionar a UF do CNPJ do tenant quando disponível; se não estiver, exigir escolha explícita (nunca inferir por IP). Como `regiaoUf` é escalar, escolher mais de uma UF faz o front criar **N critérios**. **Hoje ela nunca está disponível** (ver a nota de viabilidade abaixo) ⇒ na prática o MVP cai no ramo "escolha explícita", com a opção *Brasil inteiro / sem filtro*.
+- **Faixa de valor:** default **aberto**, sem mínimo nem máximo, e nunca obrigatória no onboarding — o valor estimado falta ou varia muito no PNCP, e exigir faixa no primeiro acesso corta recall antes do primeiro alerta relevante. Reforço do motor: quando há faixa, `casaCom` **descarta** o edital cujo `valorEstimado` é `null` — qualquer faixa preenchida silencia os editais sem valor publicado.
+
+**Nota de viabilidade (Artur, 2026-07-12, RAD-295) — duas coisas que a tela não pode prometer:**
+
+- **Não existe UF do tenant para pré-preencher.** `OrganizacaoDTO` é `{tenantId, cnpj, razaoSocial, papel}` (`modules/identidade/src/application/dtos.ts`) — sem UF e sem endereço — e o **CNPJ não codifica UF** (quem codifica região é o CPF). "Pré-selecionar a UF do CNPJ" exigiria consulta à Receita/base derivada, que é **P-112** e está em aberto. Enquanto isso, o campo UF nasce **vazio, com escolha explícita**. Se Produto quiser o pré-preenchimento, o caminho barato é **perguntar a UF no provisionamento** e persisti-la no `Tenant` (mudança aditiva) — nunca derivá-la do CNPJ.
+- **A faixa de valor não é min/máx livre no contrato.** A borda aceita `faixaValorCodigo` — chave da **tabela de referência datada** (`FaixaValorReferencia.faixasVigentes`, `POST /criterios` em `apps/api/src/routes/matching.ts`) —, não dois números. E **não há endpoint que liste as faixas vigentes**, então a tela não teria como popular um seletor. O default aberto (**omitir o campo**) é o único comportamento implementável hoje — e é justamente o decidido. Se um dia a faixa entrar no onboarding, ela precisa antes de um `GET` de faixas vigentes e vira **select de códigos**, jamais dois inputs numéricos.
+
+**Duas palavras por segmento, não uma.** Com o score proporcional, dois termos dão *gradação*: um termo que bate ⇒ 0,5 (alerta, pois supera o piso de 0,3), os dois ⇒ 1,0 (alta aderência). Um critério de **uma só palavra** só produz 0 ou 1 — ou seja, **todo** casamento vira alta aderência e crítico no digest, o que reintroduz fadiga de alerta por outro caminho (§4).
+
+> ⚠️ **O casamento precisa dobrar acento** (`normalize('NFD')`, dois lados). O `objetoCompra` do PNCP vem com frequência em caixa alta e **sem** acento, e a comparação é `includes` cru: sem *folding*, `conservação` não casa com `CONSERVACAO` e os segmentos *Limpeza e conservação* e *Segurança e vigilância* perdem editais **em silêncio**. Rastreado em `RAD-306`.
 
 ## 4. Fadiga de alerta e canais
 
@@ -92,6 +135,6 @@ O risco de dependência de fontes (documento 01, §8) exige tratamento operacion
 
 - Recalibrar limiares de recall/precisão, criticidade e cap de digest após o piloto MVP, usando feedback real por segmento (§§2, 4).
 - Definir a lista priorizada de fontes além do PNCP para o *Next* (§6, documento 07). `[A VALIDAR]`
-- Especificar o onboarding de cold-start e os critérios sugeridos por segmento (§3). `[A VALIDAR]`
+- ~~Especificar o onboarding de cold-start e os critérios sugeridos por segmento (§3).~~ **Resolvido** (P-23, 2026-07-12): fluxo em §3, ruling do CNAE em §3.1, lista de segmentos e defaults em §3.2.
 
 Rastreadas no documento **98 · Decisões e pendências**.

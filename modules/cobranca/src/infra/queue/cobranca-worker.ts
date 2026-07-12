@@ -2,6 +2,7 @@ import { DomainError } from '@radar/kernel';
 import { ClienteFinalId, EditalId, PerfilId, TenantId } from '@radar/kernel';
 import type { ConfirmarUsoUseCase } from '../../application/use-cases/confirmar-uso.js';
 import type { LiberarReservaUseCase } from '../../application/use-cases/liberar-reserva.js';
+import type { IniciarTrialUseCase } from '../../application/use-cases/iniciar-trial.js';
 
 /** Contrato canônico de `triagem.concluida` que a Cobrança consome (arquitetura/03 §3). */
 interface TriagemConcluidaMsg {
@@ -16,13 +17,23 @@ interface TriagemFalhouMsg {
   tenantId: string;
 }
 
+/**
+ * Contrato canônico de `organizacao.provisionada` que a Cobrança consome (RAD-285,
+ * arquitetura/03 §3) — publicado por Identidade & Organização. Só `tenantId` é
+ * usado aqui; `sub` do payload real não é dado desta assinatura.
+ */
+interface OrganizacaoProvisionadaMsg {
+  tenantId: string;
+}
+
 interface DlqClient {
   encaminhar(msg: TriagemConcluidaMsg, err: unknown): Promise<void>;
 }
 
 /**
- * Consumidor de `triagem.concluida`/`triagem.falhou` (P-107) — RAD-247. Cobrança é
- * downstream: nunca importa `modules/triagem` (isolamento de bounded context,
+ * Consumidor de `triagem.concluida`/`triagem.falhou`/`organizacao.provisionada`
+ * (P-107, RAD-247, RAD-285) — Cobrança é downstream: nunca importa
+ * `modules/triagem` nem `modules/identidade` (isolamento de bounded context,
  * docs/13 §4) — o contrato de cada evento é replicado aqui como DTO local, mesmo
  * padrão de `NotificacaoWorker` (`alerta.gerado`).
  */
@@ -31,6 +42,7 @@ export class CobrancaWorker {
     private readonly confirmarUsoUC: ConfirmarUsoUseCase,
     private readonly liberarReservaUC: LiberarReservaUseCase,
     private readonly dlq: DlqClient,
+    private readonly iniciarTrialUC: IniciarTrialUseCase,
   ) {}
 
   /**
@@ -75,5 +87,15 @@ export class CobrancaWorker {
    */
   async processarTriagemFalhou(msg: TriagemFalhouMsg, signal: AbortSignal): Promise<void> {
     await this.liberarReservaUC.executar({ tenantId: TenantId(msg.tenantId) }, signal);
+  }
+
+  /**
+   * Consumidor de `organizacao.provisionada` (RAD-285) — inicia o trial do Tenant
+   * recém-criado (P-109 L0/RAD-269). `IniciarTrialUseCase` já é idempotente por
+   * `tenantId`, então reentrega (SQS at-least-once) é no-op; sem DLQ dedicada —
+   * não há hoje um erro de domínio esperado neste caminho (só infra, que relança).
+   */
+  async processarOrganizacaoProvisionada(msg: OrganizacaoProvisionadaMsg, signal: AbortSignal): Promise<void> {
+    await this.iniciarTrialUC.executar({ tenantId: TenantId(msg.tenantId) }, signal);
   }
 }

@@ -21,7 +21,8 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@radar/kernel": "workspace:*"
+    "@radar/kernel": "workspace:*",
+    "@radar/observabilidade": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.7",

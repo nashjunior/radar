@@ -13,6 +13,8 @@ interface EditalIngeridoMsg {
   valorEstimado: number | null;
   dataPublicacao: string;
   modalidadeCodigo: number;
+  /** Prazo final para envio de propostas — ISO string. null quando o edital não informa (RAD-303). */
+  prazoProposta: string | null;
   /** Proveniência do edital — incluso desde RAD-115 (opcional para retro-compat). */
   proveniencia?: { fonte: string; baseLegal: string; dataColeta: string };
 }
@@ -42,6 +44,7 @@ export class MatchingWorker {
       cnae: null,
       valorEstimado: msg.valorEstimado,
       dataPublicacao: new Date(msg.dataPublicacao),
+      prazoProposta: msg.prazoProposta !== null ? new Date(msg.prazoProposta) : null,
       ...(msg.proveniencia !== undefined ? { proveniencia: msg.proveniencia } : {}),
     };
 

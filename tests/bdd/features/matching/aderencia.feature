@@ -24,7 +24,7 @@ Feature: Aderência e postura recall-alto no casamento de editais
 
   Scenario: Edital abaixo do limiar de aderência não gera alerta
     Given um critério de monitoramento com palavras-chave "software ti"
-    And um edital com objeto "Construção de ponte sobre o rio Tietê"
+    And um edital com objeto "Manutenção de vias públicas municipais"
     When o sistema executa o casamento do edital com os critérios
     Then nenhum alerta deve ter sido gerado
     And nenhum evento deve ter sido publicado

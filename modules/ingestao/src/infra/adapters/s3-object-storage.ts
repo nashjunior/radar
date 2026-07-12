@@ -40,26 +40,38 @@ export class S3ObjectStorage implements ObjectStorage {
     return `s3://${this.bucket}/${chave}`;
   }
 
-  async obter(chave: string, signal: AbortSignal): Promise<Uint8Array> {
+  async obter(chaveOuUri: string, signal: AbortSignal): Promise<Uint8Array> {
     const response = await this.client.send(
       new GetObjectCommand({
         Bucket: this.bucket,
-        Key: chave,
+        Key: this.chave(chaveOuUri),
       }),
       { abortSignal: signal },
     );
 
-    if (!response.Body) throw new ObjetoNaoEncontradoError(chave);
+    if (!response.Body) throw new ObjetoNaoEncontradoError(chaveOuUri);
     return response.Body.transformToByteArray();
   }
 
-  async deletar(chave: string, signal: AbortSignal): Promise<void> {
+  async deletar(chaveOuUri: string, signal: AbortSignal): Promise<void> {
     await this.client.send(
       new DeleteObjectCommand({
         Bucket: this.bucket,
-        Key: chave,
+        Key: this.chave(chaveOuUri),
       }),
       { abortSignal: signal },
     );
+  }
+
+  /**
+   * `armazenar` devolve a URI `s3://<bucket>/<chave>` (identificador opaco persistido como
+   * `storageKey`/`textoKey`, RAD-278); `obter`/`deletar` recebem esse MESMO valor de volta. Contra
+   * S3 real, `Key` precisa ser só a chave — sem descontar o prefixo `s3://bucket/` a busca sempre
+   * falha (`NoSuchKey`), erro invisível a testes que usam objetos mockados com chave e URI iguais
+   * por coincidência. Aceita a chave crua também, por retrocompatibilidade.
+   */
+  private chave(chaveOuUri: string): string {
+    const prefixo = `s3://${this.bucket}/`;
+    return chaveOuUri.startsWith(prefixo) ? chaveOuUri.slice(prefixo.length) : chaveOuUri;
   }
 }

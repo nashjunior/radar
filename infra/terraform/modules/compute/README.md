@@ -75,6 +75,11 @@ task morre no boot — o serviço só fica com 0 task sã). O que faltava, e ond
   metade **triagem-pool** do tier fica inerte (o BFF sobe; o worker, não).
 - `NODE_ENV` é derivado aqui (`dev` → `development`, resto → `production`) — é contrato do
   runtime e do guarda de P-91, **não** o nome do ambiente.
+- `environment` — `<NOME>_QUEUE_URL`/`<NOME>_MAX_RECEIVE_COUNT` por fila consumida (RAD-321,
+  A03 §3/§3.1). `queue_refs` só dá IAM (a task PODE falar com a fila); sem a URL/contador em
+  `environment` o consumidor não sabe ONDE poll nem QUANDO é a última tentativa antes da DLQ —
+  o módulo `queue` já expõe os dois como output (`queue_url`/`max_receive_count`), o stack só
+  precisa repassar (nunca duplicar o literal).
 
 ## Bedrock batch inference (P-92/RAD-231/RAD-236)
 

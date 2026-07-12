@@ -79,3 +79,6 @@ logs/
 tmp/
 temp/
 .cache/
+
+# ── tools/pipeline-local: export de demo (gerado, não é fonte) ───────────
+tools/pipeline-local/export/

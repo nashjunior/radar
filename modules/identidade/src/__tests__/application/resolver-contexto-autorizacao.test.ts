@@ -4,6 +4,7 @@ import { ResolverContextoAutorizacaoUseCase } from '../../application/use-cases/
 import type { ResolverContextoAutorizacaoInput } from '../../application/use-cases/resolver-contexto-autorizacao.js';
 import type { PermissaoRepository } from '../../application/ports.js';
 import { AtribuicaoPapel, UsuarioId } from '../../domain/atribuicao-papel.js';
+import { SemOrganizacaoError } from '../../domain/errors.js';
 
 const noop = new AbortController().signal;
 
@@ -11,7 +12,7 @@ const TENANT = TenantId('tenant-1');
 const USUARIO = UsuarioId('sub-1');
 const CLIENTE = ClienteFinalId('cliente-1');
 
-const INPUT: ResolverContextoAutorizacaoInput = { usuarioId: USUARIO, tenantId: TENANT };
+const INPUT: ResolverContextoAutorizacaoInput = { usuarioId: USUARIO, tenantClaim: TENANT };
 
 const ATRIBUICAO = AtribuicaoPapel.criar({
   usuarioId: USUARIO,
@@ -22,7 +23,8 @@ const ATRIBUICAO = AtribuicaoPapel.criar({
 
 function deps(atribuicao: AtribuicaoPapel | null) {
   const buscarPorUsuario = vi.fn().mockResolvedValue(atribuicao);
-  const permissoes: PermissaoRepository = { buscarPorUsuario };
+  const criar = vi.fn().mockResolvedValue(undefined);
+  const permissoes: PermissaoRepository = { buscarPorUsuario, criar };
   return { permissoes, buscarPorUsuario };
 }
 
@@ -41,15 +43,24 @@ describe('ResolverContextoAutorizacaoUseCase', () => {
     });
   });
 
-  it('papel ausente nega (sem atribuição para o usuário)', async () => {
+  it('resolve mesmo sem tenantClaim (self-signup, sem custom:tenantId no token)', async () => {
+    const { permissoes } = deps(ATRIBUICAO);
+    const uc = new ResolverContextoAutorizacaoUseCase(permissoes);
+
+    const dto = await uc.executar({ usuarioId: USUARIO }, noop);
+
+    expect(dto.tenantId).toBe(TENANT);
+  });
+
+  it('sem atribuição para o usuário lança SemOrganizacaoError (estado "sem organização", não acesso negado cego)', async () => {
     const { permissoes, buscarPorUsuario } = deps(null);
     const uc = new ResolverContextoAutorizacaoUseCase(permissoes);
 
-    await expect(uc.executar(INPUT, noop)).rejects.toThrow(AcessoNegadoError);
+    await expect(uc.executar(INPUT, noop)).rejects.toThrow(SemOrganizacaoError);
     expect(buscarPorUsuario).toHaveBeenCalledWith(USUARIO, { signal: noop });
   });
 
-  it('nega quando o tenantId da atribuição diverge do tenantId do claim verificado', async () => {
+  it('nega quando o tenantClaim (custom:tenantId presente) diverge do tenantId da atribuição', async () => {
     const atribuicaoOutroTenant = AtribuicaoPapel.criar({
       usuarioId: USUARIO,
       tenantId: TenantId('outro-tenant'),

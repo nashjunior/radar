@@ -29,7 +29,7 @@ Escopo mínimo por peça (o "fino" de cada uma):
 | Peça | No MVP (fino) | Fora do MVP |
 |------|---------------|-------------|
 | Fonte | **Só PNCP** (âncora obrigatória, API pública) | Compras.gov.br, portais estaduais/municipais |
-| Matching | Critérios estruturados (ramo/CNAE, região, faixa de valor, palavra-chave) + recall alto | Ranking semântico avançado, aprendizado por perfil |
+| Matching | Critérios estruturados (região, faixa de valor, palavra-chave — **sem ramo/CNAE**, ver 11 §3.1) + recall alto | Ranking semântico avançado, aprendizado por perfil |
 | Alerta | E-mail + digest configurável | App, WhatsApp, integrações |
 | Triagem (Mód. 2) | Extração de objeto, requisitos de habilitação, prazos e valores, com **citação da fonte** e aderência básica | Análise de risco fina, comparação entre editais |
 | Conta | Single-tenant (uma empresa por conta) | Multi-tenant de consultoria |

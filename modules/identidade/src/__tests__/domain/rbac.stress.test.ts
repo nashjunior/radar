@@ -300,10 +300,13 @@ describe('ResolverContextoAutorizacaoUseCase — AbortSignal cancelado', () => {
         opts.signal.throwIfAborted();
         return null;
       },
+      async criar() {
+        /* não exercitado neste teste */
+      },
     };
 
     const uc = new ResolverContextoAutorizacaoUseCase(permissoes);
-    await expect(uc.executar({ usuarioId: U1, tenantId: TENANT }, abortado)).rejects.toThrow();
+    await expect(uc.executar({ usuarioId: U1, tenantClaim: TENANT }, abortado)).rejects.toThrow();
     expect(sinais[0]).toBe(abortado);
     expect(sinais[0]!.aborted).toBe(true);
   });

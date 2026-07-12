@@ -60,8 +60,13 @@ export const csrfMiddleware = csrf({
 // O WAF (infra/terraform/modules/waf) cobre o bulkhead grosso por IP na borda,
 // mas não consegue agregar por tenant: o tenantId vem de claim verificado do
 // JWT (P-08/P-91), e o WAF não valida assinatura de token. Este middleware só
-// pode rodar DEPOIS do autenticarMiddleware ter derivado `c.get('tenantId')` —
+// pode rodar DEPOIS do autenticarMiddleware ter derivado `c.get('usuarioId')` —
 // nunca deve ser keyed em header do cliente (arquitetura/08 §5).
+//
+// RAD-285: em `/api/me` e `/api/organizacoes` (isentas de `exigirOrganizacaoMiddleware`,
+// self-signup ainda sem Tenant), `c.get('tenantId')` não existe — a chave cai para
+// `usuarioId` (o `sub` verificado). Ainda assim nunca chave por dado controlável
+// pelo cliente; é o mesmo invariante, só com um fallback anterior à organização existir.
 //
 // Contador em memória de processo: o tier sempre-ligado escala de min a
 // `max_capacity` tasks (infra/terraform/modules/compute, prod = 2..6 —
@@ -101,7 +106,7 @@ export function criarRateLimitPorTenantMiddleware(opts: RateLimitTenantOptions) 
   const agoraMs = opts.agoraMs ?? Date.now;
 
   return createMiddleware(async (c, next) => {
-    const tenantId = c.get('tenantId');
+    const tenantId = c.get('tenantId') ?? c.get('usuarioId');
     const agora = agoraMs();
 
     let janela = janelasPorTenant.get(tenantId);

@@ -190,7 +190,12 @@ describe('ExtrairEditalUseCase — admission control + orçamento (RAD-243)', ()
       estimativa: { modelo: 'claude-sonnet-5', inputTokens: 1000, custoEstimadoUsd: 0.5 },
       gastoAtualUsd: 9.6,
     });
-    const orcamento: PoliticaOrcamento = { janelaHoras: 24, orcamentoGlobalUsd: 10, orcamentoPorTenantUsd: null };
+    const orcamento: PoliticaOrcamento = {
+      janelaHoras: 24,
+      orcamentoGlobalUsd: 10,
+      orcamentoPorTenantUsd: null,
+      orcamentoCoorteTrialUsd: null,
+    };
     await expect(
       new ExtrairEditalUseCase(llm, extracoes, storage, usoLedger, orcamento).executar(INPUT, noop),
     ).rejects.toThrow(OrcamentoDeCustoExcedidoError);
@@ -202,7 +207,12 @@ describe('ExtrairEditalUseCase — admission control + orçamento (RAD-243)', ()
       estimativa: { modelo: 'claude-sonnet-5', inputTokens: 1000, custoEstimadoUsd: 0.5 },
       gastoAtualUsd: 9.4,
     });
-    const orcamento: PoliticaOrcamento = { janelaHoras: 24, orcamentoGlobalUsd: 10, orcamentoPorTenantUsd: null };
+    const orcamento: PoliticaOrcamento = {
+      janelaHoras: 24,
+      orcamentoGlobalUsd: 10,
+      orcamentoPorTenantUsd: null,
+      orcamentoCoorteTrialUsd: null,
+    };
     await new ExtrairEditalUseCase(llm, extracoes, storage, usoLedger, orcamento).executar(INPUT, noop);
     expect(extrair).toHaveBeenCalledOnce();
   });

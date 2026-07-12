@@ -44,6 +44,16 @@ variable "cognito_advanced_security_mode" {
   }
 }
 
+# true em prod: gate cumprido (RAD-288). ProvisionarOrganizacaoUseCase + resolução por `sub`
+# na borda (RAD-285) e o bulkhead L1 do coorte trial (RAD-271) existem; RAD-286 (onboarding
+# no front) também fechou. custom:tenantId segue imutável e fora de write_attributes
+# (guardrail AB1/P-51 — não renegociável por este flip).
+variable "cognito_permitir_auto_cadastro" {
+  description = "Habilita self-service signup no Hosted UI (P-109 L2). prod = true (RAD-288)."
+  type        = bool
+  default     = true
+}
+
 variable "enable_serverless_workers" {
   description = "Extrai os workers p/ o tier Lambda (seam P-27). false = coabitam apps/api (P-96)."
   type        = bool

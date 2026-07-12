@@ -42,11 +42,16 @@ const USUARIO_OPERADOR = UsuarioId('usuario-operador');
 const USUARIO_READONLY = UsuarioId('usuario-readonly');
 const USUARIO_SEM_PAPEL = UsuarioId('usuario-sem-papel');
 
-vi.mock('../../middleware/tenant.js', () => ({
+// AB3 (JWT) é dublada; RAD-285 mantém a cadeia REAL de resolução de organização
+// (criarExigirOrganizacaoMiddleware, via importOriginal) — só `autenticarMiddleware`
+// é substituído, para que "sem papel" continue exercitando SEM_ORGANIZACAO de verdade.
+vi.mock('../../middleware/tenant.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../middleware/tenant.js')>()),
   autenticarMiddleware: (async (c: Context, next: () => Promise<void>) => {
-    c.set('tenantId', TenantId('tenant-1'));
     const usuarioIdHeader = c.req.header('x-test-usuario-id');
     if (usuarioIdHeader) c.set('usuarioId', UsuarioId(usuarioIdHeader));
+    c.set('tenantClaimId', null);
+    c.set('usuarioEmail', null);
     return next();
   }) satisfies MiddlewareHandler,
 }));
@@ -57,6 +62,7 @@ vi.mock('../../security.js', async (importOriginal) => ({
 }));
 
 import { criarAutorizarMiddlewareFactory } from '../../middleware/autorizacao.js';
+import { criarExigirOrganizacaoMiddleware } from '../../middleware/tenant.js';
 import { criarAlertasRouter } from '../../routes/alertas.js';
 import { criarMatchingRouter } from '../../routes/matching.js';
 import { criarTriagemRouter } from '../../routes/triagem.js';
@@ -71,6 +77,10 @@ function permissaoRepositoryFake(atribuicoes: readonly AtribuicaoPapel[]): Permi
       opts.signal.throwIfAborted();
       return mapa.get(usuarioId) ?? null;
     },
+    async criar(atribuicao, signal) {
+      signal.throwIfAborted();
+      mapa.set(atribuicao.usuarioId as string, atribuicao);
+    },
   };
 }
 
@@ -83,6 +93,7 @@ const permissoes = permissaoRepositoryFake([
 const resolverContexto = new ResolverContextoAutorizacaoUseCase(permissoes);
 const autorizarAcesso = new AutorizarAcessoUseCase();
 const autorizar = criarAutorizarMiddlewareFactory({ resolverContexto, autorizarAcesso });
+const exigirOrganizacao = criarExigirOrganizacaoMiddleware({ resolverContexto });
 
 function headerDe(usuarioId: string | undefined): Record<string, string> {
   return usuarioId ? { 'x-test-usuario-id': usuarioId } : {};
@@ -96,6 +107,7 @@ function buildApp(): Hono {
   app.route('/api/alertas', criarAlertasRouter({
     consultarAlertas: { executar: vi.fn().mockResolvedValue([]) } as never,
     autorizar,
+    exigirOrganizacao,
   }));
 
   const perfilAtivoOk = { resolverParaTenant: vi.fn().mockResolvedValue({ clienteFinalId: CLIENTE, perfilId: PERFIL }) };
@@ -107,6 +119,7 @@ function buildApp(): Hono {
     consultarMetricas: { executar: vi.fn().mockResolvedValue({ precisao: 0.7, precisaoAlvo: 0.6, ativacao: 0.5, ativacaoAlvo: 0.5, janelaEmDias: 7 }) } as never,
     perfilAtivo: perfilAtivoOk,
     autorizar,
+    exigirOrganizacao,
   }));
 
   app.route('/api/triagem', criarTriagemRouter({
@@ -115,8 +128,11 @@ function buildApp(): Hono {
     registrarFeedback: { executar: vi.fn().mockResolvedValue(undefined) } as never,
     perfilAtivo: perfilAtivoOk,
     autorizar,
+    exigirOrganizacao,
     // Gate de cota (P-107 (3)) real é coberto em entitlement-middleware.test.ts — aqui sempre-permite
     entitlement: (async (_c: Context, next: () => Promise<void>) => next()) as MiddlewareHandler,
+    // Coorte trial (RAD-271) real é coberto em triagem-solicitar.test.ts — aqui sempre 'ativa'
+    consultarAssinatura: { executar: vi.fn().mockResolvedValue({ estado: 'ativa' }) } as never,
   }));
 
   app.route('/api/identidade', criarIdentidadeRouter({
@@ -124,11 +140,13 @@ function buildApp(): Hono {
     gerenciarPerfil: { executar: vi.fn().mockResolvedValue({ id: 'perfil-1', clienteFinalId: CLIENTE, habJuridica: [], habFiscal: [], habTecnica: [], habEconomica: [] }) } as never,
     perfilAtivo: perfilAtivoOk,
     autorizar,
+    exigirOrganizacao,
   }));
 
   app.route('/api/notificacao', criarNotificacaoRouter({
     definirPreferencias: { executar: vi.fn().mockResolvedValue({ usuarioId: 'u', canais: ['EMAIL'], frequencia: 'DIARIA' }) } as never,
     autorizar,
+    exigirOrganizacao,
   }));
 
   return app;
@@ -305,12 +323,12 @@ describe('RBAC (AB2) — negação carrega code PAPEL_NAO_AUTORIZADO (distinto d
     expect(body.code).toBe('PAPEL_NAO_AUTORIZADO');
   });
 
-  it('403 com code PAPEL_NAO_AUTORIZADO quando token válido não tem papel atribuído', async () => {
+  it('403 com code SEM_ORGANIZACAO (RAD-285, não mais 403 cego) quando token válido não tem organização provisionada', async () => {
     const app = buildApp();
     const res = await app.request('/api/alertas', { headers: headerDe(USUARIO_SEM_PAPEL) });
     expect(res.status).toBe(403);
     const body = await res.json() as { code: string };
-    expect(body.code).toBe('PAPEL_NAO_AUTORIZADO');
+    expect(body.code).toBe('SEM_ORGANIZACAO');
   });
 });
 
@@ -329,12 +347,12 @@ describe('GET /api/me — ContextoAutorizacaoDTO (docs/14 §6)', () => {
     expect(body.clienteFinalIds).toEqual([CLIENTE]);
   });
 
-  it('403 PAPEL_NAO_AUTORIZADO quando o usuário autenticado não tem atribuição', async () => {
+  it('403 SEM_ORGANIZACAO (RAD-285) quando o usuário autenticado não tem organização provisionada', async () => {
     const app = buildApp();
     const res = await app.request('/api/me', { headers: headerDe(USUARIO_SEM_PAPEL) });
 
     expect(res.status).toBe(403);
     const body = await res.json() as { code: string };
-    expect(body.code).toBe('PAPEL_NAO_AUTORIZADO');
+    expect(body.code).toBe('SEM_ORGANIZACAO');
   });
 });

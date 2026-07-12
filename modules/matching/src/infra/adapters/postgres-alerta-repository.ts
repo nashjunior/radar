@@ -2,6 +2,7 @@ import { AlertaId, ClienteFinalId, CriterioId, EditalId, TenantId } from '@radar
 import type { DbClient } from '@radar/kernel';
 import { Alerta } from '../../domain/entities/alerta.js';
 import { AderenciaMatching } from '../../domain/value-objects/aderencia-matching.js';
+import { PrazoCritico } from '../../domain/value-objects/prazo-critico.js';
 import type { AlertaRepository } from '../../application/ports.js';
 
 export class PostgresAlertaRepository implements AlertaRepository {
@@ -10,8 +11,8 @@ export class PostgresAlertaRepository implements AlertaRepository {
   async salvar(alerta: Alerta, signal: AbortSignal): Promise<void> {
     await this.db.query(
       `INSERT INTO alerta
-         (id, tenant_id, cliente_final_id, criterio_id, edital_id, aderencia, relevante, criado_em)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())
+         (id, tenant_id, cliente_final_id, criterio_id, edital_id, aderencia, prazo_critico, relevante, criado_em)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())
        ON CONFLICT (id) DO NOTHING`,
       [
         alerta.id,
@@ -20,6 +21,7 @@ export class PostgresAlertaRepository implements AlertaRepository {
         alerta.criterioId,
         alerta.editalId,
         alerta.aderencia.valor,
+        alerta.prazoCritico.critico,
         alerta.relevante,
       ],
       { signal },
@@ -29,8 +31,8 @@ export class PostgresAlertaRepository implements AlertaRepository {
   async salvarEmLote(alertas: Alerta[], signal: AbortSignal): Promise<void> {
     if (alertas.length === 0) return;
     // Constrói uma única INSERT multi-row: ON CONFLICT (id) DO NOTHING — idempotente (P-41).
-    // 7 colunas por linha → parâmetros $1..$7, $8..$14, etc.
-    const COLUNAS = 7;
+    // 8 colunas por linha → parâmetros $1..$8, $9..$16, etc.
+    const COLUNAS = 8;
     const values: unknown[] = [];
     const placeholders = alertas.map((a, i) => {
       const base = i * COLUNAS;
@@ -41,14 +43,15 @@ export class PostgresAlertaRepository implements AlertaRepository {
         a.criterioId,
         a.editalId,
         a.aderencia.valor,
+        a.prazoCritico.critico,
         a.relevante,
       );
-      return `($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7},NOW())`;
+      return `($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7},$${base + 8},NOW())`;
     });
 
     await this.db.query(
       `INSERT INTO alerta
-         (id, tenant_id, cliente_final_id, criterio_id, edital_id, aderencia, relevante, criado_em)
+         (id, tenant_id, cliente_final_id, criterio_id, edital_id, aderencia, prazo_critico, relevante, criado_em)
        VALUES ${placeholders.join(',')}
        ON CONFLICT (id) DO NOTHING`,
       values,
@@ -94,6 +97,7 @@ interface Row {
   criterio_id: string;
   edital_id: string;
   aderencia: number;
+  prazo_critico: boolean;
   relevante: boolean | null;
 }
 
@@ -105,6 +109,7 @@ function rowToAlerta(row: Row): Alerta {
     criterioId: CriterioId(row.criterio_id),
     editalId: EditalId(row.edital_id),
     aderencia: AderenciaMatching.criar(row.aderencia),
+    prazoCritico: PrazoCritico.reconstituir(row.prazo_critico),
     relevante: row.relevante,
   });
 }

@@ -21,12 +21,14 @@ import { autenticarMiddleware } from '../middleware/tenant.js';
 import { rateLimitPorTenantMiddleware } from '../security.js';
 import type { PerfilAtivoGateway } from '../ports/perfil-ativo-gateway.js';
 import type { AutorizarMiddleware } from '../middleware/autorizacao.js';
+import type { ExigirOrganizacaoMiddleware } from '../middleware/tenant.js';
 
 export interface IdentidadeContainer {
   gerenciarPerfil: GerenciarPerfilHabilitacaoUseCase;
   consultarPerfil: ConsultarPerfilHabilitacaoUseCase;
   perfilAtivo: PerfilAtivoGateway;
   autorizar: AutorizarMiddleware;
+  exigirOrganizacao: ExigirOrganizacaoMiddleware;
 }
 
 const PerfilBodySchema = z.object({
@@ -40,6 +42,7 @@ export function criarIdentidadeRouter(container: IdentidadeContainer): Hono {
   const router = new Hono();
 
   router.use('/*', autenticarMiddleware);
+  router.use('/*', container.exigirOrganizacao);
   router.use('/*', rateLimitPorTenantMiddleware);
 
   // GET /api/identidade/perfil — leitura do perfil do cliente final autenticado (P-101) — RBAC: PERFIL_HABILITACAO ler

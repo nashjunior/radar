@@ -34,3 +34,5 @@ export { ConsultarAssinaturaUseCase } from './use-cases/consultar-assinatura.js'
 export type { ConsultarAssinaturaInput } from './use-cases/consultar-assinatura.js';
 export { IniciarCheckoutUseCase } from './use-cases/iniciar-checkout.js';
 export type { IniciarCheckoutInput, IniciarCheckoutOutput } from './use-cases/iniciar-checkout.js';
+export { IniciarTrialUseCase } from './use-cases/iniciar-trial.js';
+export type { IniciarTrialInput } from './use-cases/iniciar-trial.js';

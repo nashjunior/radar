@@ -24,12 +24,14 @@ import type {
   RegistrarFeedbackTriagemUseCase,
   SolicitarTriagemUseCase,
 } from '@radar/triagem';
+import type { ConsultarAssinaturaUseCase } from '@radar/cobranca';
 import { responderErro } from '../errors.js';
 import { autenticarMiddleware } from '../middleware/tenant.js';
 import { rateLimitPorTenantMiddleware } from '../security.js';
 import type { PerfilAtivoGateway } from '../ports/perfil-ativo-gateway.js';
 import type { AutorizarMiddleware } from '../middleware/autorizacao.js';
 import type { EntitlementMiddleware } from '../middleware/entitlement.js';
+import type { ExigirOrganizacaoMiddleware } from '../middleware/tenant.js';
 
 export interface TriagemContainer {
   consultarTriagem: ConsultarTriagemUseCase;
@@ -37,8 +39,15 @@ export interface TriagemContainer {
   registrarFeedback: RegistrarFeedbackTriagemUseCase;
   perfilAtivo: PerfilAtivoGateway;
   autorizar: AutorizarMiddleware;
+  exigirOrganizacao: ExigirOrganizacaoMiddleware;
   /** Gate de cota (P-107 (3), RAD-246) — só na rota que consome cota (solicitar). */
   entitlement: EntitlementMiddleware;
+  /**
+   * Resolve o coorte trial (RAD-271, P-109 L1) — a rota já consulta a assinatura logo após o gate
+   * de cota, ANTES de publicar `triagem.solicitada`, para tagear o bulkhead de orçamento do coorte
+   * trial sem a Triagem importar `modules/cobranca` (docs/13 §5, ACL).
+   */
+  consultarAssinatura: ConsultarAssinaturaUseCase;
 }
 
 /**
@@ -85,6 +94,7 @@ export function criarTriagemRouter(container: TriagemContainer): Hono {
   const router = new Hono();
 
   router.use('/*', autenticarMiddleware);
+  router.use('/*', container.exigirOrganizacao);
   router.use('/*', rateLimitPorTenantMiddleware);
 
   // GET /:editalId — RBAC: TRIAGEM ler
@@ -152,9 +162,14 @@ export function criarTriagemRouter(container: TriagemContainer): Hono {
       const perfil = await container.perfilAtivo.resolverParaTenant(tenantId, signal);
       if (!perfil) return c.json({}, 404);
 
+      // Coorte trial (RAD-271, P-109 L1): a assinatura já passou pelo gate de cota (`entitlement`)
+      // acima — esta 2ª leitura só CLASSIFICA o coorte para o bulkhead de orçamento, nunca decide
+      // admissão (isso já foi decidido pelo entitlement).
+      const assinatura = await container.consultarAssinatura.executar({ tenantId }, signal);
+
       const { perfilId, clienteFinalId } = perfil;
       await container.solicitarTriagem.executar(
-        { tenantId, editalId, perfilId, clienteFinalId },
+        { tenantId, editalId, perfilId, clienteFinalId, coorteTrial: assinatura.estado === 'trial' },
         signal,
       );
 

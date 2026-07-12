@@ -72,6 +72,24 @@ Toda mensagem carrega `tenantId` mesmo no MVP single-tenant (A01, §6).
 
 > **`alerta.gerado` carrega o escopo, não o destinatário.** O Matching conhece o `clienteFinalId` (dono do `CRITERIO_MONITORAMENTO`), não o usuário nem o e-mail — resolver contato é responsabilidade da **Notificação** (Cliente-Fornecedor, leitura de Identidade/preferência; MVP 1 usuário por `clienteFinal`, P-25). Por isso o evento **não** carrega `usuarioId` nem `emailDestinatario`: colocá-los forçaria o produtor a conhecer o destinatário — violação de fronteira (docs/13, §5). *(Ajuste 2026-07-05: alinha o contrato ao que o Matching de fato produz e retira o e-mail do evento — ver [15](15-matching-e-alerta.md), [14](14-notificacao.md).)*
 
+### 3.1 Transporte real do contrato (quem publica e quem consome, de verdade)
+
+*(Decidido em RAD-317, P-113 — o contrato acima existia sem transporte: nada em produção publicava nem consumia.)*
+
+O transporte é **um loop de consumo dentro de `apps/api`**, não Lambda + event source mapping. O seam serverless (A08 §2, `infra/terraform/modules/serverless`) segue **gated off** até o gatilho de elasticidade de [09](09-teste-de-elasticidade-infra.md) EL1/EL3 (P-67/P-31) — coabitação de API+workers no mesmo deploy é o que P-27/P-96 §4 decidiram para o MVP.
+
+| Peça | Onde vive | Estado |
+|------|-----------|--------|
+| **Publicador** `SqsEventPublisher<E>` — serializa `{type, occurredAt, payload, correlationId}` | `@radar/kernel` (genérico, provider-agnóstico via port `QueueClient`) | **existe** |
+| **`QueueClient` concreto** (`@aws-sdk/client-sqs`) | `apps/api/src/infra/` — composition root | a construir (o dublê de dev vive em `tools/pipeline-local`) |
+| **Consumidor** long-poll (`receive`/`delete`/visibility) → `worker.processar(payload, signal)` | `apps/api/src/infra/` | a construir |
+| **Retry + DLQ** (`redrive_policy`, `max_receive_count`) | broker (módulo Terraform `queue`) | **existe** |
+
+Dois invariantes que caem daqui:
+
+1. **Retry e DLQ são do broker; o `DlqClient` da aplicação é compensação semântica, não transporte.** Ele existe para publicar `triagem.falhou` antes do descarte (§3 acima) — e só pode disparar **na última tentativa**, o que exige o consumidor expor `ApproximateReceiveCount` ao worker. Sem isso, ou a cota vaza (a compensação nunca roda) ou ela roda a cada retry.
+2. **O consumidor é *handler-shaped*.** Ele não faz nada além de puxar a mensagem e chamar `worker.processar(payload, signal)` — a mesma assinatura que um handler Lambda chamaria. Migrar para o tier serverless, quando o gatilho disparar, troca a casca, não o miolo.
+
 ## 4. Modelo físico (mapeando docs/12)
 
 As entidades conceituais de docs/12 viram tabelas Postgres. Principais e seus índices críticos para os NFRs:
@@ -146,7 +164,7 @@ erDiagram
 
 ## 5. Matching (docs/11) no MVP
 
-- **Filtros estruturados** (SQL sobre atributos normalizados): ramo/CNAE, região/UF, faixa de valor, órgão.
+- **Filtros estruturados** (SQL sobre atributos normalizados): região/UF, faixa de valor, órgão. **Não há filtro por ramo/CNAE** — o PNCP não publica CNAE da contratação (o CNAE do PNCP é o do *fornecedor*), então filtrar por ele zera o recall (docs/11 §3.1).
 - **Camada de palavra-chave** via *full-text* do Postgres sobre objeto/descrição.
 - **Postura recall-alto** (docs/11, §2): melhor um alerta a mais que perder um edital; a triagem e o feedback filtram os falsos positivos.
 - **Ranking** por aderência antes de alertar; **digest** para conter fadiga (docs/11, §4).

@@ -34,11 +34,16 @@ const DTO_ATIVA: AssinaturaDTO = {
   diasRestantes: 12,
 };
 
+// Resolução de organização (RAD-285) real é coberta em exigir-organizacao-middleware.test.ts — aqui sempre-permite
+const exigirOrganizacaoPermissivo: AssinaturaContainer['exigirOrganizacao'] =
+  (async (_c: Context, next: () => Promise<void>) => next()) as MiddlewareHandler;
+
 function buildAssinaturaApp(overrides?: Partial<AssinaturaContainer>): Hono {
   const container: AssinaturaContainer = {
     consultarAssinatura: {
       executar: vi.fn().mockResolvedValue(DTO_ATIVA),
     } as unknown as ConsultarAssinaturaUseCase,
+    exigirOrganizacao: exigirOrganizacaoPermissivo,
     ...overrides,
   };
 
@@ -52,6 +57,7 @@ function buildCheckoutApp(overrides?: Partial<CheckoutContainer>): Hono {
     iniciarCheckout: {
       executar: vi.fn().mockResolvedValue({ urlCheckout: 'https://checkout.fake/abc123' }),
     } as unknown as IniciarCheckoutUseCase,
+    exigirOrganizacao: exigirOrganizacaoPermissivo,
     ...overrides,
   };
 

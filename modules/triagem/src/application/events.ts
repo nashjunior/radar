@@ -6,7 +6,9 @@ export type { DomainEvent };
 /**
  * Comando publicado por `SolicitarTriagemUseCase` (API) → consumido pelo worker `TriarEditalUseCase`
  * (A03 §§1,3; A17 §8). Payload enxuto; a triagem é assíncrona (custo/latência). `tenantId` sempre
- * presente, mesmo no MVP single-tenant (A01 §6).
+ * presente, mesmo no MVP single-tenant (A01 §6). `coorteTrial` (RAD-271, P-109 L1): a assinatura do
+ * tenant estava em `trial` no momento da solicitação — resolvido no BFF (que já consulta a Cobrança
+ * no gate de cota), carregado até `TriarEditalUseCase` sem a Triagem importar `modules/cobranca`.
  */
 export class TriagemSolicitada implements DomainEvent {
   readonly type = 'triagem.solicitada' as const;
@@ -18,6 +20,7 @@ export class TriagemSolicitada implements DomainEvent {
       readonly usuarioId: ClienteFinalId;
       readonly editalId: EditalId;
       readonly perfilId: PerfilId;
+      readonly coorteTrial: boolean;
     },
   ) {
     this.occurredAt = new Date();
@@ -43,6 +46,8 @@ export class TriagemConcluida implements DomainEvent {
       readonly aderencia: number;
       readonly recomendacao: Recomendacao;
       readonly riscos: readonly string[];
+      /** `occurredAt` de `triagem.solicitada` — origem do SLO de latência (docs/08 §4.1, A18 §5). */
+      readonly solicitadaEm?: Date;
     },
   ) {
     this.occurredAt = new Date();

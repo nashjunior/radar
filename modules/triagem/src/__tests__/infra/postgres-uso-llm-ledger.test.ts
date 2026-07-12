@@ -27,6 +27,7 @@ describe('PostgresUsoLlmLedger.registrar — sempre INSERT, nunca upsert', () =>
       cacheCreationInputTokens: 0,
       custoUsd: 0.006,
       ocorridoEm: new Date('2026-07-11T00:00:00Z'),
+      coorteTrial: false,
     });
 
     await ledger.registrar(registro, noop);
@@ -47,11 +48,12 @@ describe('PostgresUsoLlmLedger.registrar — sempre INSERT, nunca upsert', () =>
       0,
       0.006,
       registro.ocorridoEm,
+      false,
     ]);
     expect(opts).toEqual({ signal: noop });
   });
 
-  it('grava escopo de tenant quando presente (cache-miss de TriarEditalUseCase)', async () => {
+  it('grava escopo de tenant e coorteTrial quando presentes (cache-miss de TriarEditalUseCase, RAD-271)', async () => {
     const query = vi.fn().mockResolvedValue({ rows: [] });
     const ledger = new PostgresUsoLlmLedger({ query });
     const tenant = TenantId('t1');
@@ -70,12 +72,15 @@ describe('PostgresUsoLlmLedger.registrar — sempre INSERT, nunca upsert', () =>
       cacheCreationInputTokens: 0,
       custoUsd: 0.275,
       ocorridoEm: new Date('2026-07-11T00:00:00Z'),
+      coorteTrial: true,
     });
 
     await ledger.registrar(registro, noop);
 
     const [, params] = query.mock.calls[0]!;
-    expect(params).toEqual([EDITAL, tenant, cliente, perfil, 'claude-opus-4-8', 25000, 6000, 0, 0, 0.275, registro.ocorridoEm]);
+    expect(params).toEqual([
+      EDITAL, tenant, cliente, perfil, 'claude-opus-4-8', 25000, 6000, 0, 0, 0.275, registro.ocorridoEm, true,
+    ]);
   });
 });
 
@@ -116,5 +121,19 @@ describe('PostgresUsoLlmLedger.gastoUsdNaJanela — orçamento acumulado (RAD-24
     const gasto = await ledger.gastoUsdNaJanela({ tenantId: null }, desde, noop);
 
     expect(gasto).toBe(0);
+  });
+
+  it('escopo COORTE TRIAL (RAD-271): filtra por coorte_trial = true, sem parâmetro de tenant', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [{ soma: '4.4' }] });
+    const ledger = new PostgresUsoLlmLedger({ query });
+
+    const gasto = await ledger.gastoUsdNaJanela({ coorte: 'trial' }, desde, noop);
+
+    expect(gasto).toBe(4.4);
+    const [sql, params, opts] = query.mock.calls[0]!;
+    const texto = String(sql).replace(/\s+/g, ' ');
+    expect(texto).toContain('coorte_trial = true');
+    expect(params).toEqual([desde]);
+    expect(opts).toEqual({ signal: noop });
   });
 });

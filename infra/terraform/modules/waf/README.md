@@ -21,6 +21,8 @@ para o `edge` — módulo não importa módulo (A08 §1).
 | Allowlist de IP do webhook | `asaas_webhook_ip_allowlist` | `aws_wafv2_ip_set.addresses` |
 | Teto de requisição do webhook | `asaas_webhook_rate_limit` | `rate_based_statement.limit` com `scope_down_statement` no path |
 | Teto de corpo do webhook | `asaas_webhook_max_body_bytes` | `size_constraint_statement` (campo `body`) |
+| Paths de signup a proteger | `cognito_signup_paths` | `byte_match_statement` (campo `uri_path`) |
+| Teto de signup por IP | `cognito_signup_rate_limit_per_ip` | `rate_based_statement.limit`, `aggregate_key_type = IP` |
 
 ## O que é provider-bound (custo real de exit)
 
@@ -61,6 +63,37 @@ Duas regras adicionais, escopadas ao MESMO `asaas_webhook_path` da allowlist aci
 
 Ambas caem no `default_action` (ALLOW) quando dentro do teto — não substituem a autenticação
 por token estático da aplicação, só reduzem a superfície antes dela.
+
+## Rate-limit + CAPTCHA no signup do Cognito (RAD-273, P-109 L2)
+
+Regra `cognito-signup-rate-limit-ip` (prioridade 7), escopada via `or_statement`/
+`byte_match_statement` aos paths de `var.cognito_signup_paths` (default `/signup`,
+`/confirm`, `/confirmUser`, `/resendcode` — o fluxo de criação de conta do Hosted/Managed
+Login, per a referência oficial da AWS de endpoints do user pool). Camada L2 do anti-abuso
+de trial (**P-109**): não resolve Sybil sozinha (RAD-268 já decidiu que a defesa real é teto
+de *valor*, L0/L1), mas encarece o *unitário* do ataque de farm de contas.
+
+- **Ação CAPTCHA, nunca BLOCK** — falso positivo em NAT corporativo/IP compartilhado é caro
+  demais para a persona central (fornecedor pequeno, docs/01 §3).
+- **Agregação por ASN, não só IP, foi pedida no ticket ("se der") e CONFERIDA — não dá
+  hoje.** O `hashicorp/aws 5.100.0` (pin do `.terraform.lock.hcl` dos stacks) só aceita
+  `custom_key` de tipo `cookie`/`forwarded_ip`/`header`/`http_method`/`ip`/
+  `ja3_fingerprint`/`ja4_fingerprint`/`label_namespace`/`query_argument`/`query_string`/
+  `uri_path` (confirmado via `tofu providers schema -json`) — sem `asn`. A AWS WAF tem
+  `asn_match_statement` (MATCH por lista de ASN, não agregação de rate-limit) e há um
+  [issue aberto e não resolvido](https://github.com/hashicorp/terraform-provider-aws/issues/43492)
+  no `terraform-provider-aws` pedindo exatamente isso. Não é lacuna do módulo — é a API da
+  AWS ainda não exposta pelo provider. Reabrir quando o provider suportar (bump de versão é
+  decisão à parte, fora do escopo deste ticket — ver `PARIDADE.md` sobre risco de bump).
+- **Nunca toca `/login` nem `/oauth2/authorize`** — a própria AWS avisa que uma regra com
+  ação CAPTCHA nesses paths pode quebrar o registro de MFA TOTP em andamento (P-53); como o
+  escopo aqui é só os paths de criação de conta, não há colisão.
+- **Associação é do módulo `identity`** (`web_acl_ref`, mesmo padrão do `edge`) — este módulo
+  só produz a regra; quem associa ao user pool é o consumidor, no stack.
+- **Auto-cadastro por stack (RAD-283/RAD-284):** o `/signup` que esta regra protege só
+  existe onde `identity.permitir_auto_cadastro = true` — hoje dev/staging (regra ativa) e
+  prod ainda `false`, atrás de um gate de aplicação (ver `modules/identity/README.md`). Em
+  prod a regra fica associada e correta, porém inerte, até o flip.
 
 ## O limite que importa entender
 

@@ -23,7 +23,7 @@ Endpoints relevantes ao MVP (contratos confirmados no Swagger e por chamada real
 | Contratações por **data de atualização global** | `GET /v1/contratacoes/atualizacao` | `dataInicial`, `dataFinal` (yyyyMMdd), `codigoModalidadeContratacao` (int) | mesmos opcionais acima | Retorna ~2,6× mais registros que `/publicacao` no mesmo dia |
 | Contratações com **proposta em aberto** | `GET /v1/contratacoes/proposta` | `dataFinal` (yyyyMMdd), `pagina` | `codigoModalidadeContratacao`, `tamanhoPagina`, filtros de órgão | Confirmado por chamada real (2026-07-06); `pagina` é obrigatório pelo spec — ausência causa 422 |
 | **Detalhe individual** de uma contratação | `GET /v1/orgaos/{cnpj}/compras/{ano}/{sequencial}` | path params | — | Único endpoint de detalhe — não existe `GET /v1/contratacoes/{numeroControlePNCP}`. Confirmado 2026-07-05; reforçado no código em RAD-198 (o gateway usava o endpoint inexistente). |
-| **Arquivos/anexos** de uma contratação | `GET /v1/orgaos/{cnpj}/compras/{ano}/{sequencial}/arquivos` | path params | — | Base é a API de **DADOS** (`https://pncp.gov.br/api/pncp`), **não** `/api/consulta` (§2 acima) — confirmado 2026-07-11 (RAD-198); o corpo de cada item ainda não foi confirmado por chamada real `[A VALIDAR — Swagger]`. |
+| **Arquivos/anexos** de uma contratação | `GET /v1/orgaos/{cnpj}/compras/{ano}/{sequencial}/arquivos` | path params | — | Base é a API de **DADOS** (`https://pncp.gov.br/api/pncp`), **não** `/api/consulta` (§2 acima) — confirmado 2026-07-11 (RAD-198). Corpo do item confirmado por chamada real em 2026-07-12 (RAD-274) — ver §6.1. Resposta é **array plano, sem envelope de paginação**. |
 
 **Paginação:** `tamanhoPagina` aceito: 10–50 (limite máximo = **50**; valores > 50 retornam 400). Padrão: 10. Iterar modalidade a modalidade; toda varredura por dia requer ~120 requests com `tamanhoPagina=50`.
 
@@ -146,12 +146,42 @@ Pontos de projeto:
 
 ## 6. Anexos e o texto do edital
 
-A triagem (docs/10) precisa do **edital e anexos** (PDFs), não só dos metadados. Desenho:
+A triagem (docs/10) precisa do **edital e anexos**, não só dos metadados. Desenho:
 
 - Metadados vêm no fluxo principal (§4). Os **arquivos** são buscados via endpoint de arquivos (`.../arquivos`) **sob demanda** — quando um edital é enviado à triagem — e guardados em **object storage** com referência no registro.
 - Baixar tudo sempre desperdiça storage e banda; baixar sob demanda casa com o custo de IA ser assíncrono e cacheado (docs/08, §4).
-- PDF-imagem exige OCR na triagem (docs/10, §6); a ingestão só garante o arquivo disponível e íntegro.
 - Retenção dos anexos segue a política de retenção (docs/05, §5): ativo até encerramento + 24 meses e arquivo frio/expurgo até 5 anos, com minimização de PII na ingestão.
+
+### 6.1 Contrato de `/arquivos` (confirmado por chamada real — 2026-07-12, RAD-274)
+
+Resposta: **array plano** (sem envelope de paginação). Todos os campos abaixo apareceram em **100%** dos 20 documentos amostrados (17 compras, modalidade 6) — logo são tratados como **obrigatórios** no ACL (ausência ⇒ `SchemaDriftError`, falha loud, nunca grava lixo):
+
+| Campo | Uso na ingestão |
+|-------|-----------------|
+| `uri` / `url` | URL de download (idênticas na amostra). Dado **não confiável** → passa pela guarda SSRF (P-58). |
+| `sequencialDocumento` | **Chave natural** do documento dentro da compra — é o que deve compor a chave de object storage. |
+| `titulo` | Texto **livre digitado pelo órgão**. Só metadado de exibição — **nunca** compõe chave nem indica o papel do documento. |
+| `tipoDocumentoId` / `tipoDocumentoNome` / `tipoDocumentoDescricao` | **Enum** do PNCP — é o que diz qual documento é o Edital. Confirmados na amostra: `2` Edital · `4` Termo de Referência · `7` Estudo Técnico Preliminar · `16` Outros Documentos. |
+| `statusAtivo` (bool) | Documento revogado/substituído ⇒ `false`. **Filtrar**: anexo inativo não entra na triagem. |
+| `dataPublicacaoPncp`, `cnpj`, `anoCompra`, `sequencialCompra` | Proveniência/eco do path. |
+
+**Não existem** neste endpoint: `nomeArquivo`, `tamanhoBytes`, `tipoMime`. Esses três só são conhecidos **no download** — `content-length`, `content-disposition: attachment; filename="…"` (nome real, com extensão) e **magic bytes** do corpo. O PNCP responde `content-type: application/octet-stream` para tudo, então o mime declarado **não é fonte confiável** (é preciso *sniff*).
+
+**`titulo` não descreve o documento.** Na amostra há item com `titulo: "Parecer Contábil PREGAO"` e `tipoDocumentoNome: "Estudo Técnico Preliminar"`. A seleção do **documento principal** (o edital) é por `tipoDocumentoId`, nunca por título nem por posição no array.
+
+### 6.2 Formato dos anexos: **não é só PDF**
+
+Amostra real de 20 anexos (2026-07-12, RAD-274): **12 PDF (60%) · 5 DOCX (25%) · 3 ZIP (15%)**. Os ZIP eram justamente documentos do tipo `Edital`. Consequências de desenho:
+
+- O extrator de texto é **multi-formato** (PDF, DOCX, ZIP contendo os anteriores) — um extrator só-PDF cobriria 60% dos casos e perderia o edital em 15% deles.
+- **ZIP é superfície de ataque** (zip slip, zip bomb): descompactação com teto de razão/tamanho/profundidade e sem honrar caminho do arquivo interno (docs/05; edital é dado não confiável).
+- PDF sem texto selecionável (imagem escaneada) exige **OCR** (docs/10, §6) — fora do MVP; o anexo é marcado `temTextoSelecionavel: false` e a triagem degrada com `falha_ocr` em vez de alucinar.
+
+### 6.3 Onde vive o extrator de texto: **na Ingestão**
+
+O texto é **derivado do binário** e a Ingestão é dona do binário (baixa, quarentena, scan — P-104/AB14). Extrair na Triagem seria: (a) fazer a Triagem conhecer o formato do PNCP, vazando o modelo externo além do ACL (docs/13, §5); (b) contrariar o próprio port da Triagem (`ObjectStorage.obterTextoAnexo`, que por contrato já recebe *"o texto JÁ resolvido"*); (c) re-extrair o mesmo PDF por tenant, quando o texto é **catálogo global cacheável** — mesma natureza da extração (P-45).
+
+Desenho: a Ingestão materializa o texto como **objeto derivado** no storage (após o scan aprovar o anexo como `limpo` — *fail-closed*), com o nº de páginas; `DocumentosDoEditalPort` publica a ref do texto e o tipo de documento; o `ObjectStorage` da Triagem passa a ser um *get* simples do `.txt` — **nenhum parser na Triagem**. Detalhe e sequência de implementação em P-110 (docs/98).
 
 ## 7. Conformidade da ingestão (checklist)
 
@@ -168,7 +198,9 @@ Espelha o checklist de docs/04, §6 aplicado à fonte PNCP:
 
 - ~~Confirmar no **Swagger** os endpoints, parâmetros e `tamanhoPagina` (§2).~~ **Resolvido — P-26 (2026-07-05)**: contratos confirmados; ver §2 e §3.
 - ~~Mapear os **códigos de modalidade** do PNCP (§3).~~ **Resolvido — P-26 (2026-07-05)**: tabela completa em §3.
+- ~~Confirmar por chamada real o **corpo de cada item de `/arquivos`** (§6).~~ **Resolvido — P-110 (2026-07-12, RAD-274)**: contrato completo em §6.1; formatos reais em §6.2.
 - Fixar a **cadência de polling** que atinge o frescor de 30 min (§3). `[A VALIDAR]` → P-29
 - Implementar **lifecycle/tiering e expurgo de anexos** em object storage conforme docs/05, §5 (§6) → P-30
+- Implementar o **caminho completo anexo → texto** (extrator multi-formato, chave de storage segura, seleção do documento principal, loop de disponibilidade pós-scan) — §6.1–§6.3 → **P-110**
 
-Rastreadas em [docs/98](../docs/98-decisoes-e-pendencias.md) (P-26, P-29, P-30).
+Rastreadas em [docs/98](../docs/98-decisoes-e-pendencias.md) (P-26, P-29, P-30, P-110).

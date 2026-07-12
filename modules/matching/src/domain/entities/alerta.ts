@@ -1,5 +1,6 @@
 import type { AlertaId, ClienteFinalId, CriterioId, EditalId, TenantId } from '@radar/kernel';
 import type { AderenciaMatching } from '../value-objects/aderencia-matching.js';
+import type { PrazoCritico } from '../value-objects/prazo-critico.js';
 
 export interface CriarAlertaParams {
   id: AlertaId;
@@ -8,6 +9,7 @@ export interface CriarAlertaParams {
   criterioId: CriterioId;
   editalId: EditalId;
   aderencia: AderenciaMatching;
+  prazoCritico: PrazoCritico;
 }
 
 export interface ReconstituirAlertaParams extends CriarAlertaParams {
@@ -27,6 +29,7 @@ export class Alerta {
     readonly criterioId: CriterioId,
     readonly editalId: EditalId,
     readonly aderencia: AderenciaMatching,
+    readonly prazoCritico: PrazoCritico,
     readonly relevante: boolean | null,
   ) {}
 
@@ -38,6 +41,7 @@ export class Alerta {
       params.criterioId,
       params.editalId,
       params.aderencia,
+      params.prazoCritico,
       null,
     );
   }
@@ -51,6 +55,7 @@ export class Alerta {
       params.criterioId,
       params.editalId,
       params.aderencia,
+      params.prazoCritico,
       params.relevante,
     );
   }
@@ -64,7 +69,16 @@ export class Alerta {
       this.criterioId,
       this.editalId,
       this.aderencia,
+      this.prazoCritico,
       relevante,
     );
+  }
+
+  /**
+   * Aderência alta OU prazo crítico (P-81, A18 §5.1) — decide se o alerta é imediato
+   * ou pode cair no digest. Regra de domínio do Matching: vive no agregado, não no worker.
+   */
+  get imediato(): boolean {
+    return this.aderencia.ehAlta || this.prazoCritico.critico;
   }
 }

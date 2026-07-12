@@ -1,6 +1,7 @@
 import { AlertaId, ClienteFinalId, CriterioId, EditalId, TenantId } from '@radar/kernel';
 import { Alerta } from '../../domain/entities/alerta.js';
 import { AderenciaMatching } from '../../domain/value-objects/aderencia-matching.js';
+import { PrazoCritico } from '../../domain/value-objects/prazo-critico.js';
 import { AlertaGerado } from '../../application/events.js';
 import type { AlertaRepository, EventPublisher, FilaAlertaPort } from '../../application/ports.js';
 
@@ -38,13 +39,14 @@ export class ConsumidorAlertaBatch {
         criterioId: CriterioId(p.criterioId),
         editalId: EditalId(p.editalId),
         aderencia: AderenciaMatching.criar(p.aderencia),
+        prazoCritico: PrazoCritico.reconstituir(p.prazoCritico),
         relevante: null,
       }),
     );
 
     await this.alertas.salvarEmLote(entidades, signal);
 
-    for (const alerta of entidades) {
+    for (const [i, alerta] of entidades.entries()) {
       await this.eventos.publicar(
         new AlertaGerado({
           alertaId: alerta.id,
@@ -53,6 +55,9 @@ export class ConsumidorAlertaBatch {
           criterioId: alerta.criterioId,
           editalId: alerta.editalId,
           aderencia: alerta.aderencia.valor,
+          // Alerta (entidade) não guarda esse instante — é metadado de transporte, não domínio do agregado.
+          editalPublicadoEm: payloads[i]!.editalPublicadoEm,
+          imediato: alerta.imediato,
         }),
         signal,
       );

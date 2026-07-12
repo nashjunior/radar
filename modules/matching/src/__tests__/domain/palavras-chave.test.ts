@@ -4,9 +4,9 @@ import { PalavrasChaveVaziaError } from '../../domain/errors/index.js';
 
 describe('PalavrasChave', () => {
   describe('criar', () => {
-    it('normaliza termos para lower-case e trim', () => {
-      const pc = PalavrasChave.criar(['  TI  ', 'Software']);
-      expect(pc.termos).toEqual(['ti', 'software']);
+    it('normaliza termos para lower-case, trim e sem diacríticos', () => {
+      const pc = PalavrasChave.criar(['  TI  ', 'Software', 'Conservação']);
+      expect(pc.termos).toEqual(['ti', 'software', 'conservacao']);
     });
 
     it('filtra strings em branco', () => {
@@ -37,7 +37,7 @@ describe('PalavrasChave', () => {
 
     it('termos resultantes são preservados em ordem normalizada', () => {
       const pc = PalavrasChave.criar(['Obras', 'CONSTRUÇÃO', 'ti']);
-      expect(pc.termos).toEqual(['obras', 'construção', 'ti']);
+      expect(pc.termos).toEqual(['obras', 'construcao', 'ti']);
     });
   });
 });

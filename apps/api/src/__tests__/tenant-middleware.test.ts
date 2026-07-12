@@ -1,9 +1,11 @@
 /**
- * Testes runtime do autenticarMiddleware — cenários AB3 (RAD-131).
+ * Testes runtime do autenticarMiddleware — cenários AB3 (RAD-131) + RAD-283/RAD-285.
  *
  * Usa chave RSA local (sem chamada de rede a Cognito) via createLocalJWKSet.
  * Cobre: token ausente, expirado, issuer errado, audience errada, token_use
- * errado, tenant claim ausente/vazia, happy path cognito, happy path dev.
+ * errado, happy path cognito, happy path dev. Desde RAD-285, a claim de tenant
+ * NÃO é mais pré-condição da sessão (self-signup nunca a carrega) — ausência/
+ * presença dela é coberta como `tenantClaimId` opcional, não como 403.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import { Hono } from 'hono';
@@ -41,7 +43,11 @@ function buildApp() {
     clientId: CLIENT_ID,
     tenantClaim: TENANT_CLAIM,
   }));
-  app.get('/ping', (c) => c.json({ tenantId: c.get('tenantId'), usuarioId: c.get('usuarioId') }));
+  app.get('/ping', (c) => c.json({
+    tenantClaimId: c.get('tenantClaimId'),
+    usuarioId: c.get('usuarioId'),
+    usuarioEmail: c.get('usuarioEmail'),
+  }));
   return app;
 }
 
@@ -79,15 +85,15 @@ describe('autenticarMiddleware — cognito mode (AB3)', () => {
     expect(body.code).toBe('TOKEN_AUSENTE');
   });
 
-  it('200 e tenantId derivado em happy path', async () => {
+  it('200 e usuarioId/tenantClaimId derivados em happy path (claim presente)', async () => {
     const app = buildApp();
     const token = await validToken();
     const res = await app.request('/ping', {
       headers: { authorization: `Bearer ${token}` },
     });
     expect(res.status).toBe(200);
-    const body = await res.json() as { tenantId: string; usuarioId: string };
-    expect(body.tenantId).toBe(TENANT_ID);
+    const body = await res.json() as { tenantClaimId: string | null; usuarioId: string };
+    expect(body.tenantClaimId).toBe(TENANT_ID);
     expect(body.usuarioId).toBe(SUB);
   });
 
@@ -158,26 +164,37 @@ describe('autenticarMiddleware — cognito mode (AB3)', () => {
     expect(body.code).toBe('TOKEN_USE_INVALIDO');
   });
 
-  it('403 TENANT_AUSENTE_NO_TOKEN quando claim custom:tenantId ausente', async () => {
+  it('200 com tenantClaimId=null quando claim custom:tenantId ausente (self-signup, RAD-283)', async () => {
     const app = buildApp();
     const token = await validToken({ [TENANT_CLAIM]: undefined });
     const res = await app.request('/ping', {
       headers: { authorization: `Bearer ${token}` },
     });
-    expect(res.status).toBe(403);
-    const body = await res.json() as { code: string };
-    expect(body.code).toBe('TENANT_AUSENTE_NO_TOKEN');
+    expect(res.status).toBe(200);
+    const body = await res.json() as { tenantClaimId: string | null };
+    expect(body.tenantClaimId).toBeNull();
   });
 
-  it('403 TENANT_AUSENTE_NO_TOKEN quando claim custom:tenantId é string vazia', async () => {
+  it('200 com tenantClaimId=null quando claim custom:tenantId é string vazia', async () => {
     const app = buildApp();
     const token = await validToken({ [TENANT_CLAIM]: '   ' });
     const res = await app.request('/ping', {
       headers: { authorization: `Bearer ${token}` },
     });
-    expect(res.status).toBe(403);
-    const body = await res.json() as { code: string };
-    expect(body.code).toBe('TENANT_AUSENTE_NO_TOKEN');
+    expect(res.status).toBe(200);
+    const body = await res.json() as { tenantClaimId: string | null };
+    expect(body.tenantClaimId).toBeNull();
+  });
+
+  it('200 com usuarioEmail derivado da claim email quando presente', async () => {
+    const app = buildApp();
+    const token = await validToken({ email: 'usuario@empresa.com' });
+    const res = await app.request('/ping', {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { usuarioEmail: string | null };
+    expect(body.usuarioEmail).toBe('usuario@empresa.com');
   });
 
   it('401 SUB_AUSENTE_NO_TOKEN quando claim sub ausente (RBAC/P-52)', async () => {
@@ -227,7 +244,7 @@ describe('autenticarMiddleware — dev mode', () => {
       clientId: CLIENT_ID,
       tenantClaim: TENANT_CLAIM,
     }));
-    app.get('/ping', (c) => c.json({ tenantId: c.get('tenantId'), usuarioId: c.get('usuarioId') }));
+    app.get('/ping', (c) => c.json({ tenantClaimId: c.get('tenantClaimId'), usuarioId: c.get('usuarioId') }));
     return app;
   }
 
@@ -246,8 +263,8 @@ describe('autenticarMiddleware — dev mode', () => {
       headers: { authorization: `Bearer ${token}` },
     });
     expect(res.status).toBe(200);
-    const body = await res.json() as { tenantId: string; usuarioId: string };
-    expect(body.tenantId).toBe('tenant-dev');
+    const body = await res.json() as { tenantClaimId: string; usuarioId: string };
+    expect(body.tenantClaimId).toBe('tenant-dev');
     expect(body.usuarioId).toBe(SUB);
   });
 

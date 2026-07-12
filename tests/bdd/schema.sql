@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS alerta (
   criterio_id      TEXT        NOT NULL,
   edital_id        TEXT        NOT NULL,
   aderencia        NUMERIC     NOT NULL,
+  prazo_critico    BOOLEAN     NOT NULL DEFAULT FALSE,
   relevante        BOOLEAN,
   criado_em        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -60,6 +61,7 @@ CREATE TABLE IF NOT EXISTS extracao_edital (
 );
 
 -- Ledger append-only de uso de LLM (RAD-230, P-20/P-38) — modules/triagem/src/infra/migrations/003_registro_uso_llm.sql
+-- coorte_trial: bulkhead trial (RAD-271, P-109 L1) — migration 005_registro_uso_llm_coorte_trial.sql
 CREATE TABLE IF NOT EXISTS registro_uso_llm (
   id                          BIGSERIAL PRIMARY KEY,
   edital_id                   TEXT        NOT NULL,
@@ -72,7 +74,8 @@ CREATE TABLE IF NOT EXISTS registro_uso_llm (
   cache_read_input_tokens     BIGINT      NOT NULL DEFAULT 0,
   cache_creation_input_tokens BIGINT      NOT NULL DEFAULT 0,
   custo_usd                   NUMERIC     NOT NULL,
-  ocorrido_em                 TIMESTAMPTZ NOT NULL
+  ocorrido_em                 TIMESTAMPTZ NOT NULL,
+  coorte_trial                BOOLEAN     NOT NULL DEFAULT false
 );
 
 -- ---------------------------------------------------------------------------
@@ -108,6 +111,29 @@ CREATE TABLE IF NOT EXISTS proveniencias (
   base_legal  TEXT        NOT NULL,
   coletado_em TIMESTAMPTZ NOT NULL
 );
+
+-- Metadados de anexos materializados por edital (P-104/AB14 trust-gating; P-110/RAD-280
+-- contrato Ingestão↔Triagem) — consolida modules/ingestao/src/infra/migrations
+-- 001_edital_anexos + 002_add_estado_confianca_anexo + 005_edital_anexos_sequencial_documento
+-- + 006_edital_anexos_tipo_texto_paginas. Chave natural é sequencial_documento (RAD-291), não nome.
+CREATE TABLE IF NOT EXISTS edital_anexos (
+  edital_id            TEXT        NOT NULL REFERENCES editais(id) ON DELETE CASCADE,
+  sequencial_documento INTEGER     NOT NULL,
+  nome                 TEXT        NOT NULL,
+  storage_key          TEXT        NOT NULL,
+  tipo_mime            TEXT        NOT NULL,
+  tamanho_bytes        BIGINT      NOT NULL,
+  tipo_documento_id    INTEGER     NOT NULL,
+  tipo_documento_nome  TEXT        NOT NULL,
+  texto_key            TEXT        NOT NULL,
+  paginas              INTEGER     NOT NULL,
+  estado_confianca     TEXT        NOT NULL DEFAULT 'pendente'
+    CHECK (estado_confianca IN ('pendente', 'limpo', 'rejeitado')),
+  criado_em            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (edital_id, sequencial_documento)
+);
+
+CREATE INDEX IF NOT EXISTS edital_anexos_estado_idx ON edital_anexos (edital_id, estado_confianca);
 
 -- ---------------------------------------------------------------------------
 -- Cobrança & Assinatura (P-107) — modules/cobranca/src/infra/migrations/001_assinatura_registro_uso.sql

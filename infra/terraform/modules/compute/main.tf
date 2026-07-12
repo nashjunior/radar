@@ -135,6 +135,10 @@ resource "aws_iam_role" "ecs_task" {
   tags = local.tags
 }
 
+
+# Este é o log group que recebe o log estruturado E as métricas EMF do assinante
+# evento->métrica (arquitetura/18 §5, RAD-302) — CloudWatch extrai EMF de qualquer log
+# event aqui sem recurso adicional (sem metric filter). Ver módulo `observability`.
 resource "aws_cloudwatch_log_group" "api" {
   name              = "/ecs/${var.project}-${var.env}/api"
   retention_in_days = var.env == "prod" ? 30 : 7

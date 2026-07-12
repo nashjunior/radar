@@ -34,6 +34,7 @@ import type {
   RegistrarFeedbackTriagemUseCase,
   SolicitarTriagemUseCase,
 } from '@radar/triagem';
+import type { ConsultarAssinaturaUseCase } from '@radar/cobranca';
 
 const EDITAL = 'edital-abc';
 const BASE = 'http://localhost/api/triagem';
@@ -62,6 +63,10 @@ const autorizarPermissivo: TriagemContainer['autorizar'] =
 const entitlementPermissivo: TriagemContainer['entitlement'] =
   (async (_c: Context, next: () => Promise<void>) => next()) as MiddlewareHandler;
 
+// Resolução de organização (RAD-285) real é coberta em exigir-organizacao-middleware.test.ts — aqui sempre-permite
+const exigirOrganizacaoPermissivo: TriagemContainer['exigirOrganizacao'] =
+  (async (_c: Context, next: () => Promise<void>) => next()) as MiddlewareHandler;
+
 function buildApp(overrides?: Partial<TriagemContainer>): Hono {
   const container: TriagemContainer = {
     consultarTriagem: {
@@ -78,6 +83,11 @@ function buildApp(overrides?: Partial<TriagemContainer>): Hono {
     },
     autorizar: autorizarPermissivo,
     entitlement: entitlementPermissivo,
+    exigirOrganizacao: exigirOrganizacaoPermissivo,
+    // RAD-271: esta suíte não cobre POST /solicitar (ver triagem-solicitar.test.ts) — stub inerte.
+    consultarAssinatura: {
+      executar: vi.fn().mockResolvedValue({ estado: 'ativa' }),
+    } as unknown as ConsultarAssinaturaUseCase,
     ...overrides,
   };
 

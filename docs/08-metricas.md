@@ -49,6 +49,7 @@ Empurrar a North Star sem estes limites cria dano — logo, cada um é um teto/p
 | **Fadiga de alerta** | Recall alto pode afogar o usuário em falsos positivos | ≤ 10 alertas marcados como não relevantes / conta ativa / semana, fora da janela inicial de calibração de 14 dias (documento 11, §2) |
 | **Alucinação em campos numéricos** | Um prazo ou valor errado na triagem gera decisão errada | **zero** — regra dura (documento 10, §5) |
 | **Custo de IA** | Triagem por IA não pode inviabilizar a unidade econômica | orçamento acumulado por janela — global e por tenant/plano — com admission control por item `[A VALIDAR]` (documentos 09, 10; P-20/P-38) |
+| **Abuso de trial** | O trial precisa mostrar o valor da triagem sem abrir fazenda de chamadas grátis | trial = 5 triagens/14 dias; pré-autorização para elevar/estender trial liga se o coorte trial consumir ≥ 40% do orçamento de IA reservado ao trial por 2 janelas móveis de 7 dias consecutivas, ou se ≥ 25% dos trials esgotarem a cota em <24h (documento 09, §6.1; P-109) |
 | **Vazamento cross-tenant** | Exposição de estratégia competitiva é risco de sobrevivência | **zero** — regra dura (documento 05, §2) |
 | **Incidentes LGPD** | Falha de conformidade é risco legal e reputacional | zero incidentes reportáveis (documento 02) |
 
@@ -72,4 +73,4 @@ Dependem dos módulos 3 e 4 e do go-to-market (documento 09), então entram depo
 
 ## 6. Instrumentação
 
-Para o MVP ser avaliável (critério de release, documento 07, §6), a instrumentação precisa existir **antes** do lançamento: eventos de alerta gerado/aberto/marcado-relevante, triagem iniciada/aceita/refeita, e o funil de ativação. Cada métrica de §3 mapeia a eventos concretos — a definição desse esquema de eventos é um `[A VALIDAR]` de engenharia (documento 98).
+Para o MVP ser avaliável (critério de release, documento 07, §6), a instrumentação precisa existir **antes** do lançamento: eventos de alerta gerado/aberto/marcado-relevante, triagem iniciada/aceita/refeita, e o funil de ativação. Para P-109, medir também contas trial criadas por janela, reservas e usos confirmados no trial, trials que esgotam as 5 triagens em <24h e gasto agregado do coorte trial, sem coletar sinal correlacional novo de usuário/dispositivo. Cada métrica de §3 mapeia a eventos concretos — a definição desse esquema de eventos é um `[A VALIDAR]` de engenharia (documento 98).

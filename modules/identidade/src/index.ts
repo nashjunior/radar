@@ -1,4 +1,4 @@
-export { PerfilHabilitacao, podeExecutar, AtribuicaoPapel, UsuarioId } from './domain/index.js';
+export { PerfilHabilitacao, podeExecutar, AtribuicaoPapel, UsuarioId, Tenant, Cnpj } from './domain/index.js';
 export type {
   CriarPerfilHabilitacaoProps,
   AtualizarDimensoesProps,
@@ -6,6 +6,13 @@ export type {
   Recurso,
   Acao,
   CriarAtribuicaoPapelProps,
+  CriarTenantProps,
+} from './domain/index.js';
+export {
+  CnpjInvalidoError,
+  OrganizacaoJaExisteError,
+  UsuarioJaVinculadoError,
+  SemOrganizacaoError,
 } from './domain/index.js';
 export {
   GerenciarPerfilHabilitacaoUseCase,
@@ -15,6 +22,9 @@ export {
   ResolverContextoAutorizacaoUseCase,
   AutorizarAcessoUseCase,
   contextoAutorizacaoParaDTO,
+  ProvisionarOrganizacaoUseCase,
+  OrganizacaoProvisionada,
+  organizacaoParaDTO,
 } from './application/index.js';
 export type {
   EventPublisher,
@@ -27,4 +37,8 @@ export type {
   ContextoAutorizacaoDTO,
   ResolverContextoAutorizacaoInput,
   AutorizarAcessoInput,
+  TenantRepository,
+  TenantIdProvider,
+  OrganizacaoDTO,
+  ProvisionarOrganizacaoInput,
 } from './application/index.js';

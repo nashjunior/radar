@@ -1,7 +1,10 @@
 export { AesGcmFieldCryptoProvider } from './adapters/aes-gcm-field-crypto-provider.js';
 export { CryptoCriterioIdProvider, CryptoAlertaIdProvider } from './adapters/crypto-id-provider.js';
 export { FilaAlertaMemoria } from './adapters/fila-alerta-memoria.js';
+export { AlertaDevidoRepositoryMemoria } from './adapters/alerta-devido-repository-memoria.js';
+export { PostgresAlertaDevidoRepository } from './adapters/postgres-alerta-devido-repository.js';
 export { PostgresAlertaRepository } from './adapters/postgres-alerta-repository.js';
+export { PostgresCoberturaPrazoCriticoRepository } from './adapters/postgres-cobertura-prazo-critico-repository.js';
 export { PostgresCriterioRepository } from './adapters/postgres-criterio-repository.js';
 export { PostgresFaixaValorReferencia } from './adapters/postgres-faixa-valor-referencia.js';
 export { PostgresMetricaMatchingRepository } from './adapters/postgres-metrica-matching-repository.js';

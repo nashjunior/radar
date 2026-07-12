@@ -18,14 +18,13 @@ function criarDb() {
           id: params[0],
           tenant_id: params[1],
           cliente_final_id: params[2],
-          ramo_cnae: params[3],
-          regiao_uf: params[4],
-          faixa_valor_min: params[5],
-          faixa_valor_max: params[6],
-          faixa_valor_min_cripto: params[7],
-          faixa_valor_max_cripto: params[8],
-          palavras_chave: params[9],
-          ativo: params[10],
+          regiao_uf: params[3],
+          faixa_valor_min: params[4],
+          faixa_valor_max: params[5],
+          faixa_valor_min_cripto: params[6],
+          faixa_valor_max_cripto: params[7],
+          palavras_chave: params[8],
+          ativo: params[9],
         };
         return { rows: [] as R[] };
       }
@@ -43,7 +42,6 @@ describe('PostgresCriterioRepository', () => {
       id: CriterioId('criterio-001'),
       tenantId: TenantId('tenant-a'),
       clienteFinalId: ClienteFinalId('cliente-a'),
-      ramoCnae: '62.01',
       regiaoUf: 'SP',
       faixaValor: FaixaValor.criar(10_000, 500_000),
       palavrasChave: PalavrasChave.criar(['Cloud', 'ERP']),
@@ -52,7 +50,7 @@ describe('PostgresCriterioRepository', () => {
     await repo.salvar(criterio, signal);
 
     const row = db.rows[0] as {
-      ramo_cnae: string;
+      ramo_cnae?: string;
       regiao_uf: string;
       faixa_valor_min: number | null;
       faixa_valor_max: number | null;
@@ -60,7 +58,7 @@ describe('PostgresCriterioRepository', () => {
       faixa_valor_max_cripto: string;
       palavras_chave: string[];
     };
-    expect(row.ramo_cnae).not.toBe('62.01');
+    expect(row.ramo_cnae).toBeUndefined();
     expect(row.regiao_uf).not.toBe('SP');
     expect(row.faixa_valor_min).toBeNull();
     expect(row.faixa_valor_max).toBeNull();
@@ -69,10 +67,41 @@ describe('PostgresCriterioRepository', () => {
     expect(row.palavras_chave.join(',')).not.toContain('cloud');
 
     const ativos = await repo.listarAtivos(signal);
-    expect(ativos[0]?.ramoCnae).toBe('62.01');
+    expect(ativos[0]?.ramoCnae).toBeNull();
     expect(ativos[0]?.regiaoUf).toBe('SP');
     expect(ativos[0]?.faixaValor?.min).toBe(10_000);
     expect(ativos[0]?.faixaValor?.max).toBe(500_000);
     expect(ativos[0]?.palavrasChave?.termos).toEqual(['cloud', 'erp']);
+  });
+
+  it('ignora ramo_cnae legado ao reconstituir e não silencia critério antigo só-CNAE', async () => {
+    const db = criarDb();
+    const crypto = AesGcmFieldCryptoProvider.fromBase64Key(Buffer.alloc(32, 7).toString('base64'));
+    const repo = new PostgresCriterioRepository(db, crypto);
+    db.rows[0] = {
+      id: 'criterio-legado',
+      tenant_id: 'tenant-a',
+      cliente_final_id: 'cliente-a',
+      ramo_cnae: '62.01',
+      regiao_uf: null,
+      faixa_valor_min: null,
+      faixa_valor_max: null,
+      faixa_valor_min_cripto: null,
+      faixa_valor_max_cripto: null,
+      palavras_chave: [],
+      ativo: true,
+    };
+
+    const [criterio] = await repo.listarAtivos(signal);
+    const aderencia = criterio?.casaCom({
+      objetoDescricao: 'Serviços de limpeza',
+      uf: null,
+      cnae: null,
+      valorEstimado: null,
+    });
+
+    expect(criterio?.ramoCnae).toBeNull();
+    expect(aderencia?.valor).toBe(0.5);
+    expect(aderencia?.superaLimiar).toBe(true);
   });
 });

@@ -79,8 +79,20 @@ describe('ConsultarAssinaturaUseCase', () => {
     expect(dto.diasRestantes).toBeNull();
   });
 
-  it('ciclo já vencido: diasRestantes nunca fica negativo', async () => {
+  it('ciclo vencido em estado que não renova (ex.: suspensa): diasRestantes nunca fica negativo', async () => {
     const cicloVencido = new Date('2026-07-05T00:00:00Z'); // antes de AGORA (2026-07-11), depois de inicio (2026-07-01)
+    const uc = new ConsultarAssinaturaUseCase(
+      makeAssinaturas(assinaturaCom('suspensa', cicloVencido)),
+      makeClock(AGORA),
+    );
+
+    const dto = await uc.executar({ tenantId: TENANT }, noop);
+
+    expect(dto.diasRestantes).toBe(0);
+  });
+
+  it('ciclo `ativa` vencido projeta renovado (RAD-287) — nunca fica preso em cota esgotada/0 dias', async () => {
+    const cicloVencido = new Date('2026-07-05T00:00:00Z'); // antes de AGORA (2026-07-11)
     const uc = new ConsultarAssinaturaUseCase(
       makeAssinaturas(assinaturaCom('ativa', cicloVencido)),
       makeClock(AGORA),
@@ -88,7 +100,10 @@ describe('ConsultarAssinaturaUseCase', () => {
 
     const dto = await uc.executar({ tenantId: TENANT }, noop);
 
-    expect(dto.diasRestantes).toBe(0);
+    expect(dto.estado).toBe('ativa'); // renovação não é suspensão — diferente de trial vencido
+    expect(dto.usoReservado).toBe(0);
+    expect(dto.usoConfirmado).toBe(0);
+    expect(dto.diasRestantes).toBe(24); // novo ciclo: cicloVencido + 30 dias = 2026-08-04
   });
 
   it('trial vencido (cicloVigente.fim no passado) projeta estado "suspensa" e diasRestantes 0 (RAD-277)', async () => {

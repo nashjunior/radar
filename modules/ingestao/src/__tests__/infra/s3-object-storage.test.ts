@@ -94,6 +94,23 @@ describe('S3ObjectStorage', () => {
 
       await expect(storage.obter(CHAVE, SIGNAL)).rejects.toThrow('objeto não encontrado');
     });
+
+    // Regressão: `armazenar` devolve `s3://<bucket>/<chave>` e os callers (ex. EscanearAnexoUseCase)
+    // repassam esse mesmo valor de volta como `storageKey`/`textoKey` — sem descontar o prefixo,
+    // GetObjectCommand busca uma Key que nunca existiu (NoSuchKey contra S3 real).
+    it('aceita a URI s3://<bucket>/<chave> devolvida por armazenar e busca só a chave', async () => {
+      const { storage, send } = buildStorage();
+      const bytes = new Uint8Array([10, 20, 30]);
+      send.mockResolvedValue({
+        Body: { transformToByteArray: () => Promise.resolve(bytes) },
+      } as never);
+
+      const resultado = await storage.obter(`s3://${BUCKET}/${CHAVE}`, SIGNAL);
+
+      const [cmd] = send.mock.calls[0]!;
+      expect((cmd as GetObjectCommand).input.Key).toBe(CHAVE);
+      expect(resultado).toBe(bytes);
+    });
   });
 
   describe('deletar', () => {
@@ -109,6 +126,16 @@ describe('S3ObjectStorage', () => {
       expect((cmd as DeleteObjectCommand).input.Bucket).toBe(BUCKET);
       expect((cmd as DeleteObjectCommand).input.Key).toBe(CHAVE);
       expect(opts?.abortSignal).toBe(SIGNAL);
+    });
+
+    it('aceita a URI s3://<bucket>/<chave> e apaga só a chave', async () => {
+      const { storage, send } = buildStorage();
+      send.mockResolvedValue({} as never);
+
+      await storage.deletar(`s3://${BUCKET}/${CHAVE}`, SIGNAL);
+
+      const [cmd] = send.mock.calls[0]!;
+      expect((cmd as DeleteObjectCommand).input.Key).toBe(CHAVE);
     });
   });
 });

@@ -88,13 +88,15 @@ Alinhada ao roadmap (documento 07):
 
 | Plano | Alvo | Faixa (R$/mês) `[A VALIDAR]` | Inclui | Alavanca |
 |-------|------|------------------------------|--------|----------|
-| **Trial** (14 dias) | Ativação | grátis | PNCP, alertas, poucas triagens | — |
+| **Trial** (14 dias) | Ativação | grátis | PNCP, alertas, **5 triagens no período** | — |
 | **Starter** | Empresa fornecedora pequena | 129–169 | PNCP, alertas, ~30 triagens/mês | triagens/mês (excedente por uso) |
 | **Pro** | Empresa ativa em licitações | 399–549 | mais fontes/UFs, ~150 triagens/mês, gestão (Mód. 3) | triagens/mês + volume de fontes/regiões |
 | **Consultoria** *(Next)* | Assessorias multi-cliente | 890–1.290 base **+ 120–160/cliente-final** | multi-tenant, portfólio, permissões, clientes-final | **por cliente-final gerido** |
 | **Inteligência** (add-on) | Quem precifica com dados | +349–449 | Módulo 4 (histórico, referência de preços) | upsell de maior margem |
 
-O **Trial** de 14 dias casa com a janela de calibração de matching (documento 08, §3) e apoia a ativação. Triagens acima da cota do plano são cobradas por uso (da ordem de R$2,50–4,00/triagem), o que também protege a unidade econômica (§6.4).
+O **Trial** de 14 dias casa com a janela de calibração de matching (documento 08, §3) e apoia a ativação. A cota do trial é **5 triagens de IA no período**, vitalícia para o trial e sem renovação mensal; ao consumir a cota, a próxima triagem é bloqueada e direciona para conversão ou upgrade. O trial base continua **sem cartão obrigatório**. Excedente por uso existe apenas em plano pago, com opt-in explícito, cap por tenant/plano e alertas de cota (P-107).
+
+Para anti-abuso de trial (P-109), a **pré-autorização de cartão** não entra como barreira inicial do signup. Ela liga apenas para elevar a cota ou estender o trial quando houver sinal agregado: gasto do coorte trial **≥ 40%** do orçamento de IA reservado ao trial por **2 janelas móveis de 7 dias consecutivas**, ou **≥ 25%** dos trials esgotando as 5 triagens em menos de 24h. Quando ligada, esse passo passa a ser obrigatório para qualquer elevação de cota ou extensão do trial, sem captura de cobrança se não houver conversão. A execução depende do bulkhead de orçamento do coorte trial e do ledger de custo (P-20/P-38/P-109).
 
 ### 6.2. Ancoragem de mercado (P-16)
 

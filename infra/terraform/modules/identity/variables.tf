@@ -71,3 +71,21 @@ variable "refresh_token_validity_days" {
   type        = number
   default     = 7
 }
+
+variable "web_acl_ref" {
+  description = "Handle da ACL de firewall L7 (módulo `waf`, RAD-273/P-109 L2) a associar ao user pool — rate-limit + CAPTCHA no fluxo de signup do Hosted UI. Nulo = user pool sem WAF. AWS: WAFv2 Web ACL ARN"
+  type        = string
+  default     = null
+}
+
+# Default false = postura segura. custom:tenantId é imutável e fora de write_attributes
+# (anti-escalonamento, AB1/P-51) — self-signup público cria a conta SEM tenant e SEM conserto
+# pós-criação (atributo custom imutável só populado em SignUp/AdminCreateUser/mapping de IdP
+# federado, nunca depois). true só é seguro depois que a borda resolve tenant/papel pelo `sub`
+# verificado e o onboarding pós-login provisiona Tenant (ProvisionarOrganizacaoUseCase, fora
+# deste módulo — aplicação, não infra). Ver README.md para o gate de prod. RAD-283/RAD-284.
+variable "permitir_auto_cadastro" {
+  description = "Habilita self-service signup no Hosted UI (P-109 L2, trial self-service de docs/09 §6.1). false = convite-only (AdminCreateUser)."
+  type        = bool
+  default     = false
+}

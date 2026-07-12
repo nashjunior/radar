@@ -94,6 +94,7 @@ interface NotificacaoCtx {
   usuarioId: UsuarioId;
   clienteId: ClienteFinalId;
   alertaId: AlertaId;
+  imediato: boolean;
   digestEnviado: { enviados: number; agrupados: number; total: number } | null;
 }
 
@@ -114,6 +115,7 @@ Before(function () {
     usuarioId: UsuarioId('usuario-bdd-01'),
     clienteId: ClienteFinalId('cliente-bdd-01'),
     alertaId: AlertaId('alerta-bdd-01'),
+    imediato: false,
     digestEnviado: null,
   };
 });
@@ -159,6 +161,7 @@ Given('um alerta com diasAtePrazo {int} e aderência {float}', function (dias: n
     criterioNome: 'Serviços de TI',
   };
   ctx.alertaRepo.definirAlerta(alerta);
+  ctx.imediato = (dias >= 0 && dias <= 3) || aderencia >= 0.8;
 });
 
 Given('{int} alertas pendentes para o usuário', function (quantidade: number) {
@@ -195,6 +198,8 @@ When('o sistema processa a notificação do alerta', async function () {
       alertaId: ctx.alertaId,
       clienteFinalId: ctx.clienteId,
       tenantId: TenantId('tenant-bdd'),
+      alertaGeradoEm: new Date(),
+      imediato: ctx.imediato,
     },
     signal,
   );

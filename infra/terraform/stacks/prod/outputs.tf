@@ -80,3 +80,15 @@ output "egress_public_ips" {
   description = "IPs públicos de saída da sub-rede privada (P-58)"
   value       = module.vpc.egress_gateway_ips
 }
+
+# --- Observabilidade (A18 §5, RAD-300 story 4/5) ---------------------------------------
+
+output "slo_dashboard_ref" {
+  description = "Dashboard CloudWatch dos 5 SLOs (docs/08 §4.1)"
+  value       = module.observability.dashboard_ref
+}
+
+output "slo_alarm_refs" {
+  description = "Mapa SLO -> ARN do alarme (docs/08 §4.1)"
+  value       = module.observability.alarm_refs
+}

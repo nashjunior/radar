@@ -13,6 +13,8 @@ export interface EditalParaMatchingDTO {
   cnae: string | null;
   valorEstimado: number | null;
   dataPublicacao: Date;
+  /** Prazo final para envio de propostas — usado no cálculo de criticidade (P-81, RAD-303). */
+  prazoProposta: Date | null;
   /** Proveniência do edital, disponível quando presente no evento edital.ingerido (RAD-115). */
   proveniencia?: { fonte: string; baseLegal: string; dataColeta: string };
 }
@@ -21,7 +23,6 @@ export interface CriterioDTO {
   id: string;
   tenantId: string;
   clienteFinalId: string;
-  ramoCnae: string | null;
   regiaoUf: string | null;
   faixaValorMin: number | null;
   faixaValorMax: number | null;
@@ -37,6 +38,8 @@ export interface AlertaDTO {
   editalId: string;
   aderencia: number;
   relevante: boolean | null;
+  /** aderência alta OU prazo crítico (P-81, A18 §5.1) — decidido no domínio, não no worker. */
+  imediato: boolean;
   /** Proveniência do edital — presente quando disponível no evento de ingestão (RAD-115). */
   proveniencia?: { fonte: string; baseLegal: string; dataColeta: string };
   /** Campos enriquecidos do Catálogo (RAD-148). Ausentes quando o edital não for encontrado. */
@@ -71,7 +74,6 @@ export function criterioParaDTO(c: CriterioDeMonitoramento): CriterioDTO {
     id: c.id,
     tenantId: c.tenantId,
     clienteFinalId: c.clienteFinalId,
-    ramoCnae: c.ramoCnae,
     regiaoUf: c.regiaoUf,
     faixaValorMin: c.faixaValor?.min ?? null,
     faixaValorMax: c.faixaValor?.max ?? null,
@@ -94,6 +96,16 @@ export interface MetricasMatchingDTO {
   janelaEmDias: number;
 }
 
+/**
+ * Resultado de um ciclo do reconciliador de prazo crítico (docs/08 §4.1, A18 §5.1, RAD-303).
+ * `perdido` é o déficit — a métrica do SLO de error budget zero.
+ */
+export interface PrazoCriticoReconciliacaoDTO {
+  elegivel: number;
+  coberto: number;
+  perdido: number;
+}
+
 export function alertaParaDTO(
   a: Alerta,
   proveniencia?: { fonte: string; baseLegal: string; dataColeta: string },
@@ -106,6 +118,7 @@ export function alertaParaDTO(
     editalId: a.editalId,
     aderencia: a.aderencia.valor,
     relevante: a.relevante,
+    imediato: a.imediato,
     ...(proveniencia !== undefined ? { proveniencia } : {}),
   };
 }

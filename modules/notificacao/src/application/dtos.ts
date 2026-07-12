@@ -15,10 +15,8 @@ export interface AlertaResumoDTO {
   orgao: string;
   uf: string | null;
   prazoProposta: Date | null;
-  /** [0,1] — usado no cálculo de criticidade (P-81) e na ordenação anti-fadiga do digest. */
+  /** [0,1] — usado na ordenação anti-fadiga do digest. */
   aderencia: number;
-  /** dias corridos até o prazo da proposta — para cálculo de criticidade. */
-  diasAtePrazo: number;
   /** Chave do agrupamento do excedente do digest (P-81) — ver ExcedenteAgrupadoDTO. */
   criterioId: CriterioId;
   criterioNome: string;

@@ -47,6 +47,14 @@ variable "cognito_advanced_security_mode" {
   }
 }
 
+# true em dev: onde o rate-limit/CAPTCHA do RAD-273 deixa de ser inerte e o onboarding
+# pós-login é testado ponta a ponta (RAD-283/RAD-284).
+variable "cognito_permitir_auto_cadastro" {
+  description = "Habilita self-service signup no Hosted UI (P-109 L2). dev = true."
+  type        = bool
+  default     = true
+}
+
 variable "enable_serverless_workers" {
   description = "Extrai os workers p/ o tier Lambda (seam P-27). false = coabitam apps/api (P-96)."
   type        = bool

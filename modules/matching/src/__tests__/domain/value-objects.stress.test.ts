@@ -176,10 +176,9 @@ describe('PalavrasChave — edge cases adversariais', () => {
     expect(() => PalavrasChave.criar([termoLongo])).not.toThrow();
   });
 
-  it('termos com caracteres especiais unicode são normalizados para lowercase', () => {
-    // termos com diacríticos: 'Ção' → 'ção' (não remove acento, só normaliza caixa)
+  it('termos com caracteres especiais unicode são normalizados para lowercase sem diacríticos', () => {
     const pc = PalavrasChave.criar(['Ção', 'BRASIL']);
-    expect(pc.termos).toContain('ção');
+    expect(pc.termos).toContain('cao');
     expect(pc.termos).toContain('brasil');
   });
 

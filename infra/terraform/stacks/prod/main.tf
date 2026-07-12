@@ -115,6 +115,82 @@ module "queue_alertas" {
   max_receive_count  = 5
 }
 
+# --- Mapa evento -> fila (RAD-321, A03 §3/§3.1) -----------------------------------------
+#
+# Critério de agrupamento: uma fila POR MÉTODO do consumidor (mesmo DTO, mesmo use case) —
+# não 1:1 com o nome do evento de domínio. `anexo.aprovado`/`anexo.rejeitado` caem na MESMA
+# fila porque `AnexoDisponibilidadeWorker.processar` é um único método para os dois (mesmo
+# `AnexoResolvidoMsg`). `triagem.concluida`/`triagem.falhou`/`organizacao.provisionada` viram
+# TRÊS filas: mesmo worker (`CobrancaWorker`), mas três métodos e três formatos de mensagem
+# distintos (`processarTriagemConcluida`/`processarTriagemFalhou`/`processarOrganizacaoProvisionada`).
+
+# Consumidor: TriagemSolicitadaWorker -> TriarEditalUseCase (hidratação de anexo + chamada LLM
+# síncrona) — o mais longo do fan-out (P-41). 300 s de visibilidade dá folga acima do SLO
+# p95 <= 3 min de `triagem.solicitada` -> `triagem.concluida` (docs/08 §4.1); 300 x 3 = 900 s,
+# no teto do orçamento de reentrega — mesmo padrão de `editais-ingeridos`.
+module "queue_triagem_solicitada" {
+  source             = "../../modules/queue"
+  project            = "radar"
+  env                = "prod"
+  queue_name         = "triagem-solicitada"
+  encryption_key_ref = var.kms_key_arn
+
+  visibility_timeout = 300
+  max_receive_count  = 3
+}
+
+# Consumidor: CobrancaWorker.processarTriagemConcluida (ConfirmarUsoUseCase) — só grava uso
+# confirmado. Leve, mesmo perfil de `alertas-gerados`.
+module "queue_triagem_concluida" {
+  source             = "../../modules/queue"
+  project            = "radar"
+  env                = "prod"
+  queue_name         = "triagem-concluida"
+  encryption_key_ref = var.kms_key_arn
+
+  visibility_timeout = 60
+  max_receive_count  = 5
+}
+
+# Consumidor: CobrancaWorker.processarTriagemFalhou (LiberarReservaUseCase) — compensa a
+# reserva de cota (P-107 (c)). Idempotente, leve.
+module "queue_triagem_falhou" {
+  source             = "../../modules/queue"
+  project            = "radar"
+  env                = "prod"
+  queue_name         = "triagem-falhou"
+  encryption_key_ref = var.kms_key_arn
+
+  visibility_timeout = 60
+  max_receive_count  = 5
+}
+
+# Consumidor: CobrancaWorker.processarOrganizacaoProvisionada (IniciarTrialUseCase, P-109 L0).
+# Idempotente por tenantId, leve.
+module "queue_organizacao_provisionada" {
+  source             = "../../modules/queue"
+  project            = "radar"
+  env                = "prod"
+  queue_name         = "organizacao-provisionada"
+  encryption_key_ref = var.kms_key_arn
+
+  visibility_timeout = 60
+  max_receive_count  = 5
+}
+
+# Consumidor: AnexoDisponibilidadeWorker.processar (ReenfileirarTriagensPendentesUseCase,
+# P-110/RAD-281) — fecha `anexo.aprovado`/`anexo.rejeitado` na mesma fila (mesmo método/DTO).
+module "queue_anexo_resolvido" {
+  source             = "../../modules/queue"
+  project            = "radar"
+  env                = "prod"
+  queue_name         = "anexo-resolvido"
+  encryption_key_ref = var.kms_key_arn
+
+  visibility_timeout = 60
+  max_receive_count  = 5
+}
+
 module "secrets" {
   source             = "../../modules/secrets"
   project            = "radar"
@@ -190,6 +266,8 @@ module "identity" {
   callback_urls           = var.cognito_callback_urls
   logout_urls             = var.cognito_logout_urls
   advanced_security_mode  = var.cognito_advanced_security_mode
+  web_acl_ref             = module.waf.web_acl_ref
+  permitir_auto_cadastro  = var.cognito_permitir_auto_cadastro
 }
 
 # --- Tier sempre-ligado: registro → borda → serviço (RAD-199) --------------------------
@@ -255,6 +333,11 @@ module "compute" {
     module.queue_ingestao.queue_ref,
     module.queue_alertas_gravar.queue_ref,
     module.queue_alertas.queue_ref,
+    module.queue_triagem_solicitada.queue_ref,
+    module.queue_triagem_concluida.queue_ref,
+    module.queue_triagem_falhou.queue_ref,
+    module.queue_organizacao_provisionada.queue_ref,
+    module.queue_anexo_resolvido.queue_ref,
   ]
 
   bedrock_batch_service_role_ref = module.storage.batch_service_role_ref
@@ -282,5 +365,36 @@ module "compute" {
     COGNITO_TENANT_CLAIM = module.identity.tenant_claim
     API_CORS_ORIGINS     = join(",", var.api_cors_origins)
     WORKERS_ENABLED      = "true"
+
+    # Fila sem URL = consumidor não sobe (RAD-321). `*_MAX_RECEIVE_COUNT` é o que o consumidor
+    # compara contra `ApproximateReceiveCount` para saber que é a ÚLTIMA entrega antes da DLQ
+    # (compensação `triagem.falhou`, A03 §3.1) — nunca adivinhado, sempre lido do próprio módulo
+    # `queue` que o define (`max_receive_count` output, single source of truth).
+    EDITAIS_INGERIDOS_QUEUE_URL                = module.queue_ingestao.queue_url
+    EDITAIS_INGERIDOS_MAX_RECEIVE_COUNT        = tostring(module.queue_ingestao.max_receive_count)
+    ALERTAS_A_GRAVAR_QUEUE_URL                 = module.queue_alertas_gravar.queue_url
+    ALERTAS_A_GRAVAR_MAX_RECEIVE_COUNT         = tostring(module.queue_alertas_gravar.max_receive_count)
+    ALERTAS_GERADOS_QUEUE_URL                  = module.queue_alertas.queue_url
+    ALERTAS_GERADOS_MAX_RECEIVE_COUNT          = tostring(module.queue_alertas.max_receive_count)
+    TRIAGEM_SOLICITADA_QUEUE_URL               = module.queue_triagem_solicitada.queue_url
+    TRIAGEM_SOLICITADA_MAX_RECEIVE_COUNT       = tostring(module.queue_triagem_solicitada.max_receive_count)
+    TRIAGEM_CONCLUIDA_QUEUE_URL                = module.queue_triagem_concluida.queue_url
+    TRIAGEM_CONCLUIDA_MAX_RECEIVE_COUNT        = tostring(module.queue_triagem_concluida.max_receive_count)
+    TRIAGEM_FALHOU_QUEUE_URL                   = module.queue_triagem_falhou.queue_url
+    TRIAGEM_FALHOU_MAX_RECEIVE_COUNT           = tostring(module.queue_triagem_falhou.max_receive_count)
+    ORGANIZACAO_PROVISIONADA_QUEUE_URL         = module.queue_organizacao_provisionada.queue_url
+    ORGANIZACAO_PROVISIONADA_MAX_RECEIVE_COUNT = tostring(module.queue_organizacao_provisionada.max_receive_count)
+    ANEXO_RESOLVIDO_QUEUE_URL                  = module.queue_anexo_resolvido.queue_url
+    ANEXO_RESOLVIDO_MAX_RECEIVE_COUNT          = tostring(module.queue_anexo_resolvido.max_receive_count)
   }
+}
+
+# Alarmes CloudWatch + dashboard sobre os SLOs de docs/08 §4.1 (A18 §5, RAD-300 story 4/5).
+# Mesmo tópico de ops que o db_proxy usa para o alarme de session pinning (P-41).
+module "observability" {
+  source          = "../../modules/observability"
+  project         = "radar"
+  env             = "prod"
+  region          = var.aws_region
+  alarm_topic_ref = var.ops_alarm_sns_topic_arn
 }

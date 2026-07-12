@@ -22,7 +22,6 @@ export interface DefinirCriterioInput {
   /** tenantId fornecido pelo contexto de autenticação (MVP: 'global' — P-25). */
   tenantId: TenantId;
   clienteFinalId: ClienteFinalId;
-  ramoCnae?: string;
   regiaoUf?: string;
   /** Chave da tabela de referência — não um valor fixo (docs/02 §2). */
   faixaValorCodigo?: string;
@@ -72,7 +71,6 @@ export class DefinirCriterioMonitoramentoUseCase {
       id: this.ids.gerar(),
       tenantId: input.tenantId,
       clienteFinalId: input.clienteFinalId,
-      ramoCnae: input.ramoCnae,
       regiaoUf: input.regiaoUf,
       faixaValor,
       palavrasChave,

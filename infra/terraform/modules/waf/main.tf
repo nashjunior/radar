@@ -254,6 +254,71 @@ resource "aws_wafv2_web_acl" "this" {
     }
   }
 
+  # RAD-273 (P-109 L2): fricção no fluxo de CRIAÇÃO DE CONTA do Cognito — encarece o
+  # unitário do ataque Sybil (farm de contas trial pra consumir triagem por IA grátis,
+  # P-109). Escopo deliberadamente restrito a signup/confirmação (`var.cognito_signup_paths`
+  # — `/signup`, `/confirm`, `/confirmUser`, `/resendcode`), NUNCA `/login` ou
+  # `/oauth2/authorize`: um rule com ação CAPTCHA nesses paths quebra o registro de TOTP MFA
+  # em andamento (aviso da própria AWS — "Configuring your AWS WAF web ACL for managed login
+  # TOTP MFA"); como este rate-limit nunca toca esses paths, não colide com MFA (P-53). Ação
+  # CAPTCHA, não BLOCK — falso positivo em NAT corporativo/IP compartilhado é caro (persona
+  # central = fornecedor pequeno, docs/01 §3). A associação ao user pool é do módulo
+  # `identity` (mesmo `web_acl_ref`, padrão do `edge` — módulo não importa módulo, A08 §1).
+  rule {
+    name     = "cognito-signup-rate-limit-ip"
+    priority = 7
+
+    action {
+      captcha {}
+    }
+
+    statement {
+      rate_based_statement {
+        limit              = var.cognito_signup_rate_limit_per_ip
+        aggregate_key_type = "IP"
+
+        scope_down_statement {
+          or_statement {
+            dynamic "statement" {
+              for_each = var.cognito_signup_paths
+              content {
+                byte_match_statement {
+                  field_to_match {
+                    uri_path {}
+                  }
+                  positional_constraint = "STARTS_WITH"
+                  search_string         = statement.value
+                  text_transformation {
+                    priority = 0
+                    type     = "NONE"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${var.project}-${var.env}-cognito-signup-rate-ip"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  # Agregação por ASN — o ticket pedia "se der" (P-109 L2): CONFERIDO e NÃO DÁ hoje. O
+  # schema do provider pinado (`hashicorp/aws 5.100.0`, mesmo do `.terraform.lock.hcl` dos
+  # stacks) só aceita `custom_key` de tipo cookie/forwarded_ip/header/http_method/ip/
+  # ja3_fingerprint/ja4_fingerprint/label_namespace/query_argument/query_string/uri_path —
+  # sem `asn` (confirmado via `tofu providers schema -json`). A AWS tem `asn_match_statement`
+  # (statement de MATCH, pra permitir/negar por lista de ASN — não agregação de rate-limit) e
+  # há um issue aberto e não resolvido no `terraform-provider-aws` pedindo exatamente
+  # agregação de `rate_based_statement` por ASN (github.com/hashicorp/terraform-provider-aws
+  # issue #43492) — não é lacuna deste módulo, é o provider ainda não expor a API da AWS.
+  # Reabrir quando o provider suportar (bump de versão é decisão à parte, fora do escopo
+  # cirúrgico deste ticket — ver PARIDADE.md sobre risco de bump de provider).
+
   visibility_config {
     cloudwatch_metrics_enabled = true
     metric_name                = "${var.project}-${var.env}-waf"

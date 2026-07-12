@@ -23,7 +23,7 @@
  */
 
 import { ClienteFinalId, TenantId } from '@radar/kernel';
-import { AtribuicaoPapel, UsuarioId } from '@radar/identidade';
+import { AtribuicaoPapel, UsuarioId, UsuarioJaVinculadoError } from '@radar/identidade';
 import type { Papel, PermissaoRepository } from '@radar/identidade';
 
 const PAPEIS_VALIDOS: readonly Papel[] = [
@@ -52,7 +52,7 @@ function ehEntradaValida(entrada: unknown): entrada is EntradaSeed {
   );
 }
 
-type MapaInterno = ReadonlyMap<string, AtribuicaoPapel>;
+type MapaInterno = Map<string, AtribuicaoPapel>;
 
 export class PermissaoConfigAdapter implements PermissaoRepository {
   private readonly mapa: MapaInterno;
@@ -98,5 +98,18 @@ export class PermissaoConfigAdapter implements PermissaoRepository {
   async buscarPorUsuario(usuarioId: UsuarioId, opts: { signal: AbortSignal }): Promise<AtribuicaoPapel | null> {
     opts.signal.throwIfAborted();
     return this.mapa.get(usuarioId) ?? null;
+  }
+
+  /**
+   * RAD-285: suporta o provisionamento self-signup em cima do mesmo seed em
+   * memória — mutação só dura o processo (mesma realidade dos demais stubs
+   * "até o Postgres existir", ver `cobranca-stub.ts`). `sub` já vinculado ⇒
+   * `UsuarioJaVinculadoError`, nunca sobrescreve (é o sinal de idempotência
+   * que `ProvisionarOrganizacaoUseCase` espera).
+   */
+  async criar(atribuicao: AtribuicaoPapel, signal: AbortSignal): Promise<void> {
+    signal.throwIfAborted();
+    if (this.mapa.has(atribuicao.usuarioId)) throw new UsuarioJaVinculadoError();
+    this.mapa.set(atribuicao.usuarioId, atribuicao);
   }
 }

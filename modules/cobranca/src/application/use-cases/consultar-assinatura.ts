@@ -21,6 +21,11 @@ const MS_POR_DIA = 24 * 60 * 60 * 1000;
  * o Figma já tem a superfície `Shell · Suspensa` e o front já trata esse
  * estado (banner de conta suspensa), então reaproveita o contrato existente em
  * vez de introduzir um estado novo.
+ *
+ * Ciclo `ativa` vencido projeta como renovado (`Assinatura.renovarSeVencido`,
+ * RAD-287) — mesma técnica lazy, também nunca persistida aqui: sem isso, o
+ * dashboard mostrava "0 dias restantes"/cota esgotada indefinidamente para um
+ * tenant pago entre o vencimento do ciclo e o próximo webhook `invoice.paid`.
  */
 export class ConsultarAssinaturaUseCase {
   constructor(
@@ -33,17 +38,18 @@ export class ConsultarAssinaturaUseCase {
     if (!assinatura) throw new AssinaturaNaoEncontradaError(input.tenantId);
 
     const agora = this.clock.agora();
-    const estado = assinatura.trialVencido(agora) ? 'suspensa' : assinatura.estado;
+    const vigente = assinatura.renovarSeVencido(agora);
+    const estado = vigente.trialVencido(agora) ? 'suspensa' : vigente.estado;
 
     return {
       estado,
       plano: {
-        codigo: assinatura.plano.codigo,
-        cota: assinatura.plano.cota.valor,
+        codigo: vigente.plano.codigo,
+        cota: vigente.plano.cota.valor,
       },
-      usoReservado: assinatura.usoReservado,
-      usoConfirmado: assinatura.usoConfirmado,
-      diasRestantes: estado === 'cancelada' ? null : diasAte(assinatura.cicloVigente.fim, agora),
+      usoReservado: vigente.usoReservado,
+      usoConfirmado: vigente.usoConfirmado,
+      diasRestantes: estado === 'cancelada' ? null : diasAte(vigente.cicloVigente.fim, agora),
     };
   }
 }

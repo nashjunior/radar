@@ -1,4 +1,5 @@
 import type {
+  ArquivoBaixado,
   ArquivoPncpData,
   ContratacaoData,
   PncpGateway,
@@ -116,34 +117,26 @@ export class PncpHttpGateway implements PncpGateway {
     if (!Array.isArray(json)) {
       throw new SchemaDriftError('arquivos', 'resposta de /arquivos não é um array');
     }
-    // [A VALIDAR — Swagger] Só o endpoint/base de /arquivos foi confirmado por chamada real
-    // nesta verificação (2026-07-11) — o corpo de cada item, não. Nomes de campo abaixo são
-    // best-effort pela convenção do resto da API (uri do arquivo, título do documento);
-    // tamanhoBytes/tipoMime não aparecem nesse endpoint tipicamente — confirmar e ajustar
-    // antes de operar contra o PNCP real (mesmo tratamento do restante do arquivo: falha
-    // aberta/loud via SchemaDriftError quando falta o essencial, nunca grava lixo).
-    return (json as PncpArquivoRaw[]).map((raw) => {
-      const urlOrigem = raw.uri ?? raw.url;
-      if (!urlOrigem) {
-        throw new SchemaDriftError('arquivos[].uri', 'item de /arquivos sem URL de origem');
-      }
-      return {
-        nome: raw.titulo ?? raw.nomeArquivo ?? urlOrigem.split('/').pop() ?? 'arquivo',
-        urlOrigem,
-        tamanhoBytes: 0,
-        tipoMime: 'application/octet-stream',
-      };
-    });
+    // Documento revogado/substituído (statusAtivo:false) não entra na triagem (arq/02 §6.1).
+    return (json as PncpArquivoRaw[]).map(traduzirArquivo).filter((arquivo) => arquivo.statusAtivo);
   }
 
-  async downloadArquivo(urlOrigem: string, signal: AbortSignal): Promise<Uint8Array> {
+  async downloadArquivo(urlOrigem: string, signal: AbortSignal): Promise<ArquivoBaixado> {
     // Guarda SSRF (P-58): valida URL e segue redirects com revalidação por hop.
     // A URL vem do PNCP (dado não confiável — arq/11) e pode apontar para IPs internos.
     const resposta = await this.ssrfGuard.fetch(urlOrigem, signal);
     if (!resposta.ok) {
       throw new FonteIndisponivelError('PNCP', `HTTP ${resposta.status} ao baixar anexo`);
     }
-    return new Uint8Array(await resposta.arrayBuffer());
+    const conteudo = new Uint8Array(await resposta.arrayBuffer());
+    const contentLength = resposta.headers.get('content-length');
+    return {
+      conteudo,
+      tamanhoBytes: contentLength !== null ? Number(contentLength) : conteudo.byteLength,
+      // O PNCP declara application/octet-stream para tudo — mime real vem de sniff (arq/02 §6.1).
+      tipoMime: detectarTipoMimePorMagicBytes(conteudo),
+      nomeArquivo: extrairNomeDoContentDisposition(resposta.headers.get('content-disposition')),
+    };
   }
 
   // ---------------------------------------------------------------------------
@@ -256,14 +249,17 @@ interface PncpContratacaoRaw {
 }
 
 /**
- * [A VALIDAR — Swagger] Corpo de cada item de `/arquivos` não confirmado por chamada real
- * (só o endpoint/base foram, 2026-07-11) — nomes best-effort pela convenção do resto da API.
+ * Corpo de cada item de `/arquivos` — confirmado por chamada real (arq/02 §6.1, RAD-274).
+ * `tamanhoBytes`/`tipoMime`/nome real do arquivo não existem aqui — só no download.
  */
 interface PncpArquivoRaw {
   uri?: string;
   url?: string;
   titulo?: string;
-  nomeArquivo?: string;
+  sequencialDocumento?: number;
+  tipoDocumentoId?: number;
+  tipoDocumentoNome?: string;
+  statusAtivo?: boolean;
 }
 
 function validarPaginacao(json: unknown): PncpPaginaRaw {
@@ -309,4 +305,70 @@ function traduzirContratacao(raw: PncpContratacaoRaw): ContratacaoData {
       valorUnitarioEstimado: i.valorUnitarioEstimado ?? null,
     })),
   };
+}
+
+/**
+ * Tradução PNCP → canônico. Todos os campos são obrigatórios (100% presentes na
+ * amostra real, arq/02 §6.1) — ausência é schema drift, falha loud, nunca grava lixo.
+ */
+function traduzirArquivo(raw: PncpArquivoRaw): ArquivoPncpData {
+  const urlOrigem = raw.uri ?? raw.url;
+  if (!urlOrigem) {
+    throw new SchemaDriftError('arquivos[].uri', 'item de /arquivos sem URL de origem');
+  }
+  const { titulo, sequencialDocumento, tipoDocumentoId, tipoDocumentoNome, statusAtivo } = raw;
+  if (typeof titulo !== 'string') {
+    throw new SchemaDriftError('arquivos[].titulo', 'item de /arquivos sem titulo');
+  }
+  if (typeof sequencialDocumento !== 'number' || sequencialDocumento <= 0) {
+    throw new SchemaDriftError('arquivos[].sequencialDocumento', 'item de /arquivos sem sequencialDocumento');
+  }
+  if (typeof tipoDocumentoId !== 'number') {
+    throw new SchemaDriftError('arquivos[].tipoDocumentoId', 'item de /arquivos sem tipoDocumentoId');
+  }
+  if (typeof tipoDocumentoNome !== 'string') {
+    throw new SchemaDriftError('arquivos[].tipoDocumentoNome', 'item de /arquivos sem tipoDocumentoNome');
+  }
+  if (typeof statusAtivo !== 'boolean') {
+    throw new SchemaDriftError('arquivos[].statusAtivo', 'item de /arquivos sem statusAtivo');
+  }
+  return { titulo, urlOrigem, sequencialDocumento, tipoDocumentoId, tipoDocumentoNome, statusAtivo };
+}
+
+/**
+ * Sniff por magic bytes — o PNCP declara `content-type: application/octet-stream` para
+ * todo download, então o mime declarado não é fonte confiável (arq/02 §6.1). DOCX é um
+ * ZIP por dentro; diferenciar os dois fica a cargo do extrator multi-formato (P-110).
+ */
+function detectarTipoMimePorMagicBytes(bytes: Uint8Array): string {
+  if (bytes.length >= 4 && bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46) {
+    return 'application/pdf';
+  }
+  if (
+    bytes.length >= 4 &&
+    bytes[0] === 0x50 && bytes[1] === 0x4b &&
+    (bytes[2] === 0x03 || bytes[2] === 0x05 || bytes[2] === 0x07) &&
+    (bytes[3] === 0x04 || bytes[3] === 0x06 || bytes[3] === 0x08)
+  ) {
+    return 'application/zip';
+  }
+  return 'application/octet-stream';
+}
+
+/** Nome real do arquivo (com extensão) do header `content-disposition`. Só existe no download. */
+function extrairNomeDoContentDisposition(header: string | null): string | null {
+  if (!header) return null;
+  const comAspas = /filename="([^"]+)"/i.exec(header);
+  if (comAspas?.[1]) return comAspas[1];
+  const rfc5987 = /filename\*=(?:UTF-8'')?([^;]+)/i.exec(header);
+  if (rfc5987?.[1]) {
+    try {
+      return decodeURIComponent(rfc5987[1].trim());
+    } catch {
+      return rfc5987[1].trim();
+    }
+  }
+  const semAspas = /filename=([^;]+)/i.exec(header);
+  if (semAspas?.[1]) return semAspas[1].trim();
+  return null;
 }

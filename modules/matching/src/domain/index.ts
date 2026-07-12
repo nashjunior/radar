@@ -16,3 +16,4 @@ export {
 export { AderenciaMatching } from './value-objects/aderencia-matching.js';
 export { FaixaValor } from './value-objects/faixa-valor.js';
 export { PalavrasChave } from './value-objects/palavras-chave.js';
+export { PrazoCritico, DIAS_ATE_PRAZO_CRITICO_PADRAO } from './value-objects/prazo-critico.js';

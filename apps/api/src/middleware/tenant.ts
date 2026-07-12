@@ -1,5 +1,5 @@
 /**
- * Middleware de autenticação e derivação de tenant.
+ * Middleware de autenticação e resolução de organização.
  *
  * Suporta dois modos (gated por AUTH_MODE):
  *   - cognito (padrão): valida JWT OIDC contra JWKS do Amazon Cognito (P-08).
@@ -10,12 +10,15 @@
  * aceitar requests) — nunca aceita token de dev em prod.
  *
  * Invariante AB3: no modo cognito, somente token_use=id é aceito. O front envia
- * id_token (contém custom:tenantId); access_token não carrega a claim.
+ * id_token (contém custom:tenantId quando presente); access_token não carrega a claim.
  *
- * Invariante RBAC (P-52, docs/14 §6): o `sub` do token verificado é extraído
- * como `usuarioId` — identidade do usuário para o PermissaoRepository. Papel
- * e escopo de clienteFinalId NUNCA vêm do token (são dado de domínio de
- * Identidade & Organização, resolvidos na borda por autorizacao.ts).
+ * RAD-283/RAD-285 (docs/14 §6): a claim de tenant DEIXOU de ser pré-condição da
+ * sessão — ela é imutável e só populável na criação do usuário no Cognito, então
+ * uma conta de self-signup nunca a carrega. `autenticarMiddleware` agora só exige
+ * `sub` (identidade verificada); `tenantClaimId` é opcional e vira cross-check em
+ * `exigirOrganizacaoMiddleware`, nunca fonte de verdade. Papel e `tenantId` são
+ * dado de domínio de Identidade & Organização, lidos por `PermissaoRepository`
+ * chaveado pelo `sub` — nunca do token (P-52).
  *
  * Refs: A08 §3 (Cognito como IdP), A08 §5 (topologia), docs/05 §4, docs/14 §6, P-08, P-91, P-52.
  */
@@ -24,13 +27,20 @@ import { createMiddleware } from 'hono/factory';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { createSecretKey } from 'node:crypto';
 import type { JWTPayload, JWTVerifyGetKey } from 'jose';
-import { TenantId } from '@radar/kernel';
-import { UsuarioId } from '@radar/identidade';
+import { TenantId, AcessoNegadoError } from '@radar/kernel';
+import { UsuarioId, SemOrganizacaoError } from '@radar/identidade';
+import type { ContextoAutorizacaoDTO, ResolverContextoAutorizacaoUseCase } from '@radar/identidade';
 
 declare module 'hono' {
   interface ContextVariableMap {
+    /** Resolvido pelo NOSSO banco (`ResolverContextoAutorizacaoUseCase`) — nunca do token. Setado por `exigirOrganizacaoMiddleware`. */
     tenantId: ReturnType<typeof TenantId>;
     usuarioId: UsuarioId;
+    /** `custom:tenantId` do token, só quando presente (contas de `AdminCreateUser`) — cross-check opcional, nunca fonte de verdade. */
+    tenantClaimId: ReturnType<typeof TenantId> | null;
+    /** Claim `email` do id_token, quando presente — usado só no onboarding (`POST /api/organizacoes`), nunca persistido além do Tenant/KYC. */
+    usuarioEmail: string | null;
+    contextoAutorizacao: ContextoAutorizacaoDTO;
   }
 }
 
@@ -73,6 +83,10 @@ export interface CognitoMiddlewareOpts {
 /**
  * Fábrica do middleware de autenticação. Recebe configuração explícita para
  * permitir testes unitários com chaves locais sem chamadas de rede.
+ *
+ * Só verifica identidade (`sub`) — resolução de organização é
+ * `exigirOrganizacaoMiddleware`, uma etapa separada (RAD-285): `GET /api/me` e
+ * `POST /api/organizacoes` usam SÓ este middleware, isentos de tenant.
  */
 export function criarAutenticarMiddleware(opts: CognitoMiddlewareOpts) {
   return createMiddleware(async (c, next) => {
@@ -115,18 +129,62 @@ export function criarAutenticarMiddleware(opts: CognitoMiddlewareOpts) {
     }
 
     const claim = payload[opts.tenantClaim];
-    if (typeof claim !== 'string' || claim.trim() === '') {
-      return c.json(
-        { code: 'TENANT_AUSENTE_NO_TOKEN', mensagem: 'Claim de tenant ausente no token.' },
-        403,
-      );
-    }
+    const tenantClaimId = typeof claim === 'string' && claim.trim() !== '' ? TenantId(claim.trim()) : null;
 
-    c.set('tenantId', TenantId(claim.trim()));
+    const email = payload['email'];
+
     c.set('usuarioId', UsuarioId(sub.trim()));
+    c.set('tenantClaimId', tenantClaimId);
+    c.set('usuarioEmail', typeof email === 'string' && email.trim() !== '' ? email.trim() : null);
     await next();
   });
 }
+
+export interface ExigirOrganizacaoDeps {
+  resolverContexto: ResolverContextoAutorizacaoUseCase;
+}
+
+/**
+ * Resolve `tenantId`/papel/`clienteFinalIds` via `PermissaoRepository`, chaveado
+ * pelo `sub` verificado (RAD-283/RAD-285, docs/14 §6). Monta DEPOIS de
+ * `autenticarMiddleware`, em toda rota de negócio — nunca em `/api/me` ou
+ * `/api/organizacoes` (isentas de tenant). Cacheia `contextoAutorizacao` no
+ * Context da requisição — `autorizar(recurso, acao)` reaproveita sem nova consulta.
+ *
+ * Sem atribuição para o `sub` não é 403 cego: é o estado "sem organização"
+ * (`SEM_ORGANIZACAO`) que direciona o front ao onboarding. Divergência entre
+ * `tenantClaimId` (quando presente, contas `AdminCreateUser`) e o registro é
+ * `ACESSO_NEGADO`.
+ */
+export function criarExigirOrganizacaoMiddleware(deps: ExigirOrganizacaoDeps) {
+  return createMiddleware(async (c, next) => {
+    const signal = c.req.raw.signal;
+
+    try {
+      const contexto = await deps.resolverContexto.executar(
+        { usuarioId: c.get('usuarioId'), tenantClaim: c.get('tenantClaimId') },
+        signal,
+      );
+      c.set('tenantId', contexto.tenantId);
+      c.set('contextoAutorizacao', contexto);
+    } catch (err) {
+      if (err instanceof SemOrganizacaoError) {
+        return c.json(
+          { code: 'SEM_ORGANIZACAO', mensagem: 'Usuário autenticado sem organização provisionada.' },
+          403,
+        );
+      }
+      if (err instanceof AcessoNegadoError) {
+        return c.json({ code: 'ACESSO_NEGADO', mensagem: 'Acesso negado.' }, 403);
+      }
+      throw err;
+    }
+
+    await next();
+  });
+}
+
+export type ExigirOrganizacaoMiddleware = ReturnType<typeof criarExigirOrganizacaoMiddleware>;
 
 // ---------------------------------------------------------------------------
 // Instância padrão — configurada via process.env no startup.
@@ -141,7 +199,7 @@ const clientId = process.env['COGNITO_CLIENT_ID'] ?? '';
 const issuer = `https://cognito-idp.${region}.amazonaws.com/${userPoolId}`;
 
 // JWKS carregado e cacheado lazily pelo jose (RFC 7517) — apenas no modo cognito.
-const JWKS =
+const JWKS: JWTVerifyGetKey | null =
   authMode !== 'dev'
     ? createRemoteJWKSet(new URL(`${issuer}/.well-known/jwks.json`))
     : null;

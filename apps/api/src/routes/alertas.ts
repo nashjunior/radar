@@ -19,16 +19,19 @@ import { responderErro } from '../errors.js';
 import { autenticarMiddleware } from '../middleware/tenant.js';
 import { rateLimitPorTenantMiddleware } from '../security.js';
 import type { AutorizarMiddleware } from '../middleware/autorizacao.js';
+import type { ExigirOrganizacaoMiddleware } from '../middleware/tenant.js';
 
 export interface AlertasContainer {
   consultarAlertas: ConsultarAlertasTenantUseCase;
   autorizar: AutorizarMiddleware;
+  exigirOrganizacao: ExigirOrganizacaoMiddleware;
 }
 
 export function criarAlertasRouter(container: AlertasContainer): Hono {
   const router = new Hono();
 
   router.use('/*', autenticarMiddleware);
+  router.use('/*', container.exigirOrganizacao);
   router.use('/*', rateLimitPorTenantMiddleware);
 
   // GET / — US-05 ConsultarAlertasTenant — RBAC: ALERTA ler

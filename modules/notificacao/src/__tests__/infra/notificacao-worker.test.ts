@@ -9,6 +9,7 @@ const MSG = {
   tenantId: 'tenant-001',
   clienteFinalId: 'cliente-001',
   alertaGeradoEm: '2026-07-10T12:00:00.000Z',
+  imediato: true,
 };
 const noop = new AbortController().signal;
 
@@ -93,5 +94,15 @@ describe('NotificacaoWorker', () => {
 
     const [, signal] = (uc.executar as ReturnType<typeof vi.fn>).mock.calls[0]!;
     expect(signal).toBe(ac.signal);
+  });
+
+  it('repassa msg.imediato ao input do use case sem recalcular (RAD-313)', async () => {
+    const uc = makeUC('ok');
+    const worker = new NotificacaoWorker(uc, makeDlq());
+
+    await worker.processar({ ...MSG, imediato: false }, noop);
+
+    const [input] = (uc.executar as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    expect(input).toEqual(expect.objectContaining({ imediato: false }));
   });
 });

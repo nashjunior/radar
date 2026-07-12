@@ -113,6 +113,7 @@ export class ExtrairEditalUseCase {
         outputTokens: uso.outputTokens,
         cacheReadInputTokens: uso.cacheReadInputTokens,
         cacheCreationInputTokens: uso.cacheCreationInputTokens,
+        coorteTrial: false, // pré-extração GLOBAL (P-45): sem tenant, nunca é coorte trial
         custoUsd: calcularCustoUsd(uso),
         ocorridoEm: new Date(),
       }),

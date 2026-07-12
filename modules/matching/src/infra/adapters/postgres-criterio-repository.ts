@@ -21,12 +21,11 @@ export class PostgresCriterioRepository implements CriterioRepository {
     const campos = await cifrarCampos(criterio, this.crypto, signal);
     await this.db.query(
       `INSERT INTO criterio_monitoramento
-         (id, tenant_id, cliente_final_id, ramo_cnae, regiao_uf,
+         (id, tenant_id, cliente_final_id, regiao_uf,
           faixa_valor_min, faixa_valor_max, faixa_valor_min_cripto, faixa_valor_max_cripto,
           palavras_chave, ativo)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
        ON CONFLICT (id) DO UPDATE SET
-         ramo_cnae      = EXCLUDED.ramo_cnae,
          regiao_uf      = EXCLUDED.regiao_uf,
          faixa_valor_min = EXCLUDED.faixa_valor_min,
          faixa_valor_max = EXCLUDED.faixa_valor_max,
@@ -38,7 +37,6 @@ export class PostgresCriterioRepository implements CriterioRepository {
         criterio.id,
         criterio.tenantId,
         criterio.clienteFinalId,
-        campos.ramoCnae,
         campos.regiaoUf,
         null,
         null,
@@ -87,7 +85,6 @@ interface Row {
   id: string;
   tenant_id: string;
   cliente_final_id: string;
-  ramo_cnae: string | null;
   regiao_uf: string | null;
   faixa_valor_min: number | null;
   faixa_valor_max: number | null;
@@ -102,9 +99,6 @@ async function rowToCriterio(
   crypto: FieldCryptoProvider,
   signal: AbortSignal,
 ): Promise<CriterioDeMonitoramento> {
-  const ramoCnae = row.ramo_cnae
-    ? await crypto.decifrarTexto(row.ramo_cnae, contexto(row, 'ramo_cnae'), signal)
-    : undefined;
   const regiaoUf = row.regiao_uf
     ? await crypto.decifrarTexto(row.regiao_uf, contexto(row, 'regiao_uf'), signal)
     : undefined;
@@ -136,7 +130,6 @@ async function rowToCriterio(
     id: CriterioId(row.id),
     tenantId: TenantId(row.tenant_id),
     clienteFinalId: ClienteFinalId(row.cliente_final_id),
-    ramoCnae,
     regiaoUf,
     faixaValor:
       faixaValorMin !== null || faixaValorMax !== null
@@ -152,7 +145,6 @@ async function cifrarCampos(
   crypto: FieldCryptoProvider,
   signal: AbortSignal,
 ): Promise<{
-  ramoCnae: string | null;
   regiaoUf: string | null;
   faixaValorMin: string | null;
   faixaValorMax: string | null;
@@ -164,9 +156,6 @@ async function cifrarCampos(
     cliente_final_id: criterio.clienteFinalId,
   };
   return {
-    ramoCnae: criterio.ramoCnae
-      ? await crypto.cifrarTexto(criterio.ramoCnae, contexto(row, 'ramo_cnae'), signal)
-      : null,
     regiaoUf: criterio.regiaoUf
       ? await crypto.cifrarTexto(criterio.regiaoUf, contexto(row, 'regiao_uf'), signal)
       : null,

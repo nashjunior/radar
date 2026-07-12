@@ -9,6 +9,8 @@ interface AlertaGeradoMsg {
   clienteFinalId: string;
   /** `occurredAt` (ISO-8601) do envelope da mensagem `alerta.gerado` (A18 §5). */
   alertaGeradoEm: string;
+  /** Decidido pelo Matching (`Alerta.imediato`, P-81) — Notificação consome, não recalcula (RAD-313). */
+  imediato: boolean;
 }
 
 interface DlqClient {
@@ -34,6 +36,7 @@ export class NotificacaoWorker {
           tenantId: TenantId(msg.tenantId),
           clienteFinalId: ClienteFinalId(msg.clienteFinalId),
           alertaGeradoEm: new Date(msg.alertaGeradoEm),
+          imediato: msg.imediato,
         },
         signal,
       );

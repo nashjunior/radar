@@ -30,6 +30,7 @@ describe('RAD-310 — payload de fila sob o cap do SQS', () => {
       orgaoUf: 'SP',
       valorEstimado: 999_999_999.99,
       dataPublicacao: new Date('2026-07-01T00:00:00.000Z'),
+      prazoProposta: new Date('2026-08-01T00:00:00.000Z'),
       proveniencia: {
         fonte: 'PNCP — Consulta Pública, art. 174 Lei 14.133/2021',
         baseLegal: 'Lei 14.133/2021, art. 174 c/c LAI (Lei 12.527/2011)',

@@ -6,5 +6,6 @@ export * from './use-cases/consultar-alertas-tenant.js';
 export * from './use-cases/consultar-criterios-tenant.js';
 export * from './use-cases/consultar-metricas-matching.js';
 export * from './use-cases/definir-criterio-monitoramento.js';
+export * from './use-cases/reconciliar-prazo-critico.js';
 export * from './use-cases/registrar-abertura-alerta.js';
 export * from './use-cases/registrar-feedback-alerta.js';

@@ -21,6 +21,15 @@ export interface CriarRegistroUsoLlmProps {
   /** USD — moeda de cobrança do provedor (P-66); conversão a BRL é do relatório/leitura, nunca do fato gravado (risco de câmbio, docs/09 §6.4). */
   readonly custoUsd: number;
   readonly ocorridoEm: Date;
+  /**
+   * `true` quando a assinatura do tenant estava em `trial` no momento da SOLICITAÇÃO (RAD-271,
+   * P-109 L1) — resolvido no BFF (a rota já consulta a assinatura no gate de cota) e carregado
+   * pelo payload de `triagem.solicitada` até aqui; a Triagem nunca lê a tabela `assinatura` da
+   * Cobrança (P-96, ACL). Sempre `false` sem tenant (pré-extração global, P-45): sem tenant não há
+   * coorte a classificar. Dimensão nova em `UsoLlmLedger.gastoUsdNaJanela` — sem ela um Sybil de N
+   * contas trial estoura o orçamento GLOBAL e derruba a IA dos pagantes (A04 §6, bulkhead P-41).
+   */
+  readonly coorteTrial: boolean;
 }
 
 /**
@@ -49,10 +58,14 @@ export class RegistroUsoLlm {
     readonly cacheCreationInputTokens: number,
     readonly custoUsd: number,
     readonly ocorridoEm: Date,
+    readonly coorteTrial: boolean,
   ) {}
 
   static criar(props: CriarRegistroUsoLlmProps): RegistroUsoLlm {
     if (props.modelo.trim().length === 0) throw new UsoLlmInvalidoError('modelo ausente');
+    if (props.coorteTrial && props.tenantId === null) {
+      throw new UsoLlmInvalidoError('coorteTrial requer tenantId — sem tenant não há coorte a classificar');
+    }
     const numericos: ReadonlyArray<readonly [string, number]> = [
       ['inputTokens', props.inputTokens],
       ['outputTokens', props.outputTokens],
@@ -77,6 +90,7 @@ export class RegistroUsoLlm {
       props.cacheCreationInputTokens,
       props.custoUsd,
       props.ocorridoEm,
+      props.coorteTrial,
     );
   }
 }

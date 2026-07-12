@@ -7,9 +7,16 @@
  * real — nenhum teste aqui bate na API ao vivo. Os 5 mismatches corrigidos por RAD-198 são cobertos
  * por asserção direta (URL/verbo batido e campo mapeado), não só por não lançar.
  */
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PncpHttpGateway } from '../../infra/adapters/pncp-http-gateway.js';
 import { SchemaDriftError } from '../../domain/errors/index.js';
+
+// downloadArquivo passa pela SsrfGuard, que resolve DNS — mock evita rede real em teste.
+vi.mock('node:dns/promises', () => ({
+  lookup: vi.fn(),
+}));
+import { lookup } from 'node:dns/promises';
+const mockLookup = lookup as ReturnType<typeof vi.fn>;
 
 const noop = new AbortController().signal;
 
@@ -108,12 +115,24 @@ describe('PncpHttpGateway', () => {
   });
 
   describe('buscarArquivos — base /api/pncp, não /api/consulta (RAD-198 item 4)', () => {
-    it('chama a API de DADOS (/api/pncp), não a de consulta', async () => {
-      const fetchMock = vi.fn().mockResolvedValue(
-        mockFetchResponse([
-          { uri: 'https://pncp.gov.br/pncp-api/v1/arquivos/abc.pdf', titulo: 'Edital.pdf' },
-        ]),
-      );
+    /** Item real do payload confirmado por chamada real (RAD-274, arq/02 §6.1). */
+    const ARQUIVO_REAL = {
+      uri: 'https://pncp.gov.br/pncp-api/v1/orgaos/80881915000192/compras/2026/44/arquivos/1',
+      url: 'https://pncp.gov.br/pncp-api/v1/orgaos/80881915000192/compras/2026/44/arquivos/1',
+      statusAtivo: true,
+      dataPublicacaoPncp: '2026-07-01T00:00:05',
+      cnpj: '80881915000192',
+      anoCompra: 2026,
+      sequencialCompra: 44,
+      sequencialDocumento: 1,
+      titulo: 'Parecer Contábil PREGAO',
+      tipoDocumentoId: 7,
+      tipoDocumentoDescricao: 'Estudo Técnico Preliminar',
+      tipoDocumentoNome: 'Estudo Técnico Preliminar',
+    };
+
+    it('chama a API de DADOS (/api/pncp), não a de consulta, e mapeia o contrato real', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(mockFetchResponse([ARQUIVO_REAL]));
       vi.stubGlobal('fetch', fetchMock);
 
       const gateway = new PncpHttpGateway();
@@ -125,14 +144,132 @@ describe('PncpHttpGateway', () => {
       );
       expect(urlChamada).not.toContain('/api/consulta');
       expect(arquivos).toHaveLength(1);
-      expect(arquivos[0]?.nome).toBe('Edital.pdf');
-      expect(arquivos[0]?.urlOrigem).toBe('https://pncp.gov.br/pncp-api/v1/arquivos/abc.pdf');
+      expect(arquivos[0]).toEqual({
+        titulo: 'Parecer Contábil PREGAO',
+        urlOrigem: ARQUIVO_REAL.uri,
+        sequencialDocumento: 1,
+        tipoDocumentoId: 7,
+        tipoDocumentoNome: 'Estudo Técnico Preliminar',
+        statusAtivo: true,
+      });
+    });
+
+    it('não expõe tamanhoBytes/tipoMime — esses campos não existem em /arquivos', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(mockFetchResponse([ARQUIVO_REAL])));
+      const gateway = new PncpHttpGateway();
+      const [arquivo] = await gateway.buscarArquivos(IDENTIFICADOR, noop);
+      expect(arquivo).not.toHaveProperty('tamanhoBytes');
+      expect(arquivo).not.toHaveProperty('tipoMime');
+      expect(arquivo).not.toHaveProperty('nome');
+    });
+
+    it('filtra documento com statusAtivo:false (revogado/substituído)', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          mockFetchResponse([ARQUIVO_REAL, { ...ARQUIVO_REAL, sequencialDocumento: 2, statusAtivo: false }]),
+        ),
+      );
+      const gateway = new PncpHttpGateway();
+      const arquivos = await gateway.buscarArquivos(IDENTIFICADOR, noop);
+      expect(arquivos).toHaveLength(1);
+      expect(arquivos[0]?.sequencialDocumento).toBe(1);
     });
 
     it('lança SchemaDriftError quando a resposta não é um array', async () => {
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue(mockFetchResponse({ erro: 'formato inesperado' })));
       const gateway = new PncpHttpGateway();
       await expect(gateway.buscarArquivos(IDENTIFICADOR, noop)).rejects.toThrow(SchemaDriftError);
+    });
+
+    it.each(['sequencialDocumento', 'tipoDocumentoId', 'tipoDocumentoNome', 'statusAtivo', 'titulo'])(
+      'lança SchemaDriftError quando falta o campo obrigatório %s',
+      async (campo) => {
+        const { [campo]: _omitido, ...semCampo } = ARQUIVO_REAL as Record<string, unknown>;
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(mockFetchResponse([semCampo])));
+        const gateway = new PncpHttpGateway();
+        await expect(gateway.buscarArquivos(IDENTIFICADOR, noop)).rejects.toThrow(SchemaDriftError);
+      },
+    );
+
+    it.each([0, -1])(
+      'lança SchemaDriftError quando sequencialDocumento é %i (identidade inválida, RAD-291/RAD-299)',
+      async (sequencialDocumento) => {
+        vi.stubGlobal(
+          'fetch',
+          vi.fn().mockResolvedValue(mockFetchResponse([{ ...ARQUIVO_REAL, sequencialDocumento }])),
+        );
+        const gateway = new PncpHttpGateway();
+        await expect(gateway.buscarArquivos(IDENTIFICADOR, noop)).rejects.toThrow(SchemaDriftError);
+      },
+    );
+  });
+
+  describe('downloadArquivo — metadados só existem no download (arq/02 §6.1)', () => {
+    beforeEach(() => {
+      mockLookup.mockResolvedValue({ address: '200.10.20.30', family: 4 });
+    });
+
+    function mockDownloadResponse(body: Uint8Array, headers: Record<string, string> = {}): Response {
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: (nome: string) => headers[nome.toLowerCase()] ?? null } as Headers,
+        arrayBuffer: () => Promise.resolve(body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength)),
+      } as unknown as Response;
+    }
+
+    it('resolve tipoMime por magic bytes (PDF), ignorando o content-type octet-stream do PNCP', async () => {
+      const pdfBytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34]);
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(mockDownloadResponse(pdfBytes)));
+      const gateway = new PncpHttpGateway();
+      const baixado = await gateway.downloadArquivo('https://pncp.gov.br/arquivo', noop);
+      expect(baixado.tipoMime).toBe('application/pdf');
+    });
+
+    it('resolve tipoMime por magic bytes (ZIP/DOCX)', async () => {
+      const zipBytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x00, 0x00]);
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(mockDownloadResponse(zipBytes)));
+      const gateway = new PncpHttpGateway();
+      const baixado = await gateway.downloadArquivo('https://pncp.gov.br/arquivo', noop);
+      expect(baixado.tipoMime).toBe('application/zip');
+    });
+
+    it('resolve tamanhoBytes do content-length', async () => {
+      const bytes = new Uint8Array([1, 2, 3, 4, 5]);
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(mockDownloadResponse(bytes, { 'content-length': '5' })));
+      const gateway = new PncpHttpGateway();
+      const baixado = await gateway.downloadArquivo('https://pncp.gov.br/arquivo', noop);
+      expect(baixado.tamanhoBytes).toBe(5);
+    });
+
+    it('cai para o tamanho do corpo quando content-length está ausente', async () => {
+      const bytes = new Uint8Array([1, 2, 3]);
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(mockDownloadResponse(bytes)));
+      const gateway = new PncpHttpGateway();
+      const baixado = await gateway.downloadArquivo('https://pncp.gov.br/arquivo', noop);
+      expect(baixado.tamanhoBytes).toBe(3);
+    });
+
+    it('extrai o nome real do content-disposition', async () => {
+      const bytes = new Uint8Array([1, 2, 3]);
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          mockDownloadResponse(bytes, { 'content-disposition': 'attachment; filename="edital-044.pdf"' }),
+        ),
+      );
+      const gateway = new PncpHttpGateway();
+      const baixado = await gateway.downloadArquivo('https://pncp.gov.br/arquivo', noop);
+      expect(baixado.nomeArquivo).toBe('edital-044.pdf');
+    });
+
+    it('nomeArquivo é null quando content-disposition está ausente', async () => {
+      const bytes = new Uint8Array([1, 2, 3]);
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(mockDownloadResponse(bytes)));
+      const gateway = new PncpHttpGateway();
+      const baixado = await gateway.downloadArquivo('https://pncp.gov.br/arquivo', noop);
+      expect(baixado.nomeArquivo).toBeNull();
     });
   });
 });

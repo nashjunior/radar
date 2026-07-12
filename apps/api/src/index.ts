@@ -7,6 +7,7 @@ import { serve } from '@hono/node-server';
 import { criarApp } from './server.js';
 import { resolverConfigAuth } from './middleware/tenant.js';
 import { iniciarWorkers } from './workers.js';
+import { iniciarSchedulerIngestao } from './scheduler.js';
 import { redigirParaLog } from './logging.js';
 
 // Valida config de auth antes de aceitar requests — fail-closed (P-91).
@@ -22,6 +23,7 @@ const port = Number(process.env['PORT'] ?? '3000');
 const app = criarApp();
 
 const workersHandle = iniciarWorkers();
+const schedulerHandle = iniciarSchedulerIngestao();
 
 const server = serve({ fetch: app.fetch, port }, (info) => {
   console.log(`[API] Servidor iniciado em http://localhost:${info.port}`);
@@ -29,5 +31,6 @@ const server = serve({ fetch: app.fetch, port }, (info) => {
 
 process.on('SIGTERM', () => {
   workersHandle?.teardown();
+  schedulerHandle?.teardown();
   server.close();
 });

@@ -9,7 +9,7 @@ export {
   PipelineCicloConcluido,
 } from './events.js';
 export type { DomainEvent, EstadoBreaker } from './events.js';
-export { editalParaDTO } from './mappers.js';
+export { editalParaDTO, OBJETO_MAX_CHARS, truncarObjetoParaFila } from './mappers.js';
 export type {
   AnexoEditalRepository,
   AnexoMetadados,

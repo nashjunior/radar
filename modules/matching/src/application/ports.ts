@@ -19,6 +19,10 @@ export interface AlertaParaGravarPayload {
   readonly criterioId: CriterioId;
   readonly editalId: EditalId;
   readonly aderencia: number;
+  /** Instante de publicação do edital no PNCP (`EditalParaMatchingDTO.dataPublicacao`) — origem do SLO de frescor (A18 §5). */
+  readonly editalPublicadoEm: Date;
+  /** Aderência alta OU prazo crítico (P-81, A18 §5.1) — já decidido no domínio ao enfileirar. */
+  readonly prazoCritico: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -128,6 +132,63 @@ export interface MetricaMatchingRepository {
     janelaEmDias: number,
     signal: AbortSignal,
   ): Promise<{ ativados: number; total: number }>;
+}
+
+// ---------------------------------------------------------------------------
+// Projeção de alertas devidos (P-114, A18 §5.2) — perna de escrita do read-model
+// ---------------------------------------------------------------------------
+
+/** Uma linha da obrigação de alerta assumida pelo casamento edital × critério ativo. */
+export interface AlertaDevidoRegistro {
+  readonly alertaId: AlertaId;
+  readonly editalId: EditalId;
+  readonly criterioId: CriterioId;
+  readonly tenantId: TenantId;
+  /** Prazo final de propostas do edital — a janela é avaliada na reconciliação, não aqui. */
+  readonly prazoProposta: Date;
+}
+
+/**
+ * Grava a projeção de alertas devidos — INSERT direto no schema do Matching, NUNCA pela
+ * FilaAlertaPort: o observador não pode andar no transporte do observado, ou o registro
+ * do devido some junto com o alerta que ele existe para denunciar (A18 §5.2).
+ * `registrarLote` é chamado UMA vez por edital com todos os casamentos daquele edital —
+ * um único INSERT multi-linha, não fan-out de N writes (P-41/RAD-179 não é violado).
+ *
+ * `marcarNotificado` é a perna `coberto` (irmã de `registrarLote`, perna `elegivel`): o
+ * assinante local de `notificacao.enviada` chama-a chaveado por `alertaId` — NUNCA por
+ * `alertaGeradoEm`, que é opcional e ausente no caminho digest (A18 §5.2). Idempotente por
+ * construção (reentrega de mensagem não pode corromper o instante já marcado) e no-op
+ * silencioso quando não há linha para o `alertaId` (edital sem `prazoProposta`).
+ */
+export interface AlertaDevidoRepository {
+  registrarLote(devidos: AlertaDevidoRegistro[], signal: AbortSignal): Promise<void>;
+  marcarNotificado(alertaId: AlertaId, notificadoEm: Date, signal: AbortSignal): Promise<void>;
+}
+
+/**
+ * Cobertura do SLO de error budget zero "0 alertas de prazo crítico perdidos"
+ * (docs/08 §4.1, A18 §5.1/§5.2). Somente leitura. `perdido` é um NÃO-evento — não existe
+ * incremento de contador para "alerta que deveria ter sido gerado e não foi"; a única
+ * forma de enxergá-lo é varrendo os alertas DEVIDOS e comparando contra a cobertura real.
+ *
+ * P-114: a fonte é um read-model LOCAL no schema do Matching (projeção de alertas devidos,
+ * gravada por `CasarEditalComCriteriosUseCase`; `notificado_em` marcado por assinante local
+ * de `notificacao.enviada`). NADA de leitura cross-schema — o precedente citado na issue
+ * original (`PostgresEditalMatchingView`) foi REVOGADO por P-97/RAD-95.
+ */
+export interface CoberturaPrazoCriticoRepository {
+  /**
+   * Para a janela de prazo crítico [agora, agora + diasLimiar]: `elegivel` é o nº de alertas
+   * DEVIDOS (casamento edital × critério ativo) cujo `prazoProposta` cai na janela — não o nº
+   * de editais avaliados: edital que não casou com critério algum não deve alerta e contá-lo
+   * deixaria `perdido` cronicamente > 0 (A18 §5.2). `coberto` é o subconjunto com o alerta
+   * efetivamente persistido E `notificacao.enviada` recebida.
+   */
+  contar(
+    params: { agora: Date; diasLimiar: number },
+    signal: AbortSignal,
+  ): Promise<{ elegivel: number; coberto: number }>;
 }
 
 // ---------------------------------------------------------------------------

@@ -39,6 +39,10 @@ const HTTP_STATUS_BY_CODE = new Map<string, ContentfulStatusCode>([
   ['ANEXO_NAO_LIMPO', 422],
   ['CANAL_INVALIDO', 422],
   ['PREFERENCIA_INVALIDA', 422],
+  ['CNPJ_INVALIDO', 422],
+
+  ['ORGANIZACAO_JA_EXISTE', 409],
+  ['USUARIO_JA_VINCULADO', 409],
 
   ['SAIDA_LLM_INVALIDA', 502],
 
@@ -55,6 +59,7 @@ const MENSAGEM_POR_STATUS = new Map<ContentfulStatusCode, string>([
   [400, 'Requisição inválida.'],
   [403, 'Acesso negado.'],
   [404, 'Recurso não encontrado.'],
+  [409, 'Conflito com o estado atual do recurso.'],
   [422, 'Erro de domínio.'],
   [502, 'Falha temporária de integração.'],
   [503, 'Serviço temporariamente indisponível.'],

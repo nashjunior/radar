@@ -23,7 +23,7 @@ import type {
 } from '@radar/triagem';
 import { CobrancaWorker } from '@radar/cobranca/infra';
 import { ConfirmarUsoUseCase, LiberarReservaUseCase } from '@radar/cobranca';
-import type { AssinaturaRepository } from '@radar/cobranca';
+import type { AssinaturaRepository, IniciarTrialUseCase } from '@radar/cobranca';
 
 const signal = new AbortController().signal;
 
@@ -32,6 +32,7 @@ const MSG: TriagemSolicitadaMsg = {
   usuarioId: 'cliente-259',
   editalId: 'edital-259',
   perfilId: 'perfil-259',
+  coorteTrial: false,
 };
 
 describe('RAD-259 — DLQ de triagem.solicitada fecha o loop com CobrancaWorker (RAD-255→RAD-247)', () => {
@@ -56,7 +57,9 @@ describe('RAD-259 — DLQ de triagem.solicitada fecha o loop com CobrancaWorker 
     const liberarReservaUC = new LiberarReservaUseCase(assinaturas);
     const confirmarUsoUC = { executar: vi.fn() } as unknown as ConfirmarUsoUseCase;
     const dlqCobranca = { encaminhar: vi.fn().mockResolvedValue(undefined) };
-    const cobrancaWorker = new CobrancaWorker(confirmarUsoUC, liberarReservaUC, dlqCobranca);
+    // Não exercitado neste caminho (RAD-259 é só triagem.falhou) — stub p/ satisfazer o construtor (RAD-285).
+    const iniciarTrialUC = { executar: vi.fn() } as unknown as IniciarTrialUseCase;
+    const cobrancaWorker = new CobrancaWorker(confirmarUsoUC, liberarReservaUC, dlqCobranca, iniciarTrialUC);
 
     // Ponte de teste: rotea `triagem.falhou` publicado pela Triagem para o consumidor da Cobrança
     // — o papel que o event bus (SQS) cumprirá quando provisionado (P-96 §4).

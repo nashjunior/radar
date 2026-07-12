@@ -49,36 +49,9 @@ export class Frequencia {
   get ehImediata(): boolean { return this.tipo === 'IMEDIATA'; }
 }
 
-// domain/value-objects/criticidade.ts
-// Decisão de Produto P-81 / docs/11 §4: um alerta é CRÍTICO se o prazo final estiver
-// em até 3 dias corridos OU se a aderência for ≥ 0,80. Crítico entrega imediatamente,
-// independentemente da preferência de frequência do usuário.
-export interface LimiaresCriticidade {
-  diasAtePrazo: number;   // padrão 3 (dias corridos)
-  aderencia: number;      // padrão 0,80
-}
-
-export const LIMIARES_CRITICIDADE_PADRAO: LimiaresCriticidade = {
-  diasAtePrazo: 3,
-  aderencia: 0.8,
-};
-
-export class Criticidade {
-  private constructor(readonly urgente: boolean) {}
-
-  /** Os limiares são injetados (config — ver §11) e têm o padrão de P-81 como default. */
-  static deAlerta(
-    alerta: { diasAtePrazo: number; aderencia: number },
-    limiares: LimiaresCriticidade = LIMIARES_CRITICIDADE_PADRAO,
-  ): Criticidade {
-    const prazoCurto = alerta.diasAtePrazo <= limiares.diasAtePrazo;
-    const altaAderencia = alerta.aderencia >= limiares.aderencia;
-    return new Criticidade(prazoCurto || altaAderencia);   // OU, não E
-  }
-
-  get exigeImediato(): boolean { return this.urgente; }
-}
 ```
+
+**Criticidade (P-81) não tem VO próprio aqui.** Um alerta é CRÍTICO se o prazo final estiver em até 3 dias corridos OU se a aderência for ≥ 0,80 — mas essa conta é feita **uma única vez**, no domínio do Matching (`Alerta.imediato`, A15 §2 — `AderenciaMatching.ehAlta` OU `PrazoCritico.critico`), e chega pronta no evento `alerta.gerado` (`payload.imediato`, §9). Notificação **consome** o fato em `NotificarAlertaInput.imediato` (§4.2); não recalcula. Até a RAD-313, existia aqui um VO `Criticidade` com limiares injetados que refazia a mesma conta a partir de `diasAtePrazo`/`aderencia` lidos por cross-context read — duas fontes de verdade independentes do mesmo P-81, achado do guardiao-arquitetura na RAD-303. Removido.
 
 > **Linguagem ubíqua — "alta aderência":** o corte ≥ 0,80 é o de P-81 e vale para o alerta do Matching (A15 §2, `AderenciaMatching.ehAlta`). **Não** é a `Aderencia` da Triagem, cujo `ehAlta ≥ 0,7` sustenta a sugestão go/no-go (docs/10 §4, A17 §2) e é outro conceito (docs/13 §3, P-45) — não unificar os dois.
 
@@ -251,6 +224,8 @@ export interface NotificarAlertaInput {
   alertaId: AlertaId;
   clienteFinalId: ClienteFinalId;
   tenantId: TenantId;
+  /** Aderência alta OU prazo crítico (P-81) — decidido no Matching, publicado em `alerta.gerado`. */
+  imediato: boolean;
 }
 
 export class NotificarAlertaUseCase {
@@ -262,7 +237,6 @@ export class NotificarAlertaUseCase {
     private readonly eventos: EventPublisher,
     private readonly ids: IdProvider,
     private readonly clienteFinalGateway: ClienteFinalGateway,
-    private readonly limiares: LimiaresCriticidade = LIMIARES_CRITICIDADE_PADRAO,
   ) {}
 
   async executar(input: NotificarAlertaInput, signal: AbortSignal): Promise<void> {
@@ -279,13 +253,13 @@ export class NotificarAlertaUseCase {
     ]);
     if (!alerta) return;  // edital removido/reconciliado — descarta silenciosamente
 
-    // P-81: crítico = prazo ≤ 3 dias corridos OU aderência ≥ 0,80
-    const criticidade = Criticidade.deAlerta(alerta, this.limiares);
-
+    // P-81: crítico = prazo ≤ 3 dias corridos OU aderência ≥ 0,80 — decidido no Matching
+    // (Alerta.imediato), não recalculado aqui (RAD-313). `input.imediato` já vem pronto.
+    //
     // Crítico OU preferência imediata → entrega agora; caso contrário, aguarda o digest.
     // Ao NÃO registrar Notificacao aqui, o alerta continua pendente e o digest o pega depois;
     // ao registrar (caminho crítico), ele sai do pool do digest — logo não consome cap (P-81).
-    if (!criticidade.exigeImediato && preferencia?.frequencia !== 'IMEDIATA') return;
+    if (!input.imediato && preferencia?.frequencia !== 'IMEDIATA') return;
 
     const canal = Canal.criar(preferencia?.canais[0] ?? 'EMAIL');
     let notificacao = Notificacao.criar({
@@ -514,7 +488,7 @@ Os números abaixo são **decisão de Produto fechada** (Produto/Priscila, 2026-
 
 | Mecanismo | Onde é implementado | Detalhe |
 |-----------|---------------------|---------|
-| **Entrega imediata por criticidade** | `Criticidade` (VO) + `NotificarAlertaUseCase` | Crítico = prazo final em até **3 dias corridos** **OU** aderência **≥ 0,80** (condição **OU**). Entrega na hora, mesmo com preferência de digest |
+| **Entrega imediata por criticidade** | `Alerta.imediato` (Matching, A15 §2) + `NotificarAlertaUseCase` | Crítico = prazo final em até **3 dias corridos** **OU** aderência **≥ 0,80** (condição **OU**), decidido no Matching e consumido via `input.imediato` (RAD-313). Entrega na hora, mesmo com preferência de digest |
 | **Cap por frequência** | `EnviarDigestUseCase` (`CAP_DIGEST`) | **10** itens no digest diário, **25** no semanal, por usuário |
 | **Crítico fora do cap** | `AlertaRepository.pendentesDigest` | O crítico já entregue tem `NOTIFICACAO ENVIADA` e é excluído do pool do digest — não espera o digest nem ocupa vaga no cap |
 | **Ordenação** | `pendentesDigest` (borda) + contrato do §3 | Prazo mais próximo primeiro; empate desempata por aderência desc |
@@ -553,6 +527,7 @@ interface AlertaGeradoMsg {
   alertaId: string;
   tenantId: string;
   clienteFinalId: string;   // Matching conhece o dono do critério, não o destinatário
+  imediato: boolean;        // Alerta.imediato do Matching (P-81) — repassado, não recalculado (RAD-313)
 }
 
 export class NotificacaoWorker {
@@ -563,6 +538,7 @@ export class NotificacaoWorker {
           alertaId: AlertaId(msg.alertaId),
           tenantId: TenantId(msg.tenantId),
           clienteFinalId: ClienteFinalId(msg.clienteFinalId),
+          imediato: msg.imediato,
         },
         signal,
       );
@@ -585,12 +561,13 @@ export class NotificacaoWorker {
 - **AbortSignal em todo use case (arquitetura/10, §1):** todos os 3 use cases propagam o sinal.
 - **Port sem tecnologia no nome (arquitetura/10, §8):** `Notifier`, `PreferenciaRepository` — nunca `SesClient` ou `PostgresRepository`.
 - **Idempotência na fila (arquitetura/03, §3):** `jaNotificado` antes de enviar.
-- **Anti-fadiga e digest (docs/11, §4 · P-81):** criticidade por prazo **ou** aderência no `NotificarAlertaUseCase`; cap por frequência (10/25), ordenação prazo→aderência e excedente agrupado no `EnviarDigestUseCase` — com a ordem de preservação sob pressão do §7.
+- **Anti-fadiga e digest (docs/11, §4 · P-81):** criticidade por prazo **ou** aderência decidida no Matching (`Alerta.imediato`) e consumida via `input.imediato` no `NotificarAlertaUseCase` (RAD-313, sem recálculo cross-contexto); cap por frequência (10/25), ordenação prazo→aderência e excedente agrupado no `EnviarDigestUseCase` — com a ordem de preservação sob pressão do §7.
 
 ## 11. Pendências
 
 - Provedor de e-mail transacional (SES vs. SendGrid vs. Postmark) e DPA de sub-operador (docs/02, §9). `[A VALIDAR]` → P-80
-- **P-81 — RESOLVIDO (Produto/Priscila, 2026-07-11, RAD-200; alinhamento arquitetural: RAD-206).** Criticidade = prazo ≤ 3 dias corridos **ou** aderência ≥ 0,80; digest padrão diário, configurável para semanal; cap 10 (diário) / 25 (semanal) por usuário; excedente agrupado por critério/órgão; crítico não espera digest nem conta no cap. Refletido nos §§2.1, 3, 4.2, 4.3, 7, 10. Os quatro números (3 dias, 0,80, 10, 25) são **config injetada** (`LimiaresCriticidade`, `CAP_DIGEST`), não literais espalhados: mudança de política é mudança de configuração, não de código. Delta de implementação em `modules/notificacao` (+ `AderenciaMatching.ehAlta` em `modules/matching`) → Eng, **RAD-207**.
+- **P-81 — RESOLVIDO (Produto/Priscila, 2026-07-11, RAD-200; alinhamento arquitetural: RAD-206).** Criticidade = prazo ≤ 3 dias corridos **ou** aderência ≥ 0,80; digest padrão diário, configurável para semanal; cap 10 (diário) / 25 (semanal) por usuário; excedente agrupado por critério/órgão; crítico não espera digest nem conta no cap. Refletido nos §§2.1, 3, 4.2, 4.3, 7, 10. Cap por frequência (10, 25) é **config injetada** (`CAP_DIGEST`) no composition root de Notificação.
+- **RAD-313 — correção de onde o P-81 é implementado (segue achado do guardiao-arquitetura na RAD-303).** A RAD-207 havia implementado os limiares de criticidade (3 dias, 0,80) **duas vezes**: no Matching (`AderenciaMatching.ehAlta`) e, redundantemente, em Notificação (`LimiaresCriticidade` + VO `Criticidade`, lendo `diasAtePrazo`/`aderencia` crus via cross-context read) — duas fontes de verdade independentes do mesmo P-81, risco de drift se o limiar mudasse num lugar e não no outro. A partir da RAD-313, o cálculo vive **só** no Matching (`Alerta.imediato`, A15 §2); Notificação consome o fato publicado em `alerta.gerado` (`payload.imediato`) via `NotificarAlertaInput.imediato` — não tem mais VO nem config própria para isso. `AlertaRepository.porId` (cross-context read) permanece, mas só para montar o corpo do e-mail (objeto/órgão/prazo/aderência) — desenhar o read-model de produção dessa leitura é outra frente, cruzada com `revisar-ddd` (Published Language vs. Open-Host).
 - Canal webhook e in-app: escopo e adapter no *Next*. `[A VALIDAR]` → P-82
 - **Contrato `alerta.gerado` alinhado (2026-07-05):** o evento carrega `clienteFinalId` (escopo), **não** `usuarioId`/`emailDestinatario` — o destinatário (usuário + e-mail) é **resolvido aqui** a partir de `clienteFinalId` via leitura cross-contexto de Identidade/preferência (Gateway; MVP 1:1, P-25). O worker (§9) e o `NotificarAlertaUseCase` precisam refletir isso — ver contrato autoritativo em [arquitetura/03](03-desenho-da-solucao.md), §3 e RAD-24.
 

@@ -6,7 +6,7 @@ import {
   CriterioDeMonitoramento,
   PalavrasChave,
 } from '@radar/matching';
-import { PostgresCriterioRepository, PostgresAlertaRepository, CryptoAlertaIdProvider, FilaAlertaMemoria, ConsumidorAlertaBatch } from '@radar/matching/infra';
+import { PostgresCriterioRepository, PostgresAlertaRepository, CryptoAlertaIdProvider, FilaAlertaMemoria, AlertaDevidoRepositoryMemoria, ConsumidorAlertaBatch } from '@radar/matching/infra';
 import type {
   AlertaDTO,
   CriterioComScore,
@@ -40,6 +40,7 @@ const editalPadrao: EditalParaMatchingDTO = {
   cnae: null,
   valorEstimado: null,
   dataPublicacao: new Date('2024-01-10T10:00:00Z'),
+  prazoProposta: new Date('2024-02-01T10:00:00Z'),
 };
 
 const ctx: Ctx = {
@@ -141,7 +142,10 @@ async function buildUseCase(): Promise<{
   const alertaIds: AlertaIdProvider = new CryptoAlertaIdProvider();
 
   // P-41/RAD-179: enfileira alertas para ConsumidorAlertaBatch — não persiste diretamente
-  const uc = new CasarEditalComCriteriosUseCase(criterioRepo, fila, alertaIds);
+  const clock = { agora: () => new Date() };
+  // P-114: projeção de alertas devidos — memória no BDD, sem tabela alerta_devido no schema efêmero.
+  const alertaDevidos = new AlertaDevidoRepositoryMemoria();
+  const uc = new CasarEditalComCriteriosUseCase(criterioRepo, fila, alertaIds, clock, alertaDevidos);
   return { uc, fila, alertaRepo };
 }
 

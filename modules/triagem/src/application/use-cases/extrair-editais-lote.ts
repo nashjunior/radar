@@ -103,6 +103,7 @@ export class ExtrairEditaisEmLoteUseCase {
           outputTokens: resultado.uso.outputTokens,
           cacheReadInputTokens: resultado.uso.cacheReadInputTokens,
           cacheCreationInputTokens: resultado.uso.cacheCreationInputTokens,
+          coorteTrial: false, // pré-extração GLOBAL (P-45): sem tenant, nunca é coorte trial
           custoUsd: calcularCustoUsd(resultado.uso),
           ocorridoEm: new Date(),
         }),

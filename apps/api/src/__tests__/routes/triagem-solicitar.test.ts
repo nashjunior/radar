@@ -31,6 +31,7 @@ import type {
   RegistrarFeedbackTriagemUseCase,
   SolicitarTriagemUseCase,
 } from '@radar/triagem';
+import type { ConsultarAssinaturaUseCase } from '@radar/cobranca';
 
 const EDITAL = 'edital-abc';
 const SIGNAL = new AbortController().signal;
@@ -41,6 +42,10 @@ const autorizarPermissivo: TriagemContainer['autorizar'] =
 
 // Gate de cota (P-107 (3)) real é coberto em entitlement-middleware.test.ts — aqui sempre-permite
 const entitlementPermissivo: TriagemContainer['entitlement'] =
+  (async (_c: Context, next: () => Promise<void>) => next()) as MiddlewareHandler;
+
+// Resolução de organização (RAD-285) real é coberta em exigir-organizacao-middleware.test.ts — aqui sempre-permite
+const exigirOrganizacaoPermissivo: TriagemContainer['exigirOrganizacao'] =
   (async (_c: Context, next: () => Promise<void>) => next()) as MiddlewareHandler;
 
 function buildApp(overrides?: Partial<TriagemContainer>): Hono {
@@ -56,6 +61,11 @@ function buildApp(overrides?: Partial<TriagemContainer>): Hono {
     },
     autorizar: autorizarPermissivo,
     entitlement: entitlementPermissivo,
+    exigirOrganizacao: exigirOrganizacaoPermissivo,
+    // RAD-271: default 'ativa' — coorteTrial só é exercitado no teste dedicado abaixo.
+    consultarAssinatura: {
+      executar: vi.fn().mockResolvedValue({ estado: 'ativa', plano: { codigo: 'pro', cota: 100 }, usoReservado: 0, usoConfirmado: 0, diasRestantes: null }),
+    } as unknown as ConsultarAssinaturaUseCase,
     ...overrides,
   };
 
@@ -106,6 +116,32 @@ describe('POST /api/triagem/:editalId/solicitar', () => {
     expect(executar).toHaveBeenCalledOnce();
     const [, signal] = executar.mock.calls[0]!;
     expect(signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('RAD-271: resolve coorteTrial: true quando a assinatura do tenant está em trial', async () => {
+    const executar = vi.fn().mockResolvedValue(undefined);
+    const app = buildApp({
+      solicitarTriagem: { executar } as unknown as SolicitarTriagemUseCase,
+      consultarAssinatura: {
+        executar: vi.fn().mockResolvedValue({ estado: 'trial', plano: { codigo: 'starter', cota: 5 }, usoReservado: 0, usoConfirmado: 0, diasRestantes: 10 }),
+      } as unknown as ConsultarAssinaturaUseCase,
+    });
+
+    await app.request(`/api/triagem/${EDITAL}/solicitar`, { method: 'POST' });
+
+    expect(executar).toHaveBeenCalledOnce();
+    const [input] = executar.mock.calls[0]!;
+    expect(input.coorteTrial).toBe(true);
+  });
+
+  it('RAD-271: resolve coorteTrial: false quando a assinatura está ativa (pagante)', async () => {
+    const executar = vi.fn().mockResolvedValue(undefined);
+    const app = buildApp({ solicitarTriagem: { executar } as unknown as SolicitarTriagemUseCase });
+
+    await app.request(`/api/triagem/${EDITAL}/solicitar`, { method: 'POST' });
+
+    const [input] = executar.mock.calls[0]!;
+    expect(input.coorteTrial).toBe(false);
   });
 
   it('idempotência: re-solicitar retorna 202 (use case não duplica — invariante do use case)', async () => {

@@ -44,6 +44,7 @@ import { autenticarMiddleware } from '../middleware/tenant.js';
 import { rateLimitPorTenantMiddleware } from '../security.js';
 import type { PerfilAtivoGateway } from '../ports/perfil-ativo-gateway.js';
 import type { AutorizarMiddleware } from '../middleware/autorizacao.js';
+import type { ExigirOrganizacaoMiddleware } from '../middleware/tenant.js';
 
 export interface MatchingContainer {
   definirCriterio: DefinirCriterioMonitoramentoUseCase;
@@ -52,10 +53,10 @@ export interface MatchingContainer {
   consultarMetricas: ConsultarMetricasMatchingUseCase;
   perfilAtivo: PerfilAtivoGateway;
   autorizar: AutorizarMiddleware;
+  exigirOrganizacao: ExigirOrganizacaoMiddleware;
 }
 
 const DefinirCriterioBodySchema = z.object({
-  ramoCnae: z.string().optional(),
   regiaoUf: z.string().optional(),
   faixaValorCodigo: z.string().optional(),
   palavrasChave: z.array(z.string()).optional(),
@@ -69,6 +70,7 @@ export function criarMatchingRouter(container: MatchingContainer): Hono {
   const router = new Hono();
 
   router.use('/*', autenticarMiddleware);
+  router.use('/*', container.exigirOrganizacao);
   router.use('/*', rateLimitPorTenantMiddleware);
 
   // POST /criterios — US-04 DefinirCritérioMonitoramento — RBAC: CRITERIO_MONITORAMENTO criar
@@ -76,7 +78,8 @@ export function criarMatchingRouter(container: MatchingContainer): Hono {
     const tenantId = c.get('tenantId');
     const signal = c.req.raw.signal;
 
-    const parsed = DefinirCriterioBodySchema.safeParse(await c.req.json().catch(() => null));
+    const body = await c.req.json().catch(() => null);
+    const parsed = DefinirCriterioBodySchema.safeParse(removerRamoCnaeLegado(body));
     if (!parsed.success) {
       return c.json({ code: 'BODY_INVALIDO', mensagem: 'Corpo da requisição inválido.' }, 400);
     }
@@ -86,12 +89,11 @@ export function criarMatchingRouter(container: MatchingContainer): Hono {
       if (!perfil) return c.json({}, 404);
 
       const { clienteFinalId } = perfil;
-      const { ramoCnae, regiaoUf, faixaValorCodigo, palavrasChave } = parsed.data;
+      const { regiaoUf, faixaValorCodigo, palavrasChave } = parsed.data;
       const resultado = await container.definirCriterio.executar(
         {
           tenantId,
           clienteFinalId,
-          ...(ramoCnae !== undefined ? { ramoCnae } : {}),
           ...(regiaoUf !== undefined ? { regiaoUf } : {}),
           ...(faixaValorCodigo !== undefined ? { faixaValorCodigo } : {}),
           ...(palavrasChave !== undefined ? { palavrasChave } : {}),
@@ -173,4 +175,10 @@ export function criarMatchingRouter(container: MatchingContainer): Hono {
   });
 
   return router;
+}
+
+function removerRamoCnaeLegado(body: unknown): unknown {
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) return body;
+  const { ramoCnae: _ramoCnae, ...restante } = body as Record<string, unknown>;
+  return restante;
 }

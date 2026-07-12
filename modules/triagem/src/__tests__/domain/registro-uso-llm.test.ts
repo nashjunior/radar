@@ -18,6 +18,7 @@ function props(over: Partial<Parameters<typeof RegistroUsoLlm.criar>[0]> = {}) {
     cacheCreationInputTokens: 0,
     custoUsd: 0.006,
     ocorridoEm: new Date('2026-07-11T00:00:00Z'),
+    coorteTrial: false,
     ...over,
   };
 }
@@ -68,5 +69,18 @@ describe('RegistroUsoLlm (RAD-230, P-20/P-38)', () => {
         props({ inputTokens: 0, outputTokens: 0, cacheReadInputTokens: 0, cacheCreationInputTokens: 0, custoUsd: 0 }),
       ),
     ).not.toThrow();
+  });
+
+  describe('coorteTrial (RAD-271, P-109 L1 — bulkhead de orçamento do coorte trial)', () => {
+    it('aceita coorteTrial: true quando tenantId presente (cache-miss de tenant em trial)', () => {
+      const registro = RegistroUsoLlm.criar(props({ tenantId: TenantId('t1'), coorteTrial: true }));
+      expect(registro.coorteTrial).toBe(true);
+    });
+
+    it('rejeita coorteTrial: true sem tenantId — sem tenant não há coorte a classificar', () => {
+      expect(() => RegistroUsoLlm.criar(props({ tenantId: null, coorteTrial: true }))).toThrow(
+        UsoLlmInvalidoError,
+      );
+    });
   });
 });

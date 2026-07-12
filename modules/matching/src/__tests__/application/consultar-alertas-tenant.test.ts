@@ -3,6 +3,7 @@ import { AlertaId, ClienteFinalId, CriterioId, EditalId, TenantId } from '@radar
 import { ConsultarAlertasTenantUseCase } from '../../application/use-cases/consultar-alertas-tenant.js';
 import { Alerta } from '../../domain/entities/alerta.js';
 import { AderenciaMatching } from '../../domain/value-objects/aderencia-matching.js';
+import { PrazoCritico } from '../../domain/value-objects/prazo-critico.js';
 import type { AlertaRepository, EditalCatalogoPort } from '../../application/ports.js';
 
 const TENANT = TenantId('t-001');
@@ -16,6 +17,7 @@ function makeAlerta(id: string): Alerta {
     criterioId: CriterioId('crit-001'),
     editalId: EditalId('edital-001'),
     aderencia: AderenciaMatching.criar(0.8),
+    prazoCritico: PrazoCritico.reconstituir(false),
     relevante: null,
   });
 }

@@ -16,30 +16,15 @@ import { UsuarioId } from '../../domain/entities/notificacao.js';
 
 const noop = new AbortController().signal;
 
-const alertaUrgente: AlertaResumoDTO = {
+const alertaResumo: AlertaResumoDTO = {
   id: AlertaId('alerta-001'),
   objeto: 'Serviços de TI',
   orgao: 'Prefeitura SP',
   uf: 'SP',
   prazoProposta: new Date('2026-07-08'),
   aderencia: 0.8,
-  diasAtePrazo: 3,
   criterioId: CriterioId('criterio-001'),
   criterioNome: 'Serviços de TI',
-};
-
-/** Nem prazo (10 > 3) nem aderência (0.5 < 0.8) cruzam o limiar — não crítico sob a condição OU. */
-const alertaNaoUrgente: AlertaResumoDTO = {
-  ...alertaUrgente,
-  diasAtePrazo: 10,
-  aderencia: 0.5,
-};
-
-/** Prazo longe mas aderência alta — crítico só por causa da condição OU (P-81). */
-const alertaAltaAderenciaSemUrgencia: AlertaResumoDTO = {
-  ...alertaUrgente,
-  diasAtePrazo: 30,
-  aderencia: 0.8,
 };
 
 function criarDeps(overrides?: {
@@ -50,7 +35,7 @@ function criarDeps(overrides?: {
 }) {
   const {
     jaNotificado = false,
-    alerta = alertaUrgente,
+    alerta = alertaResumo,
     enviarOk = true,
     clienteFinalEncontrado = true,
   } = overrides ?? {};
@@ -88,6 +73,7 @@ const inputBase = {
   clienteFinalId: ClienteFinalId('cliente-001'),
   tenantId: TenantId('tenant-a'),
   alertaGeradoEm: new Date('2026-07-10T12:00:00.000Z'),
+  imediato: true,
 };
 
 function criarUC(deps: ReturnType<typeof criarDeps>): NotificarAlertaUseCase {
@@ -132,10 +118,10 @@ describe('NotificarAlertaUseCase', () => {
     });
   });
 
-  describe('roteamento por urgência', () => {
-    it('entrega imediatamente quando alerta é urgente (diasAtePrazo ≤ 3)', async () => {
-      const deps = criarDeps({ alerta: alertaUrgente });
-      await criarUC(deps).executar(inputBase, noop);
+  describe('roteamento por criticidade (P-81): imediato publicado pelo Matching, não recalculado (RAD-313)', () => {
+    it('entrega imediatamente quando input.imediato = true (Alerta.imediato do Matching)', async () => {
+      const deps = criarDeps();
+      await criarUC(deps).executar({ ...inputBase, imediato: true }, noop);
 
       expect(deps.notifier.enviar).toHaveBeenCalledOnce();
       expect(deps.eventos.publicar).toHaveBeenCalledOnce();
@@ -146,47 +132,21 @@ describe('NotificarAlertaUseCase', () => {
       expect(evento.payload.alertaGeradoEm).toBe(inputBase.alertaGeradoEm);
     });
 
-    it('não entrega imediatamente quando alerta não é urgente e preferência não é IMEDIATA', async () => {
-      const deps = criarDeps({ alerta: alertaNaoUrgente });
-      await criarUC(deps).executar(inputBase, noop);
+    it('não entrega imediatamente quando input.imediato = false e preferência não é IMEDIATA', async () => {
+      const deps = criarDeps();
+      await criarUC(deps).executar({ ...inputBase, imediato: false }, noop);
 
       expect(deps.notifier.enviar).not.toHaveBeenCalled();
     });
 
-    it('entrega imediatamente quando preferência é IMEDIATA mesmo sem urgência', async () => {
-      const deps = criarDeps({ alerta: alertaNaoUrgente });
+    it('entrega imediatamente quando preferência é IMEDIATA mesmo com input.imediato = false', async () => {
+      const deps = criarDeps();
       (deps.preferencias.porUsuario as ReturnType<typeof vi.fn>).mockResolvedValue({
         usuarioId: UsuarioId('usuario-001'),
         canais: ['EMAIL'],
         frequencia: 'IMEDIATA',
       });
-      await criarUC(deps).executar(inputBase, noop);
-
-      expect(deps.notifier.enviar).toHaveBeenCalledOnce();
-    });
-  });
-
-  describe('criticidade OU (P-81): prazo curto OU aderência alta', () => {
-    it('entrega imediatamente quando aderência é alta mesmo com prazo longe (condição OU)', async () => {
-      const deps = criarDeps({ alerta: alertaAltaAderenciaSemUrgencia });
-      await criarUC(deps).executar(inputBase, noop);
-
-      expect(deps.notifier.enviar).toHaveBeenCalledOnce();
-    });
-
-    it('respeita limiares customizados injetados no construtor', async () => {
-      const deps = criarDeps({ alerta: alertaNaoUrgente }); // 10 dias, aderência 0.5
-      const uc = new NotificarAlertaUseCase(
-        deps.alertas,
-        deps.preferencias,
-        deps.notificacoes,
-        deps.notifier,
-        deps.eventos,
-        deps.ids,
-        deps.clienteFinalGateway,
-        { diasAtePrazo: 15, aderencia: 0.9 }, // limiar de prazo mais frouxo que o padrão
-      );
-      await uc.executar(inputBase, noop);
+      await criarUC(deps).executar({ ...inputBase, imediato: false }, noop);
 
       expect(deps.notifier.enviar).toHaveBeenCalledOnce();
     });

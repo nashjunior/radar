@@ -34,6 +34,13 @@ export interface PoliticaOrcamento {
   readonly orcamentoGlobalUsd: number;
   /** Teto USD acumulado na janela, POR TENANT. `null` = sem teto por tenant (ex.: pré-extração global, sem tenant a checar). */
   readonly orcamentoPorTenantUsd: number | null;
+  /**
+   * Teto USD acumulado na janela, escopo COORTE TRIAL — soma de todos os tenants em `trial`
+   * (RAD-271, P-109 L1). Bulkhead: isola o dano de um Sybil de N contas trial do orçamento GLOBAL,
+   * que os pagantes também consomem — sem este teto o farmador de editais frios derruba a IA de
+   * quem paga (A04 §6). `null` = sem teto próprio do trial (checa só global/tenant, como hoje).
+   */
+  readonly orcamentoCoorteTrialUsd: number | null;
 }
 
 /** Default sem teto — kill-switch inerte até Negócio+Eng ratificarem o número (docs/98 P-20). */
@@ -41,6 +48,7 @@ export const POLITICA_ORCAMENTO_PADRAO: PoliticaOrcamento = {
   janelaHoras: 24,
   orcamentoGlobalUsd: Number.POSITIVE_INFINITY,
   orcamentoPorTenantUsd: null,
+  orcamentoCoorteTrialUsd: null,
 };
 
 /**

@@ -36,7 +36,7 @@ resource "aws_cognito_user_pool" "this" {
   }
 
   admin_create_user_config {
-    allow_admin_create_user_only = true
+    allow_admin_create_user_only = !var.permitir_auto_cadastro
   }
 
   password_policy {
@@ -124,4 +124,14 @@ locals {
     managed_by  = "terraform"
     component   = "identity"
   }
+}
+
+# A associação mora aqui (a ACL é 1:N — pode proteger outras bordas), mas o handle vem do
+# stack: `waf` e `identity` são primitivas irmãs, nenhuma importa a outra (A08 §1). Mesmo
+# padrão do módulo `edge`. RAD-273/P-109 L2: rate-limit + CAPTCHA no fluxo de signup.
+resource "aws_wafv2_web_acl_association" "this" {
+  count = var.web_acl_ref == null ? 0 : 1
+
+  resource_arn = aws_cognito_user_pool.this.arn
+  web_acl_arn  = var.web_acl_ref
 }

@@ -14,6 +14,7 @@ describe('SqsEventPublisher — propagação do AbortSignal (último hop)', () =
     usuarioId: ClienteFinalId('cliente-1'),
     editalId: EditalId('edital-1'),
     perfilId: PerfilId('perfil-1'),
+    coorteTrial: false,
   });
 
   it('repassa o signal ao sendMessage (não descarta no adapter)', async () => {

@@ -2,6 +2,7 @@ import type { ClienteFinalId, TenantId } from '@radar/kernel';
 import type { PerfilHabilitacao } from '../domain/perfil-habilitacao.js';
 import type { AtribuicaoPapel, UsuarioId } from '../domain/atribuicao-papel.js';
 import type { Papel } from '../domain/papel.js';
+import type { Tenant } from '../domain/tenant.js';
 
 export interface PerfilDTO {
   readonly id: string;
@@ -37,5 +38,22 @@ export function contextoAutorizacaoParaDTO(a: AtribuicaoPapel): ContextoAutoriza
     tenantId: a.tenantId,
     papel: a.papel,
     clienteFinalIds: [...a.clienteFinalIds],
+  };
+}
+
+/** Resultado do provisionamento (docs/14 §6, RAD-285) — o que o BFF devolve ao onboarding. */
+export interface OrganizacaoDTO {
+  readonly tenantId: TenantId;
+  readonly cnpj: string;
+  readonly razaoSocial: string;
+  readonly papel: Papel;
+}
+
+export function organizacaoParaDTO(tenant: Tenant, papel: Papel): OrganizacaoDTO {
+  return {
+    tenantId: tenant.id,
+    cnpj: tenant.cnpj.valor,
+    razaoSocial: tenant.razaoSocial,
+    papel,
   };
 }

@@ -55,18 +55,32 @@ describe('POLITICA_ORCAMENTO_PADRAO — default sem teto (docs/98 P-20 [A VALIDA
   it('orcamentoPorTenantUsd é null — sem teto por tenant no default', () => {
     expect(POLITICA_ORCAMENTO_PADRAO.orcamentoPorTenantUsd).toBeNull();
   });
+
+  it('orcamentoCoorteTrialUsd é null — sem teto do coorte trial no default (RAD-271)', () => {
+    expect(POLITICA_ORCAMENTO_PADRAO.orcamentoCoorteTrialUsd).toBeNull();
+  });
 });
 
 describe('inicioDaJanela — janela deslizante (rolling)', () => {
   it('subtrai janelaHoras convertida em ms a partir de `agora`', () => {
-    const politica: PoliticaOrcamento = { janelaHoras: 24, orcamentoGlobalUsd: 10, orcamentoPorTenantUsd: null };
+    const politica: PoliticaOrcamento = {
+      janelaHoras: 24,
+      orcamentoGlobalUsd: 10,
+      orcamentoPorTenantUsd: null,
+      orcamentoCoorteTrialUsd: null,
+    };
     const agora = new Date('2026-07-11T12:00:00Z');
     const desde = inicioDaJanela(agora, politica);
     expect(desde.toISOString()).toBe('2026-07-10T12:00:00.000Z');
   });
 
   it('janela de 1 hora', () => {
-    const politica: PoliticaOrcamento = { janelaHoras: 1, orcamentoGlobalUsd: 10, orcamentoPorTenantUsd: null };
+    const politica: PoliticaOrcamento = {
+      janelaHoras: 1,
+      orcamentoGlobalUsd: 10,
+      orcamentoPorTenantUsd: null,
+      orcamentoCoorteTrialUsd: null,
+    };
     const agora = new Date('2026-07-11T12:00:00Z');
     expect(inicioDaJanela(agora, politica).toISOString()).toBe('2026-07-11T11:00:00.000Z');
   });

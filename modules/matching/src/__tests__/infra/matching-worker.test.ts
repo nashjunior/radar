@@ -11,6 +11,7 @@ const MSG_BASE = {
   valorEstimado: 100000,
   dataPublicacao: '2024-01-10T10:00:00Z',
   modalidadeCodigo: 6,
+  prazoProposta: null,
 };
 const noop = new AbortController().signal;
 
@@ -81,6 +82,27 @@ describe('MatchingWorker', () => {
 
       const [{ edital }] = vi.mocked(uc.executar).mock.calls[0]! as unknown as [{ edital: EditalParaMatchingDTO }];
       expect('proveniencia' in edital).toBe(false);
+    });
+
+    it('mapeia prazoProposta de ISO string para Date (RAD-303, A18 §5.1)', async () => {
+      const uc = makeUC('ok');
+      const worker = new MatchingWorker(uc, makeDlq());
+      const msgComPrazo = { ...MSG_BASE, prazoProposta: '2026-07-14T00:00:00.000Z' };
+
+      await worker.processar(msgComPrazo, noop);
+
+      const [{ edital }] = vi.mocked(uc.executar).mock.calls[0]! as unknown as [{ edital: EditalParaMatchingDTO }];
+      expect(edital.prazoProposta).toEqual(new Date('2026-07-14T00:00:00.000Z'));
+    });
+
+    it('mapeia prazoProposta nulo para null', async () => {
+      const uc = makeUC('ok');
+      const worker = new MatchingWorker(uc, makeDlq());
+
+      await worker.processar(MSG_BASE, noop);
+
+      const [{ edital }] = vi.mocked(uc.executar).mock.calls[0]! as unknown as [{ edital: EditalParaMatchingDTO }];
+      expect(edital.prazoProposta).toBeNull();
     });
   });
 

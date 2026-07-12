@@ -10,6 +10,12 @@ export interface SolicitarTriagemInput {
   clienteFinalId: ClienteFinalId;
   /** Resolvido na borda (BFF/composition root); MVP single-tenant `global` (P-25). Branded fora da application (ids.ts). */
   tenantId: TenantId;
+  /**
+   * Assinatura do tenant em `trial` no momento da solicitação (RAD-271, P-109 L1) — o BFF já
+   * consultou a Cobrança no gate de cota (`entitlement`) antes de chegar aqui. Repassado no evento
+   * para o worker de `TriarEditalUseCase` aplicar o bulkhead de orçamento do coorte trial.
+   */
+  coorteTrial: boolean;
 }
 
 /**
@@ -50,6 +56,7 @@ export class SolicitarTriagemUseCase {
         usuarioId: input.clienteFinalId,
         editalId: input.editalId,
         perfilId: input.perfilId,
+        coorteTrial: input.coorteTrial,
       }),
       signal,
     );

@@ -25,6 +25,7 @@
 | 15 | [Matching & Alerta — Clean Architecture](15-matching-e-alerta.md) | Bounded context Monitoramento & Matching: domain (CritérioDeMonitoramento, Alerta, FaixaValor, AderenciaMatching), application (ports, use cases s2), infra, fan-out, eventos |
 | 16 | [Plano de Verificação e Gold Set](16-plano-de-verificacao-e-gold-set.md) | Especificações de caso de teste (A04–A09: estresse, banco, segurança, elasticidade), gold set do Módulo 2 de IA (composição, rotulagem, avaliação), gate de release consolidado |
 | 17 | [Análise & Triagem — Clean Architecture](17-analise-e-triagem.md) | Bounded context Análise & Triagem (core): domain (ExtracaoEdital cacheável, Triagem por perfil, Confianca/Aderencia/Citacao), application (ports, use cases s3), infra (AnthropicLlmGateway com defesa de injeção A11), política de confiança/fallback, seam do gold set, eventos |
+| 18 | [Observabilidade: Correlação, Métricas e SLOs Medidos](18-observabilidade.md) | Transversal (P-111): correlação W3C no envelope de evento (não no `DomainEvent`), log JSON preservando a redação, métrica derivada de evento (EMF), mapeamento SLO↔métrica de docs/08 §4.1 e o reconciliador que torna mensurável o error budget zero do alerta de prazo crítico |
 
 ## Como esta pasta se conecta à documentação de produto
 

@@ -1,10 +1,5 @@
 import type { AlertaId, ClienteFinalId, TenantId } from '@radar/kernel';
 import { Canal } from '../../domain/value-objects/canal.js';
-import {
-  Criticidade,
-  LIMIARES_CRITICIDADE_PADRAO,
-  type LimiaresCriticidade,
-} from '../../domain/value-objects/criticidade.js';
 import { EnvioNotificacaoService } from '../services/envio-notificacao-service.js';
 import type {
   AlertaRepository,
@@ -22,6 +17,11 @@ export interface NotificarAlertaInput {
   tenantId: TenantId;
   /** `occurredAt` do `alerta.gerado` consumido — origem do SLO de entrega imediata (A18 §5). */
   alertaGeradoEm: Date;
+  /**
+   * Aderência alta OU prazo crítico (P-81) — decidido no domínio do Matching (`Alerta.imediato`)
+   * e publicado no `alerta.gerado`. Notificação consome o fato, não recalcula (RAD-313).
+   */
+  imediato: boolean;
 }
 
 /**
@@ -42,7 +42,6 @@ export class NotificarAlertaUseCase {
     eventos: EventPublisher,
     ids: IdProvider,
     private readonly clienteFinalGateway: ClienteFinalGateway,
-    private readonly limiares: LimiaresCriticidade = LIMIARES_CRITICIDADE_PADRAO,
   ) {
     this.envio = new EnvioNotificacaoService(notificacoes, notifier, eventos, ids);
   }
@@ -60,9 +59,7 @@ export class NotificarAlertaUseCase {
 
     if (!alerta) return;
 
-    const criticidade = Criticidade.deAlerta(alerta, this.limiares);
-
-    if (!criticidade.exigeImediato && preferencia?.frequencia !== 'IMEDIATA') return;
+    if (!input.imediato && preferencia?.frequencia !== 'IMEDIATA') return;
 
     const canal = Canal.criar(preferencia?.canais[0] ?? 'EMAIL');
 

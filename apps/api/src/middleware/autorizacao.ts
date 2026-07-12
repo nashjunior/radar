@@ -18,6 +18,7 @@
 import type { Context } from 'hono';
 import { createMiddleware } from 'hono/factory';
 import { AcessoNegadoError } from '@radar/kernel';
+import { SemOrganizacaoError } from '@radar/identidade';
 import type {
   Acao,
   AutorizarAcessoUseCase,
@@ -52,7 +53,7 @@ async function resolverContextoCacheado(
   if (existente) return existente;
 
   const contexto = await deps.resolverContexto.executar(
-    { usuarioId: c.get('usuarioId'), tenantId: c.get('tenantId') },
+    { usuarioId: c.get('usuarioId'), tenantClaim: c.get('tenantClaimId') },
     signal,
   );
   c.set('contextoAutorizacao', contexto);
@@ -73,6 +74,15 @@ export function criarAutorizarMiddlewareFactory(deps: AutorizacaoDeps) {
         const contexto = await resolverContextoCacheado(deps, c, signal);
         await deps.autorizarAcesso.executar({ contexto, recurso, acao }, signal);
       } catch (err) {
+        // Defesa em profundidade: em produção `exigirOrganizacaoMiddleware` já
+        // trata SEM_ORGANIZACAO antes de chegar aqui (cache warm) — este branch
+        // só é alcançável se `autorizar()` for montado sem ele (não deve acontecer).
+        if (err instanceof SemOrganizacaoError) {
+          return c.json(
+            { code: 'SEM_ORGANIZACAO', mensagem: 'Usuário autenticado sem organização provisionada.' },
+            403,
+          );
+        }
         if (err instanceof AcessoNegadoError) {
           // tenantId NÃO vai ao log operacional/stdout (regra radar-no-critical-data-console-log,
           // docs/05 §9): o breadcrumb é só recurso+acao. O registro ESCOPADO da negação (com

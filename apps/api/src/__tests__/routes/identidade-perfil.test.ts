@@ -52,6 +52,10 @@ const perfilAtivoVazio: PerfilAtivoGateway = {
 const autorizarPermissivo: IdentidadeContainer['autorizar'] =
   () => (async (_c: Context, next: () => Promise<void>) => next()) as MiddlewareHandler;
 
+// Resolução de organização (RAD-285) real é coberta em exigir-organizacao-middleware.test.ts — aqui sempre-permite
+const exigirOrganizacaoPermissivo: IdentidadeContainer['exigirOrganizacao'] =
+  (async (_c: Context, next: () => Promise<void>) => next()) as MiddlewareHandler;
+
 function buildApp(overrides?: Partial<IdentidadeContainer>): Hono {
   const container: IdentidadeContainer = {
     consultarPerfil: {
@@ -62,6 +66,7 @@ function buildApp(overrides?: Partial<IdentidadeContainer>): Hono {
     } as unknown as GerenciarPerfilHabilitacaoUseCase,
     perfilAtivo: perfilAtivoOk,
     autorizar: autorizarPermissivo,
+    exigirOrganizacao: exigirOrganizacaoPermissivo,
     ...overrides,
   };
 

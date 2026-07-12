@@ -63,3 +63,33 @@ variable "asaas_webhook_max_body_bytes" {
   type        = number
   default     = 8192
 }
+
+# --- RAD-273: rate-limit + CAPTCHA no fluxo de criação de conta do Cognito (P-109 L2) -----
+#
+# Mesma ACL do módulo (a associação ao user pool é o `identity`, via `web_acl_ref` — mesmo
+# padrão do `edge`, A08 §1: módulo não importa módulo, composição é no stack).
+
+variable "cognito_signup_paths" {
+  description = "Paths do fluxo de criação de conta do Hosted/Managed Login do Cognito (signup + confirmação) a proteger com rate-limit/CAPTCHA. Fonte: AWS Cognito 'user pool endpoints and managed login reference'."
+  type        = list(string)
+  default = [
+    "/signup",
+    "/confirm",
+    "/confirmUser",
+    "/resendcode",
+  ]
+  validation {
+    condition     = length(var.cognito_signup_paths) >= 2
+    error_message = "cognito_signup_paths precisa de ao menos 2 paths (o or_statement do WAFv2 exige no mínimo 2 statements)."
+  }
+}
+
+variable "cognito_signup_rate_limit_per_ip" {
+  description = "Teto de requisições por IP aos paths de signup do Cognito na janela de 5 min, antes de acionar CAPTCHA (não BLOCK — falso positivo em NAT corporativo/IP compartilhado é caro, a persona central é fornecedor pequeno)."
+  type        = number
+  default     = 100
+  validation {
+    condition     = var.cognito_signup_rate_limit_per_ip >= 100
+    error_message = "cognito_signup_rate_limit_per_ip >= 100 (mínimo do WAFv2 para regra rate-based)."
+  }
+}

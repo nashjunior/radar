@@ -11,6 +11,8 @@ describe('SqsEventPublisher', () => {
     criterioId: CriterioId('criterio-001'),
     editalId: EditalId('edital-001'),
     aderencia: 0.82,
+    editalPublicadoEm: new Date('2026-07-10T12:00:00.000Z'),
+    imediato: true,
   });
 
   it('propaga AbortSignal até o cliente de fila (P-78)', async () => {

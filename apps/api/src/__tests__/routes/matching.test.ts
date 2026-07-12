@@ -46,7 +46,6 @@ const CRITERIO_DTO = {
   id: 'crit-1',
   tenantId: TENANT,
   clienteFinalId: CLIENTE,
-  ramoCnae: null,
   regiaoUf: 'SP',
   faixaValorMin: null,
   faixaValorMax: null,
@@ -74,6 +73,10 @@ const perfilAtivoNulo: PerfilAtivoGateway = {
 const autorizarPermissivo: MatchingContainer['autorizar'] =
   () => (async (_c: Context, next: () => Promise<void>) => next()) as MiddlewareHandler;
 
+// Resolução de organização (RAD-285) real é coberta em exigir-organizacao-middleware.test.ts — aqui sempre-permite
+const exigirOrganizacaoPermissivo: MatchingContainer['exigirOrganizacao'] =
+  (async (_c: Context, next: () => Promise<void>) => next()) as MiddlewareHandler;
+
 function buildApp(overrides?: Partial<MatchingContainer>): Hono {
   const container: MatchingContainer = {
     definirCriterio: {
@@ -89,6 +92,7 @@ function buildApp(overrides?: Partial<MatchingContainer>): Hono {
       executar: vi.fn().mockResolvedValue(METRICAS_DTO),
     } as unknown as ConsultarMetricasMatchingUseCase,
     perfilAtivo: perfilAtivoOk,
+    exigirOrganizacao: exigirOrganizacaoPermissivo,
     autorizar: autorizarPermissivo,
     ...overrides,
   };
@@ -144,6 +148,25 @@ describe('POST /api/matching/criterios', () => {
     );
 
     expect(res.status).toBe(400);
+  });
+
+  it('ignora ramoCnae legado sem repassar ao use case', async () => {
+    const executar = vi.fn().mockResolvedValue(CRITERIO_DTO);
+    const app = buildApp({
+      definirCriterio: { executar } as unknown as DefinirCriterioMonitoramentoUseCase,
+    });
+
+    const res = await app.request(
+      new Request(`${BASE}/criterios`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ramoCnae: '62.01', palavrasChave: ['ti'] }),
+      }),
+    );
+
+    expect(res.status).toBe(201);
+    const [input] = executar.mock.calls[0]!;
+    expect(input).not.toHaveProperty('ramoCnae');
   });
 
   it('404 quando perfilAtivo retorna null (sem perfil ativo)', async () => {

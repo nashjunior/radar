@@ -100,6 +100,9 @@ resource "aws_security_group" "worker" {
   tags = local.tags
 }
 
+
+# Mesma extração EMF do log group da API (ver compute/main.tf) — vale só quando o seam
+# serverless ligar (P-96); enquanto gated off, os workers logam no log group da API.
 resource "aws_cloudwatch_log_group" "worker" {
   for_each = var.functions
 

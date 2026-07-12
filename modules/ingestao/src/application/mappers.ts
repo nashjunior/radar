@@ -68,6 +68,7 @@ export function paraEventoEditalIngerido(edital: Edital): EditalIngerido {
     orgaoUf: edital.orgao.uf,
     valorEstimado: edital.valorEstimado?.valor ?? null,
     dataPublicacao: edital.dataPublicacao,
+    prazoProposta: edital.prazoProposta,
     proveniencia: {
       fonte: edital.proveniencia.fonte,
       baseLegal: edital.proveniencia.baseLegal,

@@ -28,13 +28,16 @@ import type { ConsultarAssinaturaUseCase, IniciarCheckoutUseCase } from '@radar/
 import { responderErro } from '../errors.js';
 import { autenticarMiddleware } from '../middleware/tenant.js';
 import { rateLimitPorTenantMiddleware } from '../security.js';
+import type { ExigirOrganizacaoMiddleware } from '../middleware/tenant.js';
 
 export interface AssinaturaContainer {
   consultarAssinatura: ConsultarAssinaturaUseCase;
+  exigirOrganizacao: ExigirOrganizacaoMiddleware;
 }
 
 export interface CheckoutContainer {
   iniciarCheckout: IniciarCheckoutUseCase;
+  exigirOrganizacao: ExigirOrganizacaoMiddleware;
 }
 
 const IniciarCheckoutBodySchema = z.object({
@@ -45,6 +48,7 @@ export function criarAssinaturaRouter(container: AssinaturaContainer): Hono {
   const router = new Hono();
 
   router.use('/*', autenticarMiddleware);
+  router.use('/*', container.exigirOrganizacao);
   router.use('/*', rateLimitPorTenantMiddleware);
 
   router.get('/', async (c) => {
@@ -66,6 +70,7 @@ export function criarCheckoutRouter(container: CheckoutContainer): Hono {
   const router = new Hono();
 
   router.use('/*', autenticarMiddleware);
+  router.use('/*', container.exigirOrganizacao);
   router.use('/*', rateLimitPorTenantMiddleware);
 
   router.post('/iniciar', async (c) => {

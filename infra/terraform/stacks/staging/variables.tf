@@ -45,6 +45,13 @@ variable "cognito_advanced_security_mode" {
   }
 }
 
+# true em staging: mesma postura de dev — self-service testado antes de prod (RAD-283/RAD-284).
+variable "cognito_permitir_auto_cadastro" {
+  description = "Habilita self-service signup no Hosted UI (P-109 L2). staging = true."
+  type        = bool
+  default     = true
+}
+
 variable "enable_serverless_workers" {
   description = "Extrai os workers p/ o tier Lambda (seam P-27). false = coabitam apps/api (P-96)."
   type        = bool

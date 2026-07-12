@@ -20,10 +20,12 @@ import { responderErro } from '../errors.js';
 import { autenticarMiddleware } from '../middleware/tenant.js';
 import { rateLimitPorTenantMiddleware } from '../security.js';
 import type { AutorizarMiddleware } from '../middleware/autorizacao.js';
+import type { ExigirOrganizacaoMiddleware } from '../middleware/tenant.js';
 
 export interface NotificacaoContainer {
   definirPreferencias: DefinirPreferenciasNotificacaoUseCase;
   autorizar: AutorizarMiddleware;
+  exigirOrganizacao: ExigirOrganizacaoMiddleware;
 }
 
 const PreferenciasBodySchema = z.object({
@@ -35,6 +37,7 @@ export function criarNotificacaoRouter(container: NotificacaoContainer): Hono {
   const router = new Hono();
 
   router.use('/*', autenticarMiddleware);
+  router.use('/*', container.exigirOrganizacao);
   router.use('/*', rateLimitPorTenantMiddleware);
 
   // PUT /preferencias — US-10 DefinirPreferenciasNotificacao — RBAC: PREFERENCIA_NOTIFICACAO editar

@@ -34,6 +34,10 @@ const BODY_VALIDO = { canais: ['EMAIL'], frequencia: 'DIARIA' };
 const autorizarPermissivo: NotificacaoContainer['autorizar'] =
   () => (async (_c: Context, next: () => Promise<void>) => next()) as MiddlewareHandler;
 
+// Resolução de organização (RAD-285) real é coberta em exigir-organizacao-middleware.test.ts — aqui sempre-permite
+const exigirOrganizacaoPermissivo: NotificacaoContainer['exigirOrganizacao'] =
+  (async (_c: Context, next: () => Promise<void>) => next()) as MiddlewareHandler;
+
 function buildApp(overrides?: Partial<NotificacaoContainer>): Hono {
   const container: NotificacaoContainer = {
     definirPreferencias: {
@@ -44,6 +48,7 @@ function buildApp(overrides?: Partial<NotificacaoContainer>): Hono {
       }),
     } as unknown as DefinirPreferenciasNotificacaoUseCase,
     autorizar: autorizarPermissivo,
+    exigirOrganizacao: exigirOrganizacaoPermissivo,
     ...overrides,
   };
 

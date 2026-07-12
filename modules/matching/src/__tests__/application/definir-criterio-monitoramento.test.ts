@@ -41,16 +41,16 @@ function criarUC(deps: ReturnType<typeof criarDeps>) {
 const inputBase = {
   tenantId: TenantId('tenant-a'),
   clienteFinalId: ClienteFinalId('cliente-001'),
-  ramoCnae: '62.01',
+  palavrasChave: ['software'],
 };
 
 describe('DefinirCriterioMonitoramentoUseCase', () => {
   describe('caminho feliz', () => {
-    it('cria e salva critério com ramo CNAE', async () => {
+    it('cria e salva critério com filtro efetivo', async () => {
       const deps = criarDeps();
       const dto = await criarUC(deps).executar(inputBase, noop);
 
-      expect(dto.ramoCnae).toBe('62.01');
+      expect(dto.palavrasChave).toEqual(['software']);
       expect(dto.ativo).toBe(true);
       expect(deps.criterios.salvar).toHaveBeenCalledOnce();
     });
@@ -157,6 +157,17 @@ describe('DefinirCriterioMonitoramentoUseCase', () => {
       expect(deps.criterios.salvar).not.toHaveBeenCalled();
       expect(deps.audit.registrar).not.toHaveBeenCalled();
       expect(deps.eventos.publicar).not.toHaveBeenCalled();
+    });
+
+    it('lança CriterioInvalidoError quando nenhum filtro efetivo é informado', async () => {
+      const deps = criarDeps();
+
+      await expect(
+        criarUC(deps).executar({
+          tenantId: TenantId('tenant-a'),
+          clienteFinalId: ClienteFinalId('cliente-001'),
+        }, noop),
+      ).rejects.toThrow(CriterioInvalidoError);
     });
   });
 });

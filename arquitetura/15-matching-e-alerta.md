@@ -172,8 +172,14 @@ export class CriterioDeMonitoramento {
     faixaValor?: FaixaValor;
     palavrasChave?: PalavrasChave;
   }): CriterioDeMonitoramento {
-    if (!params.ramoCnae && !params.palavrasChave)
-      throw new CriterioInvalidoError('critério requer ao menos ramo/CNAE ou palavras-chave');
+    // ⚠️ `ramoCnae` NÃO conta como filtro — é um filtro MORTO (docs/11 §3.1): o PNCP não
+    // publica CNAE da contratação, todo edital chega com `cnae: null`, logo um critério
+    // com ramoCnae preenchido casa com ZERO editais. Ele NÃO pode satisfazer o invariante
+    // e não deve ser escrito pelo onboarding nem pelo UC. Remoção da superfície: RAD-292.
+    if (!params.palavrasChave && !params.regiaoUf && !params.faixaValor)
+      throw new CriterioInvalidoError(
+        'critério requer ao menos um filtro efetivo: palavras-chave, UF ou faixa de valor',
+      );
     return new CriterioDeMonitoramento(
       params.id, params.tenantId, params.clienteFinalId,
       params.ramoCnae ?? null, params.regiaoUf ?? null,
@@ -473,13 +479,17 @@ export class PostgresCriterioRepository implements CriterioRepository {
   }
 
   async casarComEdital(edital: EditalParaMatchingDTO, signal?: AbortSignal): Promise<CriterioComScore[]> {
-    // Filtros estruturados + full-text (A03 §5):
+    // Filtros estruturados (A03 §5). NÃO existe filtro por ramo_cnae: o PNCP não publica
+    // CNAE da contratação (docs/11 §3.1) — filtrar por ele zera o recall. RAD-292 remove a coluna.
     //   1. WHERE ativo = true
-    //   2. AND (ramo_cnae IS NULL OR ramo_cnae = $cnae)
-    //   3. AND (regiao_uf IS NULL OR regiao_uf = $uf)
-    //   4. AND (faixa_valor_min IS NULL OR $valor >= faixa_valor_min)
-    //   5. AND (faixa_valor_max IS NULL OR $valor <= faixa_valor_max)
-    //   6. ORDER BY ts_rank(objeto_tsv, to_tsquery($palavras)) DESC
+    //   2. AND (regiao_uf IS NULL OR regiao_uf = $uf)
+    //   3. AND (faixa_valor_min IS NULL OR $valor >= faixa_valor_min)
+    //   4. AND (faixa_valor_max IS NULL OR $valor <= faixa_valor_max)
+    //
+    // O SCORE de palavras-chave é do DOMÍNIO, não do SQL (RAD-172 moveu a regra para
+    // `CriterioDeMonitoramento.casaCom`) e é **proporcional** — `encontrados / termos.length`,
+    // nunca tudo-ou-nada (docs/11 §3.2). O `ts_rank` abaixo é histórico; não reintroduzir
+    // ranking no adapter sem revisitar P-59.
     //
     // P-40: em escala, trocar scan por percolator (pré-indexar critérios, match invertido).
     // No MVP single-tenant com poucos critérios, scan é aceitável. [A VALIDAR] → P-40

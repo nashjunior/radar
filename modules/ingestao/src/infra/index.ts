@@ -1,5 +1,6 @@
 export { CircuitBreaker } from './adapters/circuit-breaker.js';
 export type { CircuitBreakerConfig } from './adapters/circuit-breaker.js';
+export { CircuitBreakerPncpGateway } from './adapters/circuit-breaker-pncp-gateway.js';
 export { CryptoIdProvider } from './adapters/crypto-id-provider.js';
 export { DocumentosDoEditalAdapter } from './adapters/documentos-do-edital-adapter.js';
 export { MultiFormatoExtratorDeTexto } from './adapters/extracao-de-texto/multi-formato-extrator-de-texto.js';
@@ -8,7 +9,6 @@ export { PostgresAnexoEditalRepository } from './adapters/postgres-anexo-edital-
 export { PostgresEditalRepository } from './adapters/postgres-edital-repository.js';
 export { PostgresProvenienciaRepository } from './adapters/postgres-proveniencia-repository.js';
 export { S3ObjectStorage } from './adapters/s3-object-storage.js';
-export { SqsEventPublisher } from './adapters/sqs-event-publisher.js';
 export { StubAnexoScanner } from './adapters/stub-anexo-scanner.js';
 export { PncpPollingScheduler } from './schedulers/pncp-polling-scheduler.js';
 export type { PncpPollingSchedulerConfig, RegimePolling } from './schedulers/pncp-polling-scheduler.js';
