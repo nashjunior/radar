@@ -22,6 +22,7 @@
     "fixtures:gold-set": "tsx scripts/gravar-fixtures-gold-set.ts",
     "calibrar:limiar": "tsx scripts/calibrar-limiar-gold-set.ts",
     "fixtures:gold-set:cli": "tsx scripts/gravar-fixtures-gold-set-via-cli.ts",
+    "avaliar:gold-set:vivo": "tsx scripts/avaliar-gold-set-vivo.ts",
     "lint": "eslint src"
   },
   "dependencies": {

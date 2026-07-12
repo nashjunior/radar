@@ -40,6 +40,36 @@ Insight de DDD para este projeto: o "princípio transversal" (documento 00 — t
 
 Nota de agregado (P-107): **Assinatura** é raiz própria e o entitlement mora nela — mesmo padrão de **Identidade & Organização** (Generic, IdP comprado, mas `Tenant`/`AtribuiçãoDePapel` são agregados *nossos*). O gateway é comprado e trocável, então **a política fica no agregado, não no gateway**: carência, suspensão e "o que conta como assinatura ativa" são regra nossa — delegá-las ao provedor tornaria o port neutro na *forma* e provider-bound no *comportamento*. **MVP: um plano por Tenant.** Cobrança por cliente-final (Consultoria, P-25) é *Next* e entra como **breakdown de uso dentro do agregado** — o `clienteFinalId` chega no payload do evento, não como extensão do Shared Kernel (§5, decisão 4).
 
+Ciclo de vida da Assinatura (P-107): é a **política comercial** que P-107 (6) diz ser *nossa, nunca do gateway* — realizada no agregado `Assinatura` (`modules/cobranca`). Cinco estados; **`cancelada` é terminal** — `ativar`/`suspender`/`cancelar` a partir dela lançam `AssinaturaInativaError`, não são no-op.
+
+```mermaid
+stateDiagram-v2
+    [*] --> trial: iniciarTrial · novo tenant, 14d sem cartão (P-107 (9))
+
+    trial --> ativa: ativar · webhook invoice.paid (P-107 (6))
+    inadimplente --> ativa: ativar · pagamento regularizado
+    suspensa --> ativa: ativar · reativação
+
+    ativa --> ativa: renovarCiclo · rollover, zera contadores
+    ativa --> inadimplente: marcarInadimplente · início da carência/dunning
+    ativa --> suspensa: suspender
+    inadimplente --> suspensa: suspender · carência expirada
+
+    trial --> cancelada: cancelar
+    ativa --> cancelada: cancelar
+    inadimplente --> cancelada: cancelar
+    suspensa --> cancelada: cancelar
+
+    cancelada --> [*]
+```
+
+Guardas do modelo (o diagrama mostra o *permitido*; estas são as invariantes):
+
+- **`iniciarTrial` é o único ponto de entrada** de tenant novo — trial de 14 dias sem cartão (P-107 (9)), ainda sem `assinaturaExternaId`; `criar` apenas **reconstrói** estado já persistido, não inicia ciclo.
+- **`ativar` (→ `ativa`) só no webhook `invoice.paid`**, nunca no retorno do checkout (P-107 (6)); vale de `trial|inadimplente|suspensa` e é onde entra o `assinaturaExternaId` — ID **opaco** do gateway (P-107 (7)), nunca dado do cliente final.
+- **`marcarInadimplente` e `renovarCiclo` partem só de `ativa`**; `renovarCiclo` é o rollover do período de cobrança e **zera** `usoReservado`/`usoConfirmado`.
+- Os contadores `usoReservado`/`usoConfirmado` são **ortogonais** a este ciclo (tabela Reserva × RegistroDeUso abaixo) — reserva é *gate* síncrono na borda, confirmação é *fatura*; o estado governa só o **ciclo comercial**, não o consumo.
+
 Nota de linguagem (P-107): **"uso" não é um termo desta linguagem** — são **dois conceitos distintos**, e nomeá-los com a mesma palavra é o tipo de ambiguidade que a linguagem ubíqua existe para eliminar (diferente de **Aderência**, §3 nota de fronteira: lá são dois contextos, e a fronteira desambigua; aqui seria um só time e um só modelo).
 
 | | **Reserva** | **RegistroDeUso** |
