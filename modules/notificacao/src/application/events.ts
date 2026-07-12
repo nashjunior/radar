@@ -18,6 +18,13 @@ export class NotificacaoEnviada implements DomainEvent {
       readonly usuarioId: UsuarioId;
       readonly alertaId: AlertaId;
       readonly canal: string;
+      /**
+       * `occurredAt` do `alerta.gerado` que originou este envio — origem do SLO de entrega
+       * imediata (docs/08 §4.1, A18 §5). Só disponível no caminho imediato (o digest é
+       * scheduler-driven, sem o instante do alerta individual sem reintroduzir leitura
+       * cross-contexto — débito já registrado em RAD-91).
+       */
+      readonly alertaGeradoEm?: Date;
     },
   ) {
     this.occurredAt = new Date();

@@ -20,6 +20,8 @@ export interface NotificarAlertaInput {
   alertaId: AlertaId;
   clienteFinalId: ClienteFinalId;
   tenantId: TenantId;
+  /** `occurredAt` do `alerta.gerado` consumido — origem do SLO de entrega imediata (A18 §5). */
+  alertaGeradoEm: Date;
 }
 
 /**
@@ -73,6 +75,7 @@ export class NotificarAlertaUseCase {
         destinatario: clienteFinal.email,
         assunto: `Novo alerta: ${alerta.objeto}`,
         corpo: montarCorpoAlerta(alerta),
+        alertaGeradoEm: input.alertaGeradoEm,
       },
       signal,
     );

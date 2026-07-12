@@ -224,11 +224,11 @@ describe('CE-SQS-01 — Redelivery real via visibility timeout dispara idempotê
 
       // --- Primeira entrega ---
       const msg1 = await aguardarMensagem(filaUrl, 8_000, VIS_TIMEOUT_S);
-      const payload1 = JSON.parse(msg1.Body!).payload as {
-        alertaId: string;
-        tenantId: string;
-        clienteFinalId: string;
+      const body1 = JSON.parse(msg1.Body!) as {
+        occurredAt: string;
+        payload: { alertaId: string; tenantId: string; clienteFinalId: string };
       };
+      const payload1 = { ...body1.payload, alertaGeradoEm: body1.occurredAt };
 
       await worker.processar(payload1, signal);
 
@@ -241,7 +241,8 @@ describe('CE-SQS-01 — Redelivery real via visibility timeout dispara idempotê
 
       // --- Segunda entrega (redelivery real pelo SQS, não re-chamada manual) ---
       const msg2 = await aguardarMensagem(filaUrl, 6_000, 30);
-      const payload2 = JSON.parse(msg2.Body!).payload as typeof payload1;
+      const body2 = JSON.parse(msg2.Body!) as typeof body1;
+      const payload2 = { ...body2.payload, alertaGeradoEm: body2.occurredAt };
 
       // jaNotificado retorna true → use case sai cedo sem enviar
       await worker.processar(payload2, signal);

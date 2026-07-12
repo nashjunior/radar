@@ -137,7 +137,7 @@ function criarHarness() {
   });
 
   // Liga alerta.gerado → notificacao worker
-  bus.subscribe('alerta.gerado', async (payload, signal) => {
+  bus.subscribe('alerta.gerado', async (payload, signal, occurredAt) => {
     const { alertaId, tenantId, clienteFinalId } = payload as {
       alertaId: string;
       tenantId: string;
@@ -160,7 +160,7 @@ function criarHarness() {
     }
 
     await worker.processar(
-      { alertaId, tenantId, clienteFinalId },
+      { alertaId, tenantId, clienteFinalId, alertaGeradoEm: occurredAt.toISOString() },
       signal,
     );
   });
@@ -391,6 +391,7 @@ describe('CE-04 — idempotência de notificação', () => {
         alertaId: primeiroAlerta.id,
         tenantId: TENANT,
         clienteFinalId: CLIENTE,
+        alertaGeradoEm: new Date().toISOString(),
       },
       signal,
     );

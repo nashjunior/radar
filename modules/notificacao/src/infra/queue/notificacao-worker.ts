@@ -7,6 +7,8 @@ interface AlertaGeradoMsg {
   alertaId: string;
   tenantId: string;
   clienteFinalId: string;
+  /** `occurredAt` (ISO-8601) do envelope da mensagem `alerta.gerado` (A18 §5). */
+  alertaGeradoEm: string;
 }
 
 interface DlqClient {
@@ -31,6 +33,7 @@ export class NotificacaoWorker {
           alertaId: AlertaId(msg.alertaId),
           tenantId: TenantId(msg.tenantId),
           clienteFinalId: ClienteFinalId(msg.clienteFinalId),
+          alertaGeradoEm: new Date(msg.alertaGeradoEm),
         },
         signal,
       );

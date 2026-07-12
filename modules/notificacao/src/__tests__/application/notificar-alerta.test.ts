@@ -87,6 +87,7 @@ const inputBase = {
   alertaId: AlertaId('alerta-001'),
   clienteFinalId: ClienteFinalId('cliente-001'),
   tenantId: TenantId('tenant-a'),
+  alertaGeradoEm: new Date('2026-07-10T12:00:00.000Z'),
 };
 
 function criarUC(deps: ReturnType<typeof criarDeps>): NotificarAlertaUseCase {
@@ -138,6 +139,11 @@ describe('NotificarAlertaUseCase', () => {
 
       expect(deps.notifier.enviar).toHaveBeenCalledOnce();
       expect(deps.eventos.publicar).toHaveBeenCalledOnce();
+
+      const [evento] = (deps.eventos.publicar as ReturnType<typeof vi.fn>).mock.calls[0] as [
+        { payload: { alertaGeradoEm: Date } },
+      ];
+      expect(evento.payload.alertaGeradoEm).toBe(inputBase.alertaGeradoEm);
     });
 
     it('não entrega imediatamente quando alerta não é urgente e preferência não é IMEDIATA', async () => {

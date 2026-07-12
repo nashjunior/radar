@@ -13,6 +13,8 @@ export interface EnviarComRegistroInput {
   destinatario: string;
   assunto: string;
   corpo: string;
+  /** `occurredAt` do `alerta.gerado` de origem — ausente no digest (A18 §5). */
+  alertaGeradoEm?: Date;
 }
 
 /**
@@ -67,6 +69,7 @@ export class EnvioNotificacaoService {
         usuarioId: notificacao.usuarioId,
         alertaId: notificacao.alertaId,
         canal: notificacao.canal.tipo,
+        ...(input.alertaGeradoEm ? { alertaGeradoEm: input.alertaGeradoEm } : {}),
       }),
       signal,
     );

@@ -8,6 +8,7 @@ const MSG = {
   alertaId: 'alerta-001',
   tenantId: 'tenant-001',
   clienteFinalId: 'cliente-001',
+  alertaGeradoEm: '2026-07-10T12:00:00.000Z',
 };
 const noop = new AbortController().signal;
 

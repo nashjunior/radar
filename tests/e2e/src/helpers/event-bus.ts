@@ -6,7 +6,7 @@
  * Os handlers são registrados via subscribe() antes de qualquer publish.
  */
 
-type Handler = (payload: unknown, signal: AbortSignal) => Promise<void>;
+type Handler = (payload: unknown, signal: AbortSignal, occurredAt: Date) => Promise<void>;
 
 export class InMemoryEventBus {
   private readonly handlers: Map<string, Handler[]> = new Map();
@@ -33,7 +33,7 @@ export class InMemoryEventBus {
 
         const list = this.handlers.get(evento.type) ?? [];
         for (const h of list) {
-          await h(payload, signal);
+          await h(payload, signal, evento.occurredAt);
         }
       },
     };

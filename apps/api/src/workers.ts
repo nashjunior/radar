@@ -41,10 +41,14 @@ import { criarLogger } from '@radar/observabilidade';
 import { DocumentosEditalAclAdapter } from './infra/documentos-edital-acl-adapter.js';
 import { triagemStub } from './infra/triagem-stub.js';
 import { systemClock } from './infra/system-clock.js';
+import { criarEventPublisherComMetricas } from './observabilidade-metricas.js';
 
 const loggerCobranca = criarLogger('worker:cobranca');
 const loggerTriagemBatch = criarLogger('worker:triagem-batch');
 const loggerTriagemSolicitada = criarLogger('worker:triagem-solicitada');
+
+/** `dev | staging | prod` — dimensão fixa `ambiente` dos alarmes de RAD-304 (A18 §5). */
+const AMBIENTE = process.env['AMBIENTE'] ?? 'dev';
 
 export interface WorkersHandle {
   /** `null` quando `ANTHROPIC_API_KEY` está ausente — só este worker depende dela. */
@@ -109,11 +113,18 @@ const perfilGatewayStub: PerfilGateway = {
  * ficam sem consumidor real neste composition root até então (mesma realidade de `eventosStub`,
  * Cobrança) — o fechamento do loop RAD-255→RAD-247 é coberto por teste dedicado (RAD-259).
  */
-const eventosTriagemStub: TriagemEventPublisher = {
+const eventosTriagemStubBase: TriagemEventPublisher = {
   async publicar(_evento, _signal) {
     /* stub */
   },
 };
+
+/**
+ * Assinante evento→EMF (A18 §5, RAD-302) decorando o publisher da Triagem — emite
+ * `triagem.latencia_ms` antes de delegar ao publish real (hoje um stub; a métrica não depende
+ * do transporte estar provisionado). Nenhum use case ganhou port de métrica.
+ */
+const eventosTriagemStub: TriagemEventPublisher = criarEventPublisherComMetricas(eventosTriagemStubBase, AMBIENTE);
 
 /** Stub no-op de DlqClient de `triagem.solicitada` — substituir por SqsDlqClient quando SQS provisionado. */
 const dlqTriagemSolicitadaStub = {
