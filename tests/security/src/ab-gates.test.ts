@@ -13,6 +13,7 @@ import {
   Alerta,
   ConsultarCriteriosTenantUseCase,
   DefinirCriterioMonitoramentoUseCase,
+  PrazoCritico,
   RegistrarFeedbackAlertaUseCase,
 } from '@radar/matching';
 import {
@@ -114,6 +115,7 @@ function alerta(clienteFinalId = CLIENTE_A): Alerta {
     criterioId: CRITERIO,
     editalId: EDITAL,
     aderencia: AderenciaMatching.criar(0.8),
+    prazoCritico: PrazoCritico.reconstituir(false),
     relevante: null,
   });
 }
@@ -223,6 +225,7 @@ describe('Gate A07 · AB1/P-51 — matriz de autorização por objeto', () => {
       perfilId: PERFIL,
       clienteFinalId: CLIENTE_A,
       tenantId: TENANT_A,
+      coorteTrial: false,
     }, signal)).rejects.toThrow(AcessoNegadoError);
     expect(triagens.salvar).not.toHaveBeenCalled();
     expect(eventos.publicar).not.toHaveBeenCalled();
