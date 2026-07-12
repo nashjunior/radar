@@ -31,3 +31,33 @@ export class CotaExcedidaError extends Error {
     this.name = 'CotaExcedidaError';
   }
 }
+
+/** Lançado quando GET /api/me responde 403 { code: 'SEM_ORGANIZACAO' } — usuário autenticado sem tenant. */
+export class SemOrganizacaoError extends Error {
+  readonly code = 'SEM_ORGANIZACAO' as const;
+
+  constructor() {
+    super('Usuário autenticado sem organização vinculada.');
+    this.name = 'SemOrganizacaoError';
+  }
+}
+
+/** Lançado quando POST /api/organizacoes responde com { code: 'CNPJ_INVALIDO' }. */
+export class CnpjInvalidoError extends Error {
+  readonly code = 'CNPJ_INVALIDO' as const;
+
+  constructor() {
+    super('CNPJ inválido — verifique os dígitos e tente novamente.');
+    this.name = 'CnpjInvalidoError';
+  }
+}
+
+/** Lançado quando POST /api/organizacoes responde com { code: 'ORGANIZACAO_JA_EXISTE' }. */
+export class OrganizacaoJaExisteError extends Error {
+  readonly code = 'ORGANIZACAO_JA_EXISTE' as const;
+
+  constructor() {
+    super('Este CNPJ já está vinculado a outra conta. Solicite acesso ao responsável pela conta.');
+    this.name = 'OrganizacaoJaExisteError';
+  }
+}

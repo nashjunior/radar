@@ -10,12 +10,9 @@ interface BannerAssinaturaProps {
 
 /** Exibe banner contextual para estados críticos da assinatura (trial próximo do fim, inadimplente, suspensa). */
 export function BannerAssinatura({ assinatura, onVerPlanos, onDismiss }: BannerAssinaturaProps) {
-  const { status, trialTerminaEm } = assinatura;
+  const { estado, diasRestantes } = assinatura;
 
-  if (status === 'trial' && trialTerminaEm) {
-    const msRestantes = new Date(trialTerminaEm).getTime() - Date.now();
-    const diasRestantes = Math.max(0, Math.ceil(msRestantes / 86_400_000));
-    if (diasRestantes > 7) return null;
+  if (estado === 'trial' && diasRestantes !== null && diasRestantes <= 7) {
     return (
       <AlertBanner type="alerta" {...(onDismiss ? { onDismiss } : {})} link={{ label: 'Ver planos', onClick: onVerPlanos }}>
         Trial expira em {diasRestantes === 0 ? 'hoje' : `${diasRestantes} ${diasRestantes === 1 ? 'dia' : 'dias'}`}.
@@ -23,7 +20,7 @@ export function BannerAssinatura({ assinatura, onVerPlanos, onDismiss }: BannerA
     );
   }
 
-  if (status === 'inadimplente') {
+  if (estado === 'inadimplente') {
     return (
       <AlertBanner type="erro" link={{ label: 'Regularizar', onClick: onVerPlanos }}>
         Pagamento pendente — regularize para não perder o acesso.
@@ -31,7 +28,7 @@ export function BannerAssinatura({ assinatura, onVerPlanos, onDismiss }: BannerA
     );
   }
 
-  if (status === 'suspensa') {
+  if (estado === 'suspensa') {
     return (
       <AlertBanner type="erro">
         Conta suspensa — ações pagas estão bloqueadas.

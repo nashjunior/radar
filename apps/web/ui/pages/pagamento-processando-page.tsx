@@ -4,7 +4,7 @@ import { Button } from '@/ui/components';
 import { SessaoExpiradaError } from '@/application/errors';
 import { useUseCases } from '@/ui/providers/use-cases-provider';
 import { useAuth } from '@/ui/providers/auth-provider';
-import type { StatusAssinatura } from '@/domain/assinatura';
+import type { EstadoAssinatura } from '@/domain/assinatura';
 
 interface PagamentoProcessandoPageProps {
   onConfirmado: () => void;
@@ -21,7 +21,7 @@ const INTERVALO_MS = 5_000;
 export function PagamentoProcessandoPage({ onConfirmado, onVoltar }: PagamentoProcessandoPageProps) {
   const { obterAssinatura } = useUseCases();
   const { login } = useAuth();
-  const [status, setStatus] = useState<StatusAssinatura | null>(null);
+  const [status, setStatus] = useState<EstadoAssinatura | null>(null);
   const [tentativas, setTentativas] = useState(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -33,9 +33,9 @@ export function PagamentoProcessandoPage({ onConfirmado, onVoltar }: PagamentoPr
       try {
         const assinatura = await obterAssinatura.executar(ac.signal);
         if (cancelado) return;
-        setStatus(assinatura.status);
+        setStatus(assinatura.estado);
         setTentativas((n) => n + 1);
-        if (assinatura.status === 'ativa') {
+        if (assinatura.estado === 'ativa') {
           onConfirmado();
           return;
         }
@@ -78,8 +78,8 @@ export function PagamentoProcessandoPage({ onConfirmado, onVoltar }: PagamentoPr
   );
 }
 
-function traduzirStatus(s: StatusAssinatura): string {
-  const mapa: Record<StatusAssinatura, string> = {
+function traduzirStatus(s: EstadoAssinatura): string {
+  const mapa: Record<EstadoAssinatura, string> = {
     trial: 'trial',
     ativa: 'ativa',
     inadimplente: 'pagamento pendente',

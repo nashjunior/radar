@@ -28,7 +28,7 @@ export function TriagemPage({ editalId, onBack, onCotaExcedida }: TriagemPagePro
   const feedback = useFeedbackTriagem({ editalId: editalId ?? '' });
   const { estado: solicitarEstado, solicitar: solicitarFn, limpar: limparSolicitar } = useSolicitarTriagem({ editalId: editalId ?? '' });
   const { pode } = useSessao();
-  const podeDecidirTriagem = pode('TRIAGEM', 'escrever');
+  const podeDecidirTriagem = pode('TRIAGEM', 'editar');
 
   // Propaga 402 para o pai renderizar ModalUpgrade — não pode ser feito na render-phase
   useEffect(() => {

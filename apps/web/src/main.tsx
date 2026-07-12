@@ -14,10 +14,12 @@ import { ConfigurarPage } from '@/ui/pages/configurar-page';
 import { PerfilHabilitacaoPage } from '@/ui/pages/perfil-habilitacao-page';
 import { PlanosPage } from '@/ui/pages/planos-page';
 import { PagamentoProcessandoPage } from '@/ui/pages/pagamento-processando-page';
+import { OnboardingOrganizacaoPage } from '@/ui/pages/onboarding-organizacao-page';
+import { OnboardingCriterioPage } from '@/ui/pages/onboarding-criterio-page';
 import { LoginPage } from '@/ui/pages/login-page';
 import './globals.css';
 
-type Route = 'dashboard' | 'alertas' | 'triagem' | 'configurar' | 'perfil' | 'planos' | 'pagamento-processando';
+type Route = 'dashboard' | 'alertas' | 'triagem' | 'configurar' | 'onboarding-criterio' | 'perfil' | 'planos' | 'pagamento-processando';
 
 interface ModalUpgradeState {
   cota: number;
@@ -48,7 +50,8 @@ function App() {
       {route === 'dashboard'               && <DashboardPage onTriagem={openTriagem} onVerAlertas={() => navigateTo('alertas')} />}
       {route === 'alertas'                 && <AlertasPage onTriagem={openTriagem} />}
       {route === 'triagem'                 && <TriagemPage editalId={triagemId} onBack={() => setRoute('alertas')} onCotaExcedida={abrirModalUpgrade} />}
-      {route === 'configurar'              && <ConfigurarPage />}
+      {route === 'configurar'              && <ConfigurarPage onOnboarding={() => navigateTo('onboarding-criterio')} />}
+      {route === 'onboarding-criterio'     && <OnboardingCriterioPage onConcluido={() => navigateTo('configurar')} />}
       {route === 'perfil'                  && <PerfilHabilitacaoPage />}
       {route === 'planos'                  && <PlanosPage onBack={() => navigateTo('dashboard')} />}
       {route === 'pagamento-processando'   && <PagamentoProcessandoPage onConfirmado={() => navigateTo('dashboard')} onVoltar={() => navigateTo('dashboard')} />}
@@ -78,10 +81,14 @@ const loadingStyle: React.CSSProperties = {
 };
 
 function SessaoGate({ children }: { children: React.ReactNode }) {
-  const { estado } = useSessaoEstado();
+  const { estado, recarregar } = useSessaoEstado();
 
   if (estado.status === 'carregando') {
     return <div style={loadingStyle}>Carregando...</div>;
+  }
+
+  if (estado.status === 'sem_organizacao') {
+    return <OnboardingOrganizacaoPage onProvisionado={recarregar} />;
   }
 
   if (estado.status === 'sem_permissao') {

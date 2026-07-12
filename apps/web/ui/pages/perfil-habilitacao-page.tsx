@@ -61,7 +61,7 @@ export function PerfilHabilitacaoPage() {
   const [tab, setTab] = useState<PerfilTab>('juridica');
   const { campos, carregarEstado, salvarEstado, setCampos, salvar } = usePerfilHabilitacao();
   const { pode } = useSessao();
-  const podeEditarPerfil = pode('PERFIL_HABILITACAO', 'escrever');
+  const podeEditarPerfil = pode('PERFIL_HABILITACAO', 'editar');
 
   const tabConfig = TABS.find((t) => t.key === tab)!;
   const salvando = salvarEstado.status === 'salvando';

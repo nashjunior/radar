@@ -64,7 +64,6 @@ export interface AuthPort {
 // ---------------------------------------------------------------------------
 
 export interface DefinirCriterioInput {
-  ramoCnae?: string;
   regiaoUf?: string;
   /** Código da faixa de valor da tabela de referência (Lei 14.133/2021). */
   faixaValorCodigo?: string;
@@ -73,7 +72,6 @@ export interface DefinirCriterioInput {
 
 export interface CriterioResposta {
   id: string;
-  ramoCnae: string | null;
   regiaoUf: string | null;
   faixaValorMin: number | null;
   faixaValorMax: number | null;
@@ -140,15 +138,64 @@ export interface AlertasApiGateway {
 }
 
 // ---------------------------------------------------------------------------
-// Assinatura (P-107 · RAD-251 — GET /api/me/assinatura, POST /api/assinatura/checkout)
+// Notificação (US-10 · SalvarPreferencias — PUT /api/notificacao/preferencias)
+// Não existe GET de preferências — página abre nos defaults, não finge ler do servidor.
+// Refs: apps/api/src/routes/notificacao.ts:44, docs/14 §4, P-88 (WhatsApp fora do MVP).
+// ---------------------------------------------------------------------------
+
+export type FrequenciaNotificacao = 'IMEDIATA' | 'DIARIA' | 'SEMANAL';
+export type CanalNotificacao = 'EMAIL' | 'IN_APP';
+
+export interface SalvarPreferenciasInput {
+  canais: CanalNotificacao[];
+  frequencia: FrequenciaNotificacao;
+}
+
+export interface PreferenciasNotificacaoDTO {
+  canais: string[];
+  frequencia: string;
+}
+
+export interface NotificacaoGateway {
+  salvarPreferencias(input: SalvarPreferenciasInput, signal: AbortSignal): Promise<PreferenciasNotificacaoDTO>;
+}
+
+// ---------------------------------------------------------------------------
+// Organização (RAD-286 — POST /api/organizacoes · onboarding pós-login sem tenant)
+// ---------------------------------------------------------------------------
+
+/** Resposta de POST /api/organizacoes. */
+export interface OrganizacaoDTO {
+  tenantId: string;
+  cnpj: string;
+  razaoSocial: string;
+  papel: string;
+}
+
+/**
+ * Port de organização — POST /api/organizacoes.
+ * Cria o tenant a partir do CNPJ+razão social do usuário autenticado sem organização.
+ * Erros mapeados: CNPJ_INVALIDO, ORGANIZACAO_JA_EXISTE (ver application/errors.ts).
+ * Implementado por OrganizacaoHttpGateway (prod) ou OrganizacaoStubGateway (dev/test).
+ */
+export interface OrganizacaoGateway {
+  provisionar(
+    input: { cnpj: string; razaoSocial: string },
+    signal: AbortSignal,
+  ): Promise<OrganizacaoDTO>;
+}
+
+// ---------------------------------------------------------------------------
+// Assinatura (P-107 · RAD-264 — GET /api/me/assinatura, POST /api/checkout/iniciar)
 // ---------------------------------------------------------------------------
 
 /**
  * Port de assinatura — lê o estado do plano/cota e inicia o checkout hospedado.
- * POST /api/assinatura/checkout retorna { urlCheckout } — o front redireciona e nada mais.
+ * POST /api/checkout/iniciar requer { planoCodigo } e retorna { urlCheckout } — o front
+ * redireciona e nada mais. Contrato ratificado em RAD-264 (divergia do rascunho de RAD-251).
  * Implementado por AssinaturaHttpGateway (prod) ou AssinaturaStubGateway (dev/test).
  */
 export interface AssinaturaGateway {
   obter(signal: AbortSignal): Promise<AssinaturaViewModel>;
-  iniciarCheckout(signal: AbortSignal): Promise<{ urlCheckout: string }>;
+  iniciarCheckout(input: { planoCodigo: string }, signal: AbortSignal): Promise<{ urlCheckout: string }>;
 }

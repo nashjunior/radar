@@ -2,13 +2,11 @@ import type { AssinaturaGateway } from '@/application/ports.js';
 import type { AssinaturaViewModel } from '@/domain/assinatura.js';
 
 const STUB_PADRAO: AssinaturaViewModel = {
-  plano: 'Starter',
-  status: 'trial',
-  cota: 10,
-  usado: 3,
-  restante: 7,
-  cicloFim: '2026-08-01',
-  trialTerminaEm: '2026-07-25',
+  estado: 'trial',
+  plano: { codigo: 'starter', cota: 10 },
+  usoReservado: 3,
+  usoConfirmado: 3,
+  diasRestantes: 13,
 };
 
 export class AssinaturaStubGateway implements AssinaturaGateway {
@@ -18,7 +16,7 @@ export class AssinaturaStubGateway implements AssinaturaGateway {
     return this.stub;
   }
 
-  async iniciarCheckout(_signal: AbortSignal): Promise<{ urlCheckout: string }> {
+  async iniciarCheckout(_input: { planoCodigo: string }, _signal: AbortSignal): Promise<{ urlCheckout: string }> {
     return { urlCheckout: 'https://checkout.example.com/mock-session' };
   }
 }

@@ -1,10 +1,11 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { AuthPort } from '@/application/ports';
+import { extrairEmailDeJwt } from '@/infra/auth/jwt-utils';
 
 type AuthEstado =
   | { status: 'carregando' }
-  | { status: 'autenticado'; token: string }
+  | { status: 'autenticado'; token: string; email: string | null }
   | { status: 'nao_autenticado' };
 
 interface AuthContextValor {
@@ -47,7 +48,7 @@ export function AuthProvider({ authGateway, children }: AuthProviderProps) {
 
       const token = await authGateway.obterToken();
       if (token) {
-        setEstado({ status: 'autenticado', token });
+        setEstado({ status: 'autenticado', token, email: extrairEmailDeJwt(token) });
       } else {
         setEstado({ status: 'nao_autenticado' });
       }
@@ -60,7 +61,7 @@ export function AuthProvider({ authGateway, children }: AuthProviderProps) {
     login: async () => {
       await authGateway.iniciarLogin();
       const token = await authGateway.obterToken();
-      if (token) setEstado({ status: 'autenticado', token });
+      if (token) setEstado({ status: 'autenticado', token, email: extrairEmailDeJwt(token) });
     },
     logout: async () => {
       await authGateway.encerrarSessao();

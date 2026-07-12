@@ -21,6 +21,8 @@ import { ListarAlertasUseCase } from '@/application/use-cases/listar-alertas';
 import { ObterSessaoUseCase } from '@/application/use-cases/obter-sessao';
 import { ObterAssinaturaUseCase } from '@/application/use-cases/obter-assinatura';
 import { IniciarCheckoutUseCase } from '@/application/use-cases/iniciar-checkout';
+import { ProvisionarOrganizacaoUseCase } from '@/application/use-cases/provisionar-organizacao';
+import { SalvarPreferenciasNotificacaoUseCase } from '@/application/use-cases/salvar-preferencias-notificacao';
 import { TriagemHttpGateway } from '@/infra/api/triagem-http-gateway';
 import { MatchingHttpGateway } from '@/infra/api/matching-http-gateway';
 import { EditalStubGateway } from '@/infra/api/edital-stub-gateway';
@@ -28,6 +30,8 @@ import { AlertasHttpGateway } from '@/infra/api/alertas-http-gateway';
 import { PerfilHabilitacaoHttpGateway } from '@/infra/api/perfil-habilitacao-http-gateway';
 import { SessaoHttpGateway } from '@/infra/api/sessao-http-gateway';
 import { AssinaturaHttpGateway } from '@/infra/api/assinatura-http-gateway';
+import { OrganizacaoHttpGateway } from '@/infra/api/organizacao-http-gateway';
+import { NotificacaoHttpGateway } from '@/infra/api/notificacao-http-gateway';
 import { CognitoOidcGateway } from '@/infra/auth/cognito-oidc-gateway';
 import { DevAuthGateway } from '@/infra/auth/dev-auth-gateway';
 import type { AuthPort } from '@/application/ports';
@@ -61,6 +65,8 @@ const alertasGateway = new AlertasHttpGateway(apiBase, () => authGateway.obterTo
 const perfilHabilitacaoGateway = new PerfilHabilitacaoHttpGateway(apiBase, () => authGateway.obterToken());
 const sessaoGateway = new SessaoHttpGateway(apiBase, () => authGateway.obterToken());
 const assinaturaGateway = new AssinaturaHttpGateway(apiBase, () => authGateway.obterToken());
+const organizacaoGateway = new OrganizacaoHttpGateway(apiBase, () => authGateway.obterToken());
+const notificacaoGateway = new NotificacaoHttpGateway(apiBase, () => authGateway.obterToken());
 
 export const useCases = {
   getTriagem: new GetTriagemUseCase(triagemGateway),
@@ -75,6 +81,8 @@ export const useCases = {
   obterSessao: new ObterSessaoUseCase(sessaoGateway),
   obterAssinatura: new ObterAssinaturaUseCase(assinaturaGateway),
   iniciarCheckout: new IniciarCheckoutUseCase(assinaturaGateway),
+  provisionarOrganizacao: new ProvisionarOrganizacaoUseCase(organizacaoGateway),
+  salvarPreferenciasNotificacao: new SalvarPreferenciasNotificacaoUseCase(notificacaoGateway),
 } as const;
 
 export type UseCases = typeof useCases;

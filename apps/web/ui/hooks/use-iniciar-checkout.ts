@@ -10,11 +10,11 @@ type CheckoutEstado =
 
 export interface UseIniciarCheckoutResult {
   estado: CheckoutEstado;
-  iniciar: () => void;
+  iniciar: (planoCodigo: string) => void;
 }
 
 /**
- * Chama POST /api/assinatura/checkout e redireciona para a URL do gateway de pagamento.
+ * Chama POST /api/checkout/iniciar com o planoCodigo escolhido e redireciona para a URL do gateway.
  * O retorno do checkout NÃO significa acesso liberado — apenas o webhook invoice.paid libera.
  */
 export function useIniciarCheckout(): UseIniciarCheckoutResult {
@@ -23,14 +23,14 @@ export function useIniciarCheckout(): UseIniciarCheckoutResult {
   const [estado, setEstado] = useState<CheckoutEstado>({ status: 'idle' });
   const abortRef = useRef<AbortController | null>(null);
 
-  const iniciar = useCallback(() => {
+  const iniciar = useCallback((planoCodigo: string) => {
     abortRef.current?.abort();
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     setEstado({ status: 'loading' });
 
     iniciarCheckout
-      .executar(ctrl.signal)
+      .executar({ planoCodigo }, ctrl.signal)
       .then(({ urlCheckout }) => {
         if (ctrl.signal.aborted) return;
         window.location.href = urlCheckout;

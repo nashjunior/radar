@@ -1,7 +1,7 @@
 /** Gateway HTTP para GET /api/me (P-52 · RAD-213). */
 import type { SessaoGateway } from '@/application/ports';
 import type { SessaoUsuario } from '@/domain/sessao';
-import { SessaoExpiradaError, AcessoNegadoError } from '@/application/errors';
+import { SessaoExpiradaError, AcessoNegadoError, SemOrganizacaoError } from '@/application/errors';
 
 interface MeDTO {
   usuarioId: string;
@@ -28,7 +28,12 @@ export class SessaoHttpGateway implements SessaoGateway {
     });
 
     if (res.status === 401) throw new SessaoExpiradaError();
-    if (res.status === 403) throw new AcessoNegadoError();
+    if (res.status === 403) {
+      let body: { code?: string } = {};
+      try { body = (await res.json()) as { code?: string }; } catch { /* ignore */ }
+      if (body.code === 'SEM_ORGANIZACAO') throw new SemOrganizacaoError();
+      throw new AcessoNegadoError();
+    }
     if (!res.ok) throw new Error(`[SessaoHttpGateway] HTTP ${res.status}`);
 
     const dto = (await res.json()) as MeDTO;

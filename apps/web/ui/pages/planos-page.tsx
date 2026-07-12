@@ -113,7 +113,7 @@ export function PlanosPage({ onBack }: PlanosPageProps) {
             <Button
               variant={plano.destaque ? 'primary' : 'secondary'}
               disabled={carregando}
-              onClick={iniciar}
+              onClick={() => iniciar(plano.id)}
               style={{ width: '100%' }}
             >
               {carregando ? 'Redirecionando...' : 'Assinar'}

@@ -2,7 +2,7 @@ import { NavItem, MedidorCota } from '@/ui/components';
 import { useTheme } from '@/ui/providers/theme-provider';
 import type { AssinaturaViewModel } from '@/domain/assinatura';
 
-type Route = 'dashboard' | 'alertas' | 'triagem' | 'configurar' | 'perfil' | 'planos' | 'pagamento-processando';
+type Route = 'dashboard' | 'alertas' | 'triagem' | 'configurar' | 'onboarding-criterio' | 'perfil' | 'planos' | 'pagamento-processando';
 
 interface SidebarProps {
   current: Route;
@@ -48,7 +48,7 @@ export function Sidebar({ current, onNavigate, assinatura, onVerPlanos }: Sideba
             key={route}
             icon={icon}
             label={label}
-            active={current === route}
+            active={current === route || (route === 'configurar' && current === 'onboarding-criterio')}
             onClick={() => onNavigate(route)}
           />
         ))}
@@ -56,8 +56,8 @@ export function Sidebar({ current, onNavigate, assinatura, onVerPlanos }: Sideba
 
       {assinatura && (
         <MedidorCota
-          usado={assinatura.usado}
-          cota={assinatura.cota}
+          usado={assinatura.usoReservado}
+          cota={assinatura.plano.cota}
           {...(onVerPlanos ? { onUpgrade: onVerPlanos } : {})}
         />
       )}

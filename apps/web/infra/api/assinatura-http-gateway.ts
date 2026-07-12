@@ -13,10 +13,11 @@ export class AssinaturaHttpGateway implements AssinaturaGateway {
     return (await res!.json()) as AssinaturaViewModel;
   }
 
-  async iniciarCheckout(signal: AbortSignal): Promise<{ urlCheckout: string }> {
-    const res = await fetchApi(`${this.baseUrl}/api/assinatura/checkout`, this.getToken, {
+  async iniciarCheckout(input: { planoCodigo: string }, signal: AbortSignal): Promise<{ urlCheckout: string }> {
+    const res = await fetchApi(`${this.baseUrl}/api/checkout/iniciar`, this.getToken, {
       method: 'POST',
       json: true,
+      body: JSON.stringify({ planoCodigo: input.planoCodigo }),
       signal,
     });
     return (await res!.json()) as { urlCheckout: string };

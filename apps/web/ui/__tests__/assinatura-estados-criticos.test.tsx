@@ -9,18 +9,13 @@ import { BannerAssinatura } from '@/ui/components/BannerAssinatura';
 import { ModalUpgrade } from '@/ui/components/ModalUpgrade';
 import type { AssinaturaViewModel } from '@/domain/assinatura';
 
-// Instância futura estável para os testes de trial
-const TRIAL_TERMINA_EM = new Date(Date.now() + 3 * 86_400_000).toISOString(); // +3 dias
-
 function makeAssinatura(overrides: Partial<AssinaturaViewModel> = {}): AssinaturaViewModel {
   return {
-    plano: 'Starter',
-    status: 'trial',
-    cota: 10,
-    usado: 0,
-    restante: 10,
-    cicloFim: '2026-08-01',
-    trialTerminaEm: TRIAL_TERMINA_EM,
+    estado: 'trial',
+    plano: { codigo: 'starter', cota: 10 },
+    usoReservado: 0,
+    usoConfirmado: 0,
+    diasRestantes: 3,
     ...overrides,
   };
 }
@@ -32,7 +27,7 @@ describe('BannerAssinatura — trial', () => {
   it('exibe banner de alerta quando trial expira em ≤7 dias', () => {
     render(
       <BannerAssinatura
-        assinatura={makeAssinatura({ status: 'trial', trialTerminaEm: TRIAL_TERMINA_EM })}
+        assinatura={makeAssinatura({ estado: 'trial', diasRestantes: 3 })}
         onVerPlanos={vi.fn()}
       />,
     );
@@ -42,10 +37,9 @@ describe('BannerAssinatura — trial', () => {
   });
 
   it('não exibe banner quando trial expira em >7 dias', () => {
-    const longe = new Date(Date.now() + 10 * 86_400_000).toISOString();
     const { container } = render(
       <BannerAssinatura
-        assinatura={makeAssinatura({ status: 'trial', trialTerminaEm: longe })}
+        assinatura={makeAssinatura({ estado: 'trial', diasRestantes: 10 })}
         onVerPlanos={vi.fn()}
       />,
     );
@@ -56,7 +50,7 @@ describe('BannerAssinatura — trial', () => {
     const onVerPlanos = vi.fn();
     render(
       <BannerAssinatura
-        assinatura={makeAssinatura({ status: 'trial', trialTerminaEm: TRIAL_TERMINA_EM })}
+        assinatura={makeAssinatura({ estado: 'trial', diasRestantes: 3 })}
         onVerPlanos={onVerPlanos}
       />,
     );
@@ -122,7 +116,7 @@ describe('BannerAssinatura — inadimplente', () => {
   it('exibe banner de erro com CTA de regularizar', () => {
     render(
       <BannerAssinatura
-        assinatura={makeAssinatura({ status: 'inadimplente' })}
+        assinatura={makeAssinatura({ estado: 'inadimplente', diasRestantes: 0 })}
         onVerPlanos={vi.fn()}
       />,
     );
@@ -135,7 +129,7 @@ describe('BannerAssinatura — inadimplente', () => {
     const onVerPlanos = vi.fn();
     render(
       <BannerAssinatura
-        assinatura={makeAssinatura({ status: 'inadimplente' })}
+        assinatura={makeAssinatura({ estado: 'inadimplente', diasRestantes: 0 })}
         onVerPlanos={onVerPlanos}
       />,
     );
@@ -143,10 +137,10 @@ describe('BannerAssinatura — inadimplente', () => {
     expect(onVerPlanos).toHaveBeenCalledOnce();
   });
 
-  it('banner de erro para status suspensa sem CTA', () => {
+  it('banner de erro para estado suspensa sem CTA', () => {
     render(
       <BannerAssinatura
-        assinatura={makeAssinatura({ status: 'suspensa' })}
+        assinatura={makeAssinatura({ estado: 'suspensa', diasRestantes: 0 })}
         onVerPlanos={vi.fn()}
       />,
     );

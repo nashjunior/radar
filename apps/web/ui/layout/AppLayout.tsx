@@ -4,7 +4,7 @@ import { Sidebar } from './Sidebar';
 import { BannerAssinatura } from '@/ui/components';
 import { useAssinatura } from '@/ui/hooks/use-assinatura';
 
-type Route = 'dashboard' | 'alertas' | 'triagem' | 'configurar' | 'perfil' | 'planos' | 'pagamento-processando';
+type Route = 'dashboard' | 'alertas' | 'triagem' | 'configurar' | 'onboarding-criterio' | 'perfil' | 'planos' | 'pagamento-processando';
 
 interface AppLayoutProps {
   current: Route;

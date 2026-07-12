@@ -16,32 +16,32 @@ export type Recurso =
   | 'PREFERENCIA_NOTIFICACAO'
   | 'USUARIO_PAPEL';
 
-export type Acao = 'ler' | 'escrever';
+export type Acao = 'ler' | 'criar' | 'editar';
 
 type Matriz = Partial<Record<Papel, Partial<Record<Recurso, Acao[]>>>>;
 
 const MATRIZ: Matriz = {
   ADMIN_CONSULTORIA: {
-    CRITERIO_MONITORAMENTO:   ['ler', 'escrever'],
-    ALERTA:                   ['ler', 'escrever'],
-    TRIAGEM:                  ['ler', 'escrever'],
-    PERFIL_HABILITACAO:       ['ler', 'escrever'],
-    PREFERENCIA_NOTIFICACAO:  ['ler', 'escrever'],
-    USUARIO_PAPEL:            ['ler', 'escrever'],
+    CRITERIO_MONITORAMENTO:   ['ler', 'editar'],
+    ALERTA:                   ['ler', 'editar'],
+    TRIAGEM:                  ['ler', 'editar'],
+    PERFIL_HABILITACAO:       ['ler', 'editar'],
+    PREFERENCIA_NOTIFICACAO:  ['ler', 'editar'],
+    USUARIO_PAPEL:            ['ler', 'editar'],
   },
   OPERADOR: {
-    CRITERIO_MONITORAMENTO:   ['ler', 'escrever'],
-    ALERTA:                   ['ler', 'escrever'],
-    TRIAGEM:                  ['ler', 'escrever'],
-    PERFIL_HABILITACAO:       ['ler', 'escrever'],
-    PREFERENCIA_NOTIFICACAO:  ['ler', 'escrever'],
+    CRITERIO_MONITORAMENTO:   ['ler', 'editar'],
+    ALERTA:                   ['ler', 'editar'],
+    TRIAGEM:                  ['ler', 'editar'],
+    PERFIL_HABILITACAO:       ['ler', 'editar'],
+    PREFERENCIA_NOTIFICACAO:  ['ler', 'editar'],
   },
   CLIENTE_FINAL_READONLY: {
     CRITERIO_MONITORAMENTO:   ['ler'],
     ALERTA:                   ['ler'],
     TRIAGEM:                  ['ler'],
     PERFIL_HABILITACAO:       ['ler'],
-    PREFERENCIA_NOTIFICACAO:  ['ler', 'escrever'],
+    PREFERENCIA_NOTIFICACAO:  ['ler', 'editar'],
   },
   DPO_COMPLIANCE: {
     PREFERENCIA_NOTIFICACAO:  [],
