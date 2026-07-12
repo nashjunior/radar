@@ -32,9 +32,12 @@ export function resumoLoteParaChat(itens: readonly ContratacaoData[], destaque?:
     .slice(0, 40)
     .map(
       (c) =>
-        `- ${c.numeroControlePncp} | mod=${c.modalidadeCodigo} ${c.modalidadeNome} | ` +
-        `${c.orgao.municipio}/${c.orgao.uf} | valor=${c.valorEstimado ?? 'n/d'} | ` +
-        `${c.objeto.slice(0, 220)}`,
+        `- ${c.numeroControlePncp} | mod=${c.modalidadeCodigo} ${c.modalidadeNome}` +
+        `${c.srp ? ' | SRP' : ''} | ${c.orgao.municipio}/${c.orgao.uf}` +
+        ` | valor=${c.valorEstimado ?? 'n/d'}` +
+        `${c.processo ? ` | processo=${c.processo}` : ''}` +
+        `${c.linkSistemaOrigem ? ` | origem=${c.linkSistemaOrigem}` : ''}` +
+        ` | ${c.objeto.slice(0, 220)}`,
     )
     .join('\n');
 }

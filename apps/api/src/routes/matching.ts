@@ -23,6 +23,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { AlertaId } from '@radar/kernel';
+import type { TenantId } from '@radar/kernel';
 import type {
   ConsultarMetricasMatchingUseCase,
   DefinirCriterioMonitoramentoUseCase,
@@ -37,6 +38,8 @@ export interface MatchingContainer {
   registrarFeedback: RegistrarFeedbackAlertaUseCase;
   consultarMetricas: ConsultarMetricasMatchingUseCase;
   perfilAtivo: PerfilAtivoGateway;
+  /** Rematch síncrono do lote demo após salvar critério (dev). */
+  rematchAposSalvar?: (tenantId: TenantId, signal: AbortSignal) => Promise<number>;
 }
 
 const DefinirCriterioBodySchema = z.object({
@@ -83,7 +86,19 @@ export function criarMatchingRouter(container: MatchingContainer): Hono {
         signal,
       );
 
-      return c.json(resultado, 201);
+      let alertasGerados = 0;
+      if (container.rematchAposSalvar) {
+        try {
+          alertasGerados = await container.rematchAposSalvar(tenantId, signal);
+        } catch (err) {
+          console.warn(
+            '[matching/criterios] rematch falhou:',
+            err instanceof Error ? err.message : err,
+          );
+        }
+      }
+
+      return c.json({ ...resultado, alertasGerados }, 201);
     } catch (err) {
       return responderErro(c, err);
     }

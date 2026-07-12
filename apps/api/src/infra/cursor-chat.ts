@@ -7,21 +7,15 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Agent } from '@cursor/sdk';
-
-const INSTRUCAO = [
-  'Você é o assistente do Radar de Licitações (contratações públicas do PNCP).',
-  'Responda APENAS com base no CONTEXTO abaixo.',
-  'Cite sempre o numeroControlePNCP quando mencionar uma oportunidade.',
-  'Se a informação não estiver no contexto, diga que não sabe.',
-  'Não invente valores, prazos ou recomendações.',
-  'NÃO use ferramentas, NÃO edite arquivos, NÃO rode shell — só responda em texto.',
-].join(' ');
+import { INSTRUCAO_ESPECIALISTA_CONTRATOS } from './demo-chat-instrucao.js';
+import { paraTextoPlano } from './texto-plano.js';
 
 export interface CursorChatOpts {
   readonly apiKey: string;
   readonly modelo?: string;
   readonly mensagem: string;
   readonly contexto: string;
+  readonly instrucao?: string;
   readonly nodeEnv?: string | undefined;
 }
 
@@ -43,14 +37,17 @@ export async function perguntarComCursor(opts: CursorChatOpts): Promise<string> 
     'utf8',
   );
 
+  const instrucao = opts.instrucao?.trim() || INSTRUCAO_ESPECIALISTA_CONTRATOS;
   const prompt = [
-    INSTRUCAO,
+    instrucao,
+    '',
+    'NÃO use ferramentas, NÃO edite arquivos, NÃO rode shell — só responda em texto.',
     '',
     '<contexto_editais_nao_confiavel>',
     opts.contexto,
     '</contexto_editais_nao_confiavel>',
     '',
-    `Pergunta do usuário: ${opts.mensagem}`,
+    `Pergunta / perfil do usuário: ${opts.mensagem}`,
   ].join('\n');
 
   const modelo = opts.modelo?.trim() || 'composer-2.5';
@@ -92,5 +89,5 @@ export async function perguntarComCursor(opts: CursorChatOpts): Promise<string> 
   if (!texto) {
     throw new Error('Cursor não devolveu texto.');
   }
-  return texto;
+  return paraTextoPlano(texto);
 }

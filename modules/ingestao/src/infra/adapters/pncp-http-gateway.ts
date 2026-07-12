@@ -12,8 +12,18 @@ import { SsrfGuard, type SsrfGuardConfig } from './ssrf-guard.js';
 /** URL base da API pública de consulta do PNCP. [A VALIDAR — Swagger] */
 const BASE_URL = 'https://pncp.gov.br/api/consulta';
 
+/**
+ * Base da API PNCP para anexos (host distinto de `/api/consulta`).
+ * Confirmado por chamada real: GET /api/pncp/v1/orgaos/{cnpj}/compras/{ano}/{seq}/arquivos
+ */
+const BASE_URL_ARQUIVOS = 'https://pncp.gov.br/api/pncp';
+
 /** Teto de registros por página. [A VALIDAR — documentar no Swagger] */
 const TAMANHO_PAGINA = 50;
+
+/** Formato canônico: `{cnpj14}-{n}-{sequencial}/{ano}` (ex.: `88124961000159-1-000074/2026`). */
+const RE_NUMERO_CONTROLE =
+  /^(\d{14})-\d+-(\d+)\/(\d{4})$/;
 
 /** Allowlist de egress padrão para o PNCP (P-58). Sobreposta via config em produção. */
 const DEFAULT_ALLOWED_HOSTS: readonly string[] = ['pncp.gov.br'];
@@ -85,23 +95,49 @@ export class PncpHttpGateway implements PncpGateway {
     numeroControlePncp: string,
     signal: AbortSignal,
   ): Promise<ContratacaoData | null> {
-    // TODO: confirmar endpoint no Swagger — forma esperada abaixo [A VALIDAR]
-    const url = `${BASE_URL}/v1/contratacoes/${encodeURIComponent(numeroControlePncp)}`;
-    const resposta = await this.fetchComRetry(url, signal);
-    if (resposta.status === 404) return null;
-    const json = await resposta.json() as unknown;
-    return traduzirContratacao(json as PncpContratacaoRaw);
+    const { cnpj, ano, sequencial } = decomporNumeroControle(numeroControlePncp);
+    const urlDetalhe = `${BASE_URL}/v1/orgaos/${cnpj}/compras/${ano}/${sequencial}`;
+    const urlItens =
+      `${BASE_URL_ARQUIVOS}/v1/orgaos/${cnpj}/compras/${ano}/${sequencial}/itens`;
+
+    let detalheRaw: PncpContratacaoRaw;
+    try {
+      const resposta = await this.fetchComRetry(urlDetalhe, signal);
+      detalheRaw = (await resposta.json()) as PncpContratacaoRaw;
+    } catch (err) {
+      if (err instanceof FonteIndisponivelError && /HTTP 404/.test(err.message)) {
+        return null;
+      }
+      throw err;
+    }
+
+    const base = traduzirContratacao(detalheRaw);
+    try {
+      const respItens = await this.fetchComRetry(urlItens, signal);
+      const json = (await respItens.json()) as unknown;
+      if (!Array.isArray(json)) {
+        throw new SchemaDriftError('itens', 'resposta não é array');
+      }
+      return { ...base, itens: json.map(traduzirItem) };
+    } catch {
+      // Detalhe sem itens ainda é útil (lista já pode ter metadados).
+      return base;
+    }
   }
 
   async buscarArquivos(
     numeroControlePncp: string,
     signal: AbortSignal,
   ): Promise<ArquivoPncpData[]> {
-    // TODO: derivar cnpj/ano/sequencial do numeroControlePncp e montar o path correto
-    // Endpoint esperado: GET /v1/orgaos/{cnpj}/compras/{ano}/{sequencial}/arquivos [A VALIDAR]
-    void numeroControlePncp;
-    void signal;
-    throw new Error('buscarArquivos: não implementado — aguardando confirmação do endpoint no Swagger');
+    const { cnpj, ano, sequencial } = decomporNumeroControle(numeroControlePncp);
+    const url =
+      `${BASE_URL_ARQUIVOS}/v1/orgaos/${cnpj}/compras/${ano}/${sequencial}/arquivos`;
+    const resposta = await this.fetchComRetry(url, signal);
+    const json = (await resposta.json()) as unknown;
+    if (!Array.isArray(json)) {
+      throw new SchemaDriftError('arquivos', 'resposta não é array');
+    }
+    return json.map(traduzirArquivo);
   }
 
   async downloadArquivo(urlOrigem: string, signal: AbortSignal): Promise<Uint8Array> {
@@ -201,9 +237,21 @@ interface PncpContratacaoRaw {
   situacaoCompraNome: string;
   objetoCompra: string;
   valorTotalEstimado?: number | null;
+  valorTotalHomologado?: number | null;
+  dataAberturaProposta?: string | null;
   dataEncerramentoProposta?: string | null;
   dataPublicacaoPncp: string;
   dataAtualizacao: string;
+  numeroCompra?: string | null;
+  processo?: string | null;
+  srp?: boolean;
+  modoDisputaNome?: string | null;
+  tipoInstrumentoConvocatorioNome?: string | null;
+  informacaoComplementar?: string | null;
+  linkSistemaOrigem?: string | null;
+  linkProcessoEletronico?: string | null;
+  usuarioNome?: string | null;
+  amparoLegal?: { nome?: string; codigo?: number; descricao?: string } | null;
   orgaoEntidade: { cnpj: string; razaoSocial: string };
   unidadeOrgao: {
     ufNome: string;
@@ -218,6 +266,17 @@ interface PncpContratacaoRaw {
   }>;
 }
 
+interface PncpItemRaw {
+  numeroItem?: number;
+  descricao?: string;
+  quantidade?: number;
+  valorUnitarioEstimado?: number | null;
+  valorTotal?: number | null;
+  unidadeMedida?: string | null;
+  criterioJulgamentoNome?: string | null;
+  materialOuServicoNome?: string | null;
+}
+
 function validarPaginacao(json: unknown): PncpPaginaRaw {
   if (
     typeof json !== 'object' ||
@@ -228,6 +287,74 @@ function validarPaginacao(json: unknown): PncpPaginaRaw {
     throw new SchemaDriftError('root', 'resposta não contém campo "data" como array');
   }
   return json as PncpPaginaRaw;
+}
+
+/**
+ * Extrai path params do numeroControlePNCP para o endpoint de arquivos.
+ * O sequencial na URL não leva zeros à esquerda (ex.: `000074` → `74`).
+ */
+export function decomporNumeroControle(numero: string): {
+  cnpj: string;
+  ano: string;
+  sequencial: string;
+} {
+  const m = RE_NUMERO_CONTROLE.exec(numero.trim());
+  if (!m) {
+    throw new SchemaDriftError(
+      'numeroControlePNCP',
+      `formato inesperado para anexos: '${numero}'`,
+    );
+  }
+  return {
+    cnpj: m[1]!,
+    sequencial: String(Number(m[2])),
+    ano: m[3]!,
+  };
+}
+
+interface PncpArquivoRaw {
+  titulo?: string;
+  url?: string;
+  uri?: string;
+  sequencialDocumento?: number;
+  tipoDocumentoNome?: string;
+  statusAtivo?: boolean;
+}
+
+function traduzirArquivo(raw: unknown): ArquivoPncpData {
+  const a = raw as PncpArquivoRaw;
+  const urlOrigem = a.url ?? a.uri;
+  if (!urlOrigem || typeof urlOrigem !== 'string') {
+    throw new SchemaDriftError('arquivos.url', 'esperado url ou uri string');
+  }
+  const titulo =
+    (typeof a.titulo === 'string' && a.titulo.trim()) ||
+    (typeof a.tipoDocumentoNome === 'string' && a.tipoDocumentoNome.trim()) ||
+    `documento-${a.sequencialDocumento ?? 'x'}`;
+  return {
+    nome: titulo.endsWith('.pdf') ? titulo : `${titulo}.pdf`,
+    urlOrigem,
+    // Lista de metadados não traz tamanho/MIME — preenchidos no download se necessário.
+    tamanhoBytes: 0,
+    tipoMime: 'application/pdf',
+  };
+}
+
+function traduzirItem(raw: unknown): ContratacaoData['itens'][number] {
+  const i = raw as PncpItemRaw;
+  if (typeof i.numeroItem !== 'number' || typeof i.descricao !== 'string') {
+    throw new SchemaDriftError('itens', 'esperado numeroItem + descricao');
+  }
+  return {
+    numeroItem: i.numeroItem,
+    descricao: i.descricao,
+    quantidade: typeof i.quantidade === 'number' ? i.quantidade : 0,
+    valorUnitarioEstimado: i.valorUnitarioEstimado ?? null,
+    valorTotal: i.valorTotal ?? null,
+    unidadeMedida: textoOuNull(i.unidadeMedida),
+    criterioJulgamentoNome: textoOuNull(i.criterioJulgamentoNome),
+    materialOuServicoNome: textoOuNull(i.materialOuServicoNome),
+  };
 }
 
 /** Tradução PNCP → canônico. Minimização: PII desnecessária não é mapeada. */
@@ -262,5 +389,34 @@ function traduzirContratacao(raw: PncpContratacaoRaw): ContratacaoData {
       quantidade: i.quantidade,
       valorUnitarioEstimado: i.valorUnitarioEstimado ?? null,
     })),
+    numeroCompra: textoOuNull(raw.numeroCompra),
+    processo: textoOuNull(raw.processo),
+    srp: raw.srp === true,
+    modoDisputaNome: textoOuNull(raw.modoDisputaNome),
+    amparoLegalNome: textoOuNull(raw.amparoLegal?.nome),
+    dataAberturaProposta: raw.dataAberturaProposta
+      ? new Date(raw.dataAberturaProposta)
+      : null,
+    informacaoComplementar: textoOuNull(raw.informacaoComplementar),
+    linkSistemaOrigem: normalizarUrlExterna(raw.linkSistemaOrigem),
+    linkProcessoEletronico: normalizarUrlExterna(raw.linkProcessoEletronico),
+    valorHomologado: raw.valorTotalHomologado ?? null,
+    tipoInstrumentoNome: textoOuNull(raw.tipoInstrumentoConvocatorioNome),
+    plataformaPublicacao: textoOuNull(raw.usuarioNome),
   };
+}
+
+function textoOuNull(v: string | null | undefined): string | null {
+  if (v == null) return null;
+  const t = v.trim();
+  return t.length > 0 ? t : null;
+}
+
+/** Aceita URL absoluta ou host sem scheme (`www.…`). */
+function normalizarUrlExterna(v: string | null | undefined): string | null {
+  const t = textoOuNull(v);
+  if (!t) return null;
+  if (/^https?:\/\//i.test(t)) return t;
+  if (/^[\w.-]+\.[a-z]{2,}([/:].*)?$/i.test(t)) return `https://${t}`;
+  return t;
 }

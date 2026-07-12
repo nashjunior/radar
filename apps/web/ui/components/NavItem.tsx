@@ -3,10 +3,12 @@ interface NavItemProps {
   label: string;
   icon?: string;
   active?: boolean;
+  /** Contagem de novidades (ex.: alertas não vistos). */
+  badge?: number;
   onClick?: () => void;
 }
 
-export function NavItem({ label, icon, active = false, onClick }: NavItemProps) {
+export function NavItem({ label, icon, active = false, badge, onClick }: NavItemProps) {
   return (
     <button
       onClick={onClick}
@@ -30,7 +32,27 @@ export function NavItem({ label, icon, active = false, onClick }: NavItemProps) 
       }}
     >
       {icon && <span style={{ fontSize: '1rem' }}>{icon}</span>}
-      {label}
+      <span style={{ flex: 1 }}>{label}</span>
+      {typeof badge === 'number' && badge > 0 && (
+        <span
+          style={{
+            minWidth: 20,
+            height: 20,
+            padding: '0 6px',
+            borderRadius: 999,
+            background: 'var(--radar-color-action-primary)',
+            color: 'var(--radar-color-text-on-action, #fff)',
+            fontSize: '0.7rem',
+            fontWeight: 700,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            lineHeight: 1,
+          }}
+        >
+          {badge > 99 ? '99+' : badge}
+        </span>
+      )}
     </button>
   );
 }

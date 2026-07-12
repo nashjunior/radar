@@ -15,6 +15,7 @@ interface TabConfig {
   placeholder: string;
   documentos: string[];
   nota: string;
+  checklist: string[];
 }
 
 const TABS: TabConfig[] = [
@@ -23,36 +24,63 @@ const TABS: TabConfig[] = [
     label: 'Jurídica',
     labelCampo: 'Habilitação Jurídica',
     campo: 'habJuridica',
-    placeholder: 'Descreva a situação jurídica da empresa: tipo societário, composição, regularidade e informações relevantes para licitações.',
+    placeholder:
+      'Ex.: Sociedade Limitada; contrato social com objeto de TI/software; sem falência. Uma informação por linha.',
     documentos: ['Contrato Social / Ato constitutivo', 'Procuração (se aplicável)', 'Certidão Negativa de Falência e Concordata'],
-    nota: 'Documentos exigíveis conforme art. 66-68 da Lei 14.133/2021.',
+    nota: 'Documentos exigíveis conforme arts. 66–68 da Lei 14.133/2021. O CNAE do contrato social precisa casar com o objeto do edital.',
+    checklist: [
+      'Tipo societário e composição',
+      'Objeto social compatível com o que você disputa',
+      'Situação cadastral ativa (sem falência/RJ)',
+    ],
   },
   {
     key: 'fiscal',
     label: 'Fiscal / Trabalhista',
     labelCampo: 'Habilitação Fiscal e Trabalhista',
     campo: 'habFiscal',
-    placeholder: 'Descreva a situação fiscal e trabalhista: regularidade tributária federal, estadual, municipal, FGTS e INSS.',
+    placeholder:
+      'Ex.: CND Federal regular; CRF FGTS regular; CNDT regular; certidões estadual/municipal. Uma por linha.',
     documentos: ['CND Federal (RFB / PGFN)', 'CRF (FGTS)', 'Certidão Negativa de Débitos Trabalhistas', 'Certidões Estadual e Municipal'],
-    nota: 'Regularidade fiscal exigida pelo art. 68 da Lei 14.133/2021.',
+    nota: 'Regularidade fiscal exigida pelo art. 68 da Lei 14.133/2021. Pendência em qualquer esfera costuma inabilitar.',
+    checklist: [
+      'CND Federal (RFB/PGFN)',
+      'CRF do FGTS',
+      'CNDT (Justiça do Trabalho)',
+      'Certidões estadual e municipal',
+    ],
   },
   {
     key: 'tecnica',
     label: 'Técnica',
     labelCampo: 'Qualificação Técnica',
     campo: 'habTecnica',
-    placeholder: 'Descreva a capacidade técnica da empresa: área de atuação, CNAE, experiências anteriores relevantes e certificações.',
+    placeholder:
+      'Ex.: CNAE 6201-5/01; Porte EPP; atestados de desenvolvimento/sustação de software; atuação remota com suporte on-site sob demanda.',
     documentos: ['Atestado de Capacidade Técnica', 'Registro / Certidão de entidade profissional (se aplicável)', 'Declaração de Capacidade Técnica Operacional'],
-    nota: 'Qualificação técnica prevista no art. 67 da Lei 14.133/2021.',
+    nota: 'Qualificação técnica (art. 67). Atestados com complexidade e volume semelhantes ao edital costumam ser o maior filtro.',
+    checklist: [
+      'CNAEs compatíveis com o objeto',
+      'Porte (ME / EPP / Demais) — tratamento favorecido',
+      'Atestados de capacidade técnica',
+      'Capacidade operacional e logística (UF / on-site)',
+    ],
   },
   {
     key: 'economica',
     label: 'Econômico-Financeira',
     labelCampo: 'Qualificação Econômico-Financeira',
     campo: 'habEconomica',
-    placeholder: 'Descreva a situação econômico-financeira: capital social, índices de liquidez (ILC, ILG, SG) e patrimônio líquido.',
+    placeholder:
+      'Ex.: Simples Nacional; capital social R$ 100.000; balanço do último exercício; índices de liquidez ok.',
     documentos: ['Balanço Patrimonial (último exercício)', 'Demonstração de Resultado (DRE)', 'Certidão Negativa de Protestos'],
-    nota: 'Qualificação econômico-financeira prevista no art. 69 da Lei 14.133/2021.',
+    nota: 'Art. 69 — balanço, liquidez e capital mínimo (muitas vezes até ~10% do valor estimado). Regime tributário afeta competitividade de preço.',
+    checklist: [
+      'Regime tributário (Simples / Presumido / Real)',
+      'Capital social / patrimônio líquido',
+      'Balanço e índices de liquidez',
+      'Capacidade de absorver cronograma sem risco de multa',
+    ],
   },
 ];
 
@@ -67,16 +95,39 @@ export function PerfilHabilitacaoPage() {
     setCampos({ ...campos, [tabConfig.campo]: value });
   }
 
+  function inserirChecklist() {
+    const linhas = tabConfig.checklist.map((c) => `• ${c}: `);
+    const atual = campos[tabConfig.campo]?.trim() ?? '';
+    const bloco = linhas.join('\n');
+    handleChange(atual ? `${atual}\n${bloco}` : bloco);
+  }
+
   return (
     <div style={{ maxWidth: 800 }}>
       <h1 style={{ margin: '0 0 var(--radar-space-2)', fontSize: '1.25rem', fontWeight: 600 }}>
         Perfil de Habilitação
       </h1>
-      <p style={{ margin: '0 0 var(--radar-space-6)', fontSize: 'var(--radar-font-size-sm)', color: 'var(--radar-color-text-muted)' }}>
-        Preencha as informações da empresa por seção. Elas são usadas pela Triagem para avaliar aderência ao edital.
+      <p style={{ margin: '0 0 var(--radar-space-4)', fontSize: 'var(--radar-font-size-sm)', color: 'var(--radar-color-text-muted)' }}>
+        Viabilidade legal da empresa (Lei 14.133). Usado na Triagem e no chat de Oportunidades.
+        Alertas do Dashboard vêm dos critérios em Configurar Radar (CNAE/UF/palavras-chave).
       </p>
 
-      {/* Abas */}
+      <div
+        style={{
+          marginBottom: 'var(--radar-space-6)',
+          padding: '12px 16px',
+          borderRadius: 'var(--radar-radius-md)',
+          background: 'var(--radar-color-bg-canvas)',
+          border: '1px solid var(--radar-color-border-default)',
+          fontSize: 'var(--radar-font-size-sm)',
+          color: 'var(--radar-color-text-default)',
+          lineHeight: 1.45,
+        }}
+      >
+        Preencha as quatro frentes: jurídica, fiscal, técnica e econômico-financeira.
+        Na técnica informe CNAE e porte (ME/EPP); na econômica, regime e capital.
+      </div>
+
       <div
         style={{
           display: 'flex',
@@ -111,7 +162,6 @@ export function PerfilHabilitacaoPage() {
         })}
       </div>
 
-      {/* Conteúdo da aba */}
       {carregarEstado.status === 'loading' && (
         <div style={{ color: 'var(--radar-color-text-muted)', fontSize: 'var(--radar-font-size-sm)', padding: 'var(--radar-space-4) 0' }}>
           Carregando perfil...
@@ -136,11 +186,14 @@ export function PerfilHabilitacaoPage() {
       {carregarEstado.status === 'carregado' && (
         <>
           <section style={{ marginBottom: 'var(--radar-space-6)' }}>
-            <h2 style={{ margin: '0 0 var(--radar-space-4)', fontSize: '1rem', fontWeight: 600 }}>
-              {tabConfig.label}
-            </h2>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--radar-space-4)' }}>
+              <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>{tabConfig.label}</h2>
+              <Button variant="secondary" size="sm" onClick={inserirChecklist} disabled={salvando}>
+                Inserir checklist
+              </Button>
+            </div>
 
-            <div style={{ marginBottom: 'var(--radar-space-2)', fontSize: 'var(--radar-font-size-sm)', fontWeight: 500, color: 'var(--radar-color-text-default)' }}>
+            <div style={{ marginBottom: 'var(--radar-space-2)', fontSize: 'var(--radar-font-size-sm)', fontWeight: 500 }}>
               {tabConfig.labelCampo}
             </div>
 
@@ -151,7 +204,12 @@ export function PerfilHabilitacaoPage() {
               disabled={salvando}
             />
 
-            {/* Separador Pós-MVP */}
+            <ul style={{ margin: '12px 0 0', paddingLeft: 18, fontSize: 'var(--radar-font-size-sm)', color: 'var(--radar-color-text-muted)' }}>
+              {tabConfig.checklist.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+
             <div
               style={{
                 marginTop: 'var(--radar-space-6)',
@@ -164,7 +222,7 @@ export function PerfilHabilitacaoPage() {
               }}
             >
               <span style={{ flex: 1, height: 1, background: 'var(--radar-color-border-default)' }} />
-              <span>Documentos a enviar (Pós-MVP) ↓</span>
+              <span>Documentos a anexar (Pós-MVP)</span>
               <span style={{ flex: 1, height: 1, background: 'var(--radar-color-border-default)' }} />
             </div>
 
@@ -180,9 +238,7 @@ export function PerfilHabilitacaoPage() {
                   opacity: 0.6,
                 }}
               >
-                <span style={{ flex: 1, fontSize: 'var(--radar-font-size-sm)', color: 'var(--radar-color-text-default)' }}>
-                  {doc}
-                </span>
+                <span style={{ flex: 1, fontSize: 'var(--radar-font-size-sm)' }}>{doc}</span>
                 <Badge type="neutro" size="sm">Pós-MVP</Badge>
               </div>
             ))}
@@ -192,7 +248,6 @@ export function PerfilHabilitacaoPage() {
             </p>
           </section>
 
-          {/* Feedback de salvar */}
           {salvarEstado.status === 'erro' && (
             <div
               style={{
@@ -218,12 +273,12 @@ export function PerfilHabilitacaoPage() {
                 marginBottom: 'var(--radar-space-4)',
               }}
             >
-              Perfil salvo com sucesso.
+              Perfil salvo. O chat e a Triagem usarão estas informações.
             </div>
           )}
 
           <Button variant="primary" onClick={() => void salvar()} disabled={salvando}>
-            {salvando ? 'Salvando...' : 'Salvar documentos'}
+            {salvando ? 'Salvando...' : 'Salvar perfil'}
           </Button>
         </>
       )}

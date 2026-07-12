@@ -97,7 +97,7 @@ describe('CriterioDeMonitoramento', () => {
       expect(aderencia!.valor).toBe(1);
     });
 
-    it('retorna AderenciaMatching(0) quando filtros estruturais casam mas palavras-chave não', () => {
+    it('retorna score parcial (recall) quando só parte das palavras-chave casa', () => {
       const criterio = CriterioDeMonitoramento.criar({
         ...base,
         palavrasChave: PalavrasChave.criar(['cloud', 'erp']),
@@ -105,6 +105,24 @@ describe('CriterioDeMonitoramento', () => {
 
       const aderencia = criterio.casaCom({
         objetoDescricao: 'Contratação de ERP para gestão pública',
+        uf: null,
+        cnae: null,
+        valorEstimado: null,
+      });
+
+      expect(aderencia).not.toBeNull();
+      expect(aderencia!.valor).toBe(0.5);
+      expect(aderencia!.superaLimiar).toBe(true);
+    });
+
+    it('retorna AderenciaMatching(0) quando nenhuma palavra-chave casa', () => {
+      const criterio = CriterioDeMonitoramento.criar({
+        ...base,
+        palavrasChave: PalavrasChave.criar(['cloud', 'erp']),
+      });
+
+      const aderencia = criterio.casaCom({
+        objetoDescricao: 'Aquisição de material de limpeza',
         uf: null,
         cnae: null,
         valorEstimado: null,

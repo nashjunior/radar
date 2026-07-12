@@ -22,7 +22,9 @@ Endpoints relevantes ao MVP (contratos confirmados no Swagger e por chamada real
 | Contratações por **data de publicação** | `GET /v1/contratacoes/publicacao` | `dataInicial`, `dataFinal` (yyyyMMdd), `codigoModalidadeContratacao` (int) | `codigoModoDisputa`, `uf`, `codigoMunicipioIbge`, `cnpj`, `pagina`, `tamanhoPagina` | |
 | Contratações por **data de atualização global** | `GET /v1/contratacoes/atualizacao` | `dataInicial`, `dataFinal` (yyyyMMdd), `codigoModalidadeContratacao` (int) | mesmos opcionais acima | Retorna ~2,6× mais registros que `/publicacao` no mesmo dia |
 | Contratações com **proposta em aberto** | `GET /v1/contratacoes/proposta` | `dataFinal` (yyyyMMdd), `pagina` | `codigoModalidadeContratacao`, `tamanhoPagina`, filtros de órgão | Confirmado por chamada real (2026-07-06); `pagina` é obrigatório pelo spec — ausência causa 422 |
-| **Arquivos/anexos** de uma contratação | `GET /v1/orgaos/{cnpj}/compras/{ano}/{sequencial}/arquivos` | path params | — | Listado no spec; não testado |
+| **Detalhe de uma contratação** | `GET /api/consulta/v1/orgaos/{cnpj}/compras/{ano}/{sequencial}` | path params | — | Confirmado (2026-07-11); usado no clique do card |
+| **Itens da contratação** | `GET /api/pncp/v1/orgaos/{cnpj}/compras/{ano}/{sequencial}/itens` | path params | — | Confirmado (2026-07-11); base `/api/pncp` |
+| **Arquivos/anexos** de uma contratação | `GET /api/pncp/v1/orgaos/{cnpj}/compras/{ano}/{sequencial}/arquivos` | path params (derivados do `numeroControlePNCP`) | — | Confirmado por chamada real (2026-07-11); base **`/api/pncp`**, não `/api/consulta` |
 
 **Paginação:** `tamanhoPagina` aceito: 10–50 (limite máximo = **50**; valores > 50 retornam 400). Padrão: 10. Iterar modalidade a modalidade; toda varredura por dia requer ~120 requests com `tamanhoPagina=50`.
 

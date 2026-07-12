@@ -29,7 +29,31 @@ export interface ContratacaoData {
     descricao: string;
     quantidade: number;
     valorUnitarioEstimado: number | null;
+    valorTotal?: number | null;
+    unidadeMedida?: string | null;
+    criterioJulgamentoNome?: string | null;
+    materialOuServicoNome?: string | null;
   }>;
+  /**
+   * Campos já presentes na listagem `/contratacoes/publicacao` (A02 §2).
+   * Opcionais no tipo para não forçar fixtures; o ACL sempre preenche.
+   */
+  numeroCompra?: string | null;
+  processo?: string | null;
+  /** Sistema de Registro de Preços. */
+  srp?: boolean;
+  modoDisputaNome?: string | null;
+  /** Ex.: "Lei 14.133/2021, Art. 28, I". */
+  amparoLegalNome?: string | null;
+  dataAberturaProposta?: Date | null;
+  informacaoComplementar?: string | null;
+  /** URL do portal de origem (Banrisul, BNC, BLL…). */
+  linkSistemaOrigem?: string | null;
+  linkProcessoEletronico?: string | null;
+  valorHomologado?: number | null;
+  tipoInstrumentoNome?: string | null;
+  /** Quem publicou no PNCP (ex.: PROCERGS, Pública Tecnologia). */
+  plataformaPublicacao?: string | null;
 }
 
 export interface ArquivoPncpData {

@@ -12,15 +12,39 @@ export interface DemoEditalCard {
   prazoProposta: string | null;
   dataPublicacao: string;
   faseAtual: string;
+  srp?: boolean;
+}
+
+export interface DemoEditalArquivo {
+  nome: string;
+  url: string;
+  tipoMime: string;
 }
 
 export interface DemoEditalDetalhe extends DemoEditalCard {
   orgaoCnpj: string;
+  urlPortalPncp?: string | null;
+  arquivos?: DemoEditalArquivo[];
+  numeroCompra?: string | null;
+  processo?: string | null;
+  modoDisputaNome?: string | null;
+  amparoLegalNome?: string | null;
+  dataAberturaProposta?: string | null;
+  informacaoComplementar?: string | null;
+  linkSistemaOrigem?: string | null;
+  linkProcessoEletronico?: string | null;
+  valorHomologado?: number | null;
+  tipoInstrumentoNome?: string | null;
+  plataformaPublicacao?: string | null;
   itens: Array<{
     numeroItem: number;
     descricao: string;
     quantidade: number;
     valorUnitarioEstimado: number | null;
+    valorTotal?: number | null;
+    unidadeMedida?: string | null;
+    criterioJulgamentoNome?: string | null;
+    materialOuServicoNome?: string | null;
   }>;
 }
 
@@ -44,10 +68,17 @@ export class DemoPncpHttpGateway {
     return h;
   }
 
-  async listar(opts: { q?: string; refresh?: boolean; signal: AbortSignal }): Promise<DemoListaResponse> {
+  async listar(opts: {
+    q?: string;
+    uf?: string;
+    refresh?: boolean;
+    signal: AbortSignal;
+  }): Promise<DemoListaResponse> {
     const params = new URLSearchParams();
     if (opts.q) params.set('q', opts.q);
+    if (opts.uf) params.set('uf', opts.uf);
     if (opts.refresh) params.set('refresh', '1');
+    params.set('max', '50');
     const qs = params.toString();
     const res = await fetch(`${this.baseUrl}/api/demo/editais${qs ? `?${qs}` : ''}`, {
       headers: await this.headers(),
@@ -68,10 +99,15 @@ export class DemoPncpHttpGateway {
 
   async chat(
     mensagem: string,
-    opts: { numeroControlePncp?: string; signal: AbortSignal },
+    opts: {
+      numeroControlePncp?: string;
+      perfilEmpresa?: string;
+      signal: AbortSignal;
+    },
   ): Promise<string> {
     const body: Record<string, string> = { mensagem };
     if (opts.numeroControlePncp) body['numeroControlePncp'] = opts.numeroControlePncp;
+    if (opts.perfilEmpresa?.trim()) body['perfilEmpresa'] = opts.perfilEmpresa.trim();
     const res = await fetch(`${this.baseUrl}/api/demo/chat`, {
       method: 'POST',
       headers: await this.headers(true),

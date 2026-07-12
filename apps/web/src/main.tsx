@@ -12,6 +12,7 @@ import { ConfigurarPage } from '@/ui/pages/configurar-page';
 import { PerfilHabilitacaoPage } from '@/ui/pages/perfil-habilitacao-page';
 import { OportunidadesPage } from '@/ui/pages/oportunidades-page';
 import { LoginPage } from '@/ui/pages/login-page';
+import { useAlertasPolling } from '@/ui/hooks/use-alertas-polling';
 import './globals.css';
 
 type Route = 'dashboard' | 'alertas' | 'oportunidades' | 'triagem' | 'configurar' | 'perfil';
@@ -19,8 +20,10 @@ type Route = 'dashboard' | 'alertas' | 'oportunidades' | 'triagem' | 'configurar
 function App() {
   const [route, setRoute] = useState<Route>('oportunidades');
   const [triagemId, setTriagemId] = useState<string | undefined>();
+  const { novosNaoVistos, marcarVistos } = useAlertasPolling();
 
   function navigateTo(r: Route) {
+    if (r === 'alertas') marcarVistos();
     setRoute(r);
   }
 
@@ -30,8 +33,16 @@ function App() {
   }
 
   return (
-    <AppLayout current={route} onNavigate={navigateTo}>
-      {route === 'dashboard'     && <DashboardPage onTriagem={openTriagem} />}
+    <AppLayout
+      current={route}
+      onNavigate={navigateTo}
+      badgeAlertas={novosNaoVistos}
+      onVerAlertasNovos={() => navigateTo('alertas')}
+      onDispensarNovos={marcarVistos}
+    >
+      {route === 'dashboard'     && (
+        <DashboardPage onTriagem={openTriagem} onVerAlertas={() => navigateTo('alertas')} />
+      )}
       {route === 'alertas'       && <AlertasPage onTriagem={openTriagem} />}
       {route === 'oportunidades' && <OportunidadesPage />}
       {route === 'triagem'       && <TriagemPage editalId={triagemId} onBack={() => setRoute('alertas')} />}

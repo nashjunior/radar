@@ -65,6 +65,8 @@ export interface CriterioResposta {
   faixaValorMax: number | null;
   palavrasChave: string[];
   ativo: boolean;
+  /** Presente na demo após rematch do lote PNCP. */
+  alertasGerados?: number;
 }
 
 /**

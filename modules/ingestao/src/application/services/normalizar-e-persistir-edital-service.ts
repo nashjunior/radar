@@ -21,9 +21,20 @@ export class NormalizarEPersistirEditalService {
   ) {}
 
   async persistir(id: EditalId, dado: ContratacaoData, signal: AbortSignal): Promise<Edital> {
+    // Só os campos do agregado — complemento da listagem PNCP fica no ACL/demo.
     const edital = Edital.criar({
       id,
-      ...dado,
+      numeroControlePncp: dado.numeroControlePncp,
+      modalidadeCodigo: dado.modalidadeCodigo,
+      modalidadeNome: dado.modalidadeNome,
+      faseAtual: dado.faseAtual,
+      objeto: dado.objeto,
+      valorEstimado: dado.valorEstimado,
+      prazoProposta: dado.prazoProposta,
+      dataPublicacao: dado.dataPublicacao,
+      dataAtualizacao: dado.dataAtualizacao,
+      orgao: dado.orgao,
+      itens: dado.itens,
       proveniencia: {
         fonte: PROVENIENCIA_PNCP.fonte,
         baseLegal: PROVENIENCIA_PNCP.baseLegal,

@@ -6,6 +6,8 @@ type Route = 'dashboard' | 'alertas' | 'oportunidades' | 'triagem' | 'configurar
 interface SidebarProps {
   current: Route;
   onNavigate: (route: Route) => void;
+  /** Badge em Alertas (novos não vistos). */
+  badgeAlertas?: number;
 }
 
 const NAV_ITEMS: { route: Route; icon: string; label: string }[] = [
@@ -16,8 +18,8 @@ const NAV_ITEMS: { route: Route; icon: string; label: string }[] = [
   { route: 'configurar', icon: '⚙️', label: 'Configurar Radar' },
 ];
 
-export function Sidebar({ current, onNavigate }: SidebarProps) {
-  const { theme, setTheme, resolvedTheme } = useTheme();
+export function Sidebar({ current, onNavigate, badgeAlertas = 0 }: SidebarProps) {
+  const { resolvedTheme, setTheme } = useTheme();
 
   return (
     <aside
@@ -47,6 +49,7 @@ export function Sidebar({ current, onNavigate }: SidebarProps) {
             icon={icon}
             label={label}
             active={current === route || (current === 'triagem' && route === 'alertas')}
+            {...(route === 'alertas' && badgeAlertas > 0 ? { badge: badgeAlertas } : {})}
             onClick={() => onNavigate(route)}
           />
         ))}

@@ -90,7 +90,8 @@ export class CriterioDeMonitoramento {
     if (termos.length === 0) return 0.5;
 
     const objeto = objetoDescricao.toLowerCase();
-    const encontrados = termos.filter(termo => objeto.includes(termo)).length;
-    return encontrados === termos.length ? 1 : 0;
+    const encontrados = termos.filter((termo) => objeto.includes(termo)).length;
+    // Recall-alto (docs/11 §2): fração de termos presentes, não tudo-ou-nada.
+    return encontrados / termos.length;
   }
 }
